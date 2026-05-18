@@ -94,6 +94,30 @@ def main(argv: list[str] | None = None) -> int:
     p_load.add_argument("state_file", type=Path)
     p_load.set_defaults(func=_cmd_load)
 
+    # ---- briefing ----
+    p_brief = sub.add_parser("briefing", help="Emit LLM-friendly briefing for a state file.")
+    p_brief.add_argument("state_file", type=Path)
+    p_brief.add_argument("--side", choices=["guelph", "ghibelline"], required=True)
+    p_brief.add_argument("--hidden-mats", action="store_true",
+                          help="Apply 1.5.2 Hidden Mats option to redaction.")
+    p_brief.add_argument("--max-chars", type=int, default=3500)
+    p_brief.set_defaults(func=_cmd_briefing)
+
+    # ---- play-event ----
+    p_ev = sub.add_parser("play-event", help="Play a Held Event card from this side's aow_held.")
+    p_ev.add_argument("state_file", type=Path)
+    p_ev.add_argument("--side", choices=["guelph", "ghibelline"], required=True)
+    p_ev.add_argument("--card", required=True, help="Card id (e.g. F3).")
+    p_ev.add_argument("--out", type=Path, default=None, help="Where to write updated state.")
+    p_ev.set_defaults(func=_cmd_play_event)
+
+    # ---- replay ----
+    p_rp = sub.add_parser("replay", help="Re-execute a state file's history step by step.")
+    p_rp.add_argument("state_file", type=Path)
+    p_rp.add_argument("-n", "--count", type=int, default=None,
+                       help="Stop after N actions (default: replay all).")
+    p_rp.set_defaults(func=_cmd_replay)
+
     p_sc = sub.add_parser("scenarios", help="List the six published scenarios.")
     p_sc.set_defaults(func=_cmd_scenarios)
 
@@ -182,6 +206,51 @@ def _cmd_scenarios(args: argparse.Namespace) -> int:
     for s in list_scenarios():
         print(f"  {s['id']}: {s['name']}")
     return 0
+
+
+
+def _cmd_briefing(args: argparse.Namespace) -> int:
+    state = _load_state(args.state_file)
+    from .llm import build_briefing
+    print(build_briefing(state, args.side, max_chars=args.max_chars,
+                          hidden_mats=args.hidden_mats))
+    return 0
+
+
+def _cmd_play_event(args: argparse.Namespace) -> int:
+    state = _load_state(args.state_file)
+    from .actions import IllegalAction, dispatch
+    try:
+        result = dispatch(state, {
+            "action": "play_event", "side": args.side,
+            "args": {"card_id": args.card},
+        })
+    except IllegalAction as e:
+        print(f"IllegalAction[{e.code}]: {e}")
+        return 1
+    print(json.dumps(result, indent=2, ensure_ascii=False))
+    out_path = args.out or args.state_file
+    out_path.write_text(json.dumps(state, indent=2, ensure_ascii=False))
+    print(f"Updated state at {out_path}")
+    return 0
+
+
+def _cmd_replay(args: argparse.Namespace) -> int:
+    state = _load_state(args.state_file)
+    history = state.get("history", [])
+    if args.count is not None:
+        history = history[: args.count]
+    print(f"Replaying {len(history)} actions from {args.state_file}:")
+    for i, h in enumerate(history, 1):
+        rolls = h.get("rolls", [])
+        print(f"  [{i:>3}] [{h.get('side'):>10}] {h.get('action'):<26}  "
+              f"args={_truncate(str(h.get('args', {})), 40)}  "
+              f"rolls={len(rolls)}")
+    return 0
+
+
+def _truncate(s: str, n: int) -> str:
+    return s if len(s) <= n else s[: n - 3] + "..."
 
 
 # ----------------------------------------------------------- helpers
