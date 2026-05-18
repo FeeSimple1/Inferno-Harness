@@ -73,10 +73,12 @@ def test_rng_is_deterministic_for_a_given_seed():
 
 
 # ----------------------------------------------------------------- action stubs
-def test_dispatch_raises_phase_0():
-    """Phase 0 dispatcher is a placeholder — Phase 2+ implements it."""
-    with pytest.raises(NotImplementedError):
-        dispatch({}, {"action": "cmd_march"})
+def test_dispatch_rejects_malformed():
+    """Phase 2: dispatcher is implemented; malformed input raises IllegalAction."""
+    from inferno.actions import IllegalAction
+    with pytest.raises(IllegalAction):
+        dispatch({"meta": {"active_player": "guelph"}, "history": []},
+                 {"action": "no_such_action", "side": "guelph"})
 
 
 def test_illegal_action_includes_citation():
@@ -88,11 +90,13 @@ def test_illegal_action_includes_citation():
 
 
 # ----------------------------------------------------------------- legal-moves
-def test_legal_moves_returns_phase_0_stub_marker():
-    moves = enumerate_legal({})
+def test_legal_moves_for_loaded_scenario():
+    """Phase 2: loaded state at 3.1 returns the AoW draw action."""
+    from inferno.scenarios import load_scenario
+    s = load_scenario("A", seed=1)
+    moves = enumerate_legal(s)
     assert isinstance(moves, list)
-    assert len(moves) == 1
-    assert moves[0]["action"] == "<phase_0_stub>"
+    assert moves[0]["action"] == "levy_aow_draw"
 
 
 # ----------------------------------------------------------------- CLI end-to-end
@@ -141,11 +145,14 @@ def test_cli_state_summary_on_synthetic_stub(tmp_path: Path):
     assert "Scenario" in r.stdout or "scenario" in r.stdout.lower()
 
 
-def test_cli_legal_moves_returns_stub(tmp_path: Path):
-    r = _run_cli(["legal-moves", str(tmp_path / "missing.state.json")])
+def test_cli_legal_moves_against_real_state(tmp_path: Path):
+    """Phase 2: CLI legal-moves returns the levy_aow_draw action for a freshly loaded scenario."""
+    out = tmp_path / "x.state.json"
+    _run_cli(["new", "A", "--seed", "1", "--out", str(out)])
+    r = _run_cli(["legal-moves", str(out)])
     assert r.returncode == 0
     moves = json.loads(r.stdout)
-    assert moves[0]["action"] == "<phase_0_stub>"
+    assert moves[0]["action"] == "levy_aow_draw"
 
 
 def test_cli_pending_history_empty(tmp_path: Path):

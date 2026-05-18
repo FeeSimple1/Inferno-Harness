@@ -70,7 +70,7 @@ def load_scenario(scenario_id: str, seed: int) -> State:
         "calendar": _init_calendar(data),
         "lords": _init_lords(data),
         "locales": _init_locales(data),
-        "decks": _init_decks(),
+        "decks": _init_decks(data),
         "capabilities_in_play": list(data["map"].get("capabilities_in_play", [])),
         "pending": [],
         "history": [],
@@ -92,6 +92,7 @@ def _init_meta(scenario_id: str, seed: int, data: dict[str, Any]) -> Meta:
         active_player="guelph",
         game_over=False,
         winner=None,
+        first_levy_aow_drawn=False,
     )
 
 
@@ -271,23 +272,42 @@ def _wire_lords_into_locales(state: State) -> None:
 
 
 # ---------------------------------------------------------------- decks
-def _init_decks() -> dict[str, DeckState]:
-    """Phase 1: deck composition is a stub. Phase 2 (Levy) populates the
-    real AoW and Command decks from card data.
+def _init_decks(scenario_data: dict[str, Any]) -> dict[str, DeckState]:
+    """Build per-side decks from card data and the scenario's held_events.
+
+    AoW deck: all 26 card IDs for that side, in initial order. Phase 2's
+    AoW draw step pulls from this list (we shuffle on use, not on load,
+    so the seed determines draw order).
+
+    Command deck: 6 Command card IDs (one per non-Comune Lord on that
+    side). The 6 Treachery cards start in treachery_set_aside and enter
+    the Command deck only via Revolt triggers (1.4.3).
+
+    Held events: the scenario may pre-deal Held Events (e.g., F3
+    Surprise to the Guelphs in Scenarios A and F via the Night March
+    rule). These go straight into aow_held.
     """
-    return {
-        "guelph": DeckState(
-            aow_deck=[],
+    from .card_data import CARDS_BY_SIDE, TREACHERY_LORD_IDS
+
+    held = scenario_data.get("map", {}).get("held_events", {}) or {}
+    decks: dict[str, DeckState] = {}
+
+    # Map side -> Lord-ids on that side (for Command/Treachery decks)
+    side_lord_ids = {"guelph": [], "ghibelline": []}
+    for canonical_name, lord_data in sd.LORDS.items():
+        lid = sd.LORD_IDS[canonical_name]
+        if lid in TREACHERY_LORD_IDS:
+            side_lord_ids[lord_data["side"]].append(lid)
+
+    for side in ("guelph", "ghibelline"):
+        held_cards = list(held.get(side, []))
+        # Held events leave the AoW deck (3.1.1: exclude Held Events).
+        aow_deck = [cid for cid in CARDS_BY_SIDE[side] if cid not in held_cards]
+        decks[side] = DeckState(
+            aow_deck=aow_deck,
             aow_discard=[],
-            aow_held=[],
-            command_deck=[],
-            treachery_set_aside=[],
-        ),
-        "ghibelline": DeckState(
-            aow_deck=[],
-            aow_discard=[],
-            aow_held=[],
-            command_deck=[],
-            treachery_set_aside=[],
-        ),
-    }
+            aow_held=held_cards,
+            command_deck=[f"command_{lid}" for lid in side_lord_ids[side]],
+            treachery_set_aside=[f"treachery_{lid}" for lid in side_lord_ids[side]],
+        )
+    return decks
