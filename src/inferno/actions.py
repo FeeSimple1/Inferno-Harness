@@ -2212,3 +2212,335 @@ _HANDLERS.update({
     "cmd_sortie":            _h_cmd_sortie,
     "plan_attach_lieutenant": _h_plan_attach_lieutenant,
 })
+
+
+# =====================================================================
+# Phase 3e: End-of-Campaign 4.9 substeps
+# =====================================================================
+def _h_end_grow(state, side, args, rng) -> dict[str, Any]:
+    """4.9.1 GROW (only on certain Turns).
+
+    At the end of late-Spring (Apr-May) and Autumn (Oct-Nov) Turns —
+    Calendar boxes 2, 5, 8, 11, 14 — Guelph then Ghibelline each MUST
+    select and reduce the ENEMY'S Ravage markers to 1/2 their total,
+    rounded UP. Adjust VP accordingly.
+
+    args:
+      keep:  list of locale names to KEEP enemy Ravage markers on (the
+             rest are removed). The count of kept = ceil(N/2).
+    """
+    from .flow import current_campaign_step
+    if current_campaign_step(state) != "end_campaign":
+        raise IllegalAction("WRONG_STEP", "Grow runs in end_campaign step.", "4.9.1")
+    if state["meta"]["turn"] not in sd.GROW_BOXES:
+        raise IllegalAction("NOT_GROW_TURN", f"Box {state['meta']['turn']} is not a Grow turn.", "4.9.1")
+    enemy = "ghibelline" if side == "guelph" else "guelph"
+    # Side selects which OF THE ENEMY'S Ravage markers to REDUCE; we remove
+    # ravaged markers of the enemy color (i.e., marked by side, since marker
+    # color = opposite printed; side's Ravage adds to enemy's tally? No —
+    # Ravage marker color = opposite printed, so Guelph Ravage of Ghib town
+    # places a gold (Guelph) marker. The OWNER of the marker is the one who
+    # benefits from VP. So "Enemy's Ravage markers" = markers benefiting
+    # the enemy.
+    # Phase 3e: simplified — "enemy Ravage markers" = ravaged Locales where
+    # the marker color is enemy's color ("gold" for guelph, "purple" for ghibelline).
+    enemy_color = "gold" if enemy == "guelph" else "purple"
+    enemy_ravage_locales = [
+        n for n, l in state["locales"].items()
+        if l.get("ravaged") == enemy_color
+    ]
+    n = len(enemy_ravage_locales)
+    if n == 0:
+        from .flow import advance_campaign_side_or_step
+        if side == "ghibelline":
+            state["meta"]["end_substep_done"] = state["meta"].get("end_substep_done", []) + ["grow"]
+        advance_campaign_side_or_step(state)
+        return {"state_changes": {"grow": "no enemy ravages"}, "rule_citation": "4.9.1"}
+    keep_count = (n + 1) // 2  # rounded UP (per 4.9.1, "halved rounded UP" means N - ceil(N/2) are removed? Re-read)
+    # Re-read 4.9.1: "reduce the ENEMY'S Ravage markers on the map to 1/2
+    # their total, rounded UP." So we REDUCE TO ceil(N/2). Keep = ceil(N/2).
+    # That means side selects the (N - keep_count) to remove.
+    keep = args.get("keep")
+    if keep is None:
+        # Default: keep the first keep_count locales (leftmost selection).
+        keep = enemy_ravage_locales[:keep_count]
+    if len(set(keep)) != keep_count or any(k not in enemy_ravage_locales for k in keep):
+        raise IllegalAction("BAD_KEEP", f"Must specify exactly {keep_count} of {enemy_ravage_locales} to keep.", "4.9.1")
+    removed = [n for n in enemy_ravage_locales if n not in keep]
+    for loc_name in removed:
+        state["locales"][loc_name]["ravaged"] = None
+        # VP adjustment: enemy loses 1/2 VP per removed Ravage marker
+        state["vp"][enemy] = max(state["vp"].get(enemy, 0) - 0.5, 0)
+    # After Ghibelline grow, mark grow done
+    if side == "ghibelline":
+        state["meta"]["end_substep_done"] = state["meta"].get("end_substep_done", []) + ["grow"]
+    from .flow import advance_campaign_side_or_step
+    advance_campaign_side_or_step(state)
+    return {
+        "state_changes": {"grow_removed": removed, "grow_kept": keep},
+        "rule_citation": "4.9.1",
+    }
+
+
+def _h_end_grow_skip(state, side, args, rng) -> dict[str, Any]:
+    """Skip Grow when not a Grow turn or no enemy Ravage markers."""
+    from .flow import current_campaign_step, advance_campaign_side_or_step
+    if current_campaign_step(state) != "end_campaign":
+        raise IllegalAction("WRONG_STEP", "Grow runs in end_campaign step.", "4.9.1")
+    if side == "ghibelline":
+        state["meta"]["end_substep_done"] = state["meta"].get("end_substep_done", []) + ["grow"]
+    advance_campaign_side_or_step(state)
+    return {"state_changes": {"grow": "skipped"}, "rule_citation": "4.9.1"}
+
+
+def _h_end_ransom(state, side, args, rng) -> dict[str, Any]:
+    """4.9.2 RANSOM: pay 1 Coin per 6 captured units (rounded UP),
+    full amount to enemy pool. Recover HALF (rounded UP) of those units
+    distributed to own Mustered Lords. Remainder returns to pool.
+
+    args:
+      pay:  bool — pay full Ransom and recover units, else Languish.
+      coin_from: optional lord_id that pays the Coin (default: first
+                 Mustered own Lord with enough Coin).
+      distribute_to: optional list[lord_id] — distribution targets.
+    """
+    from .flow import current_campaign_step, advance_campaign_side_or_step
+    if current_campaign_step(state) != "end_campaign":
+        raise IllegalAction("WRONG_STEP", "Ransom runs in end_campaign.", "4.9.2")
+    captured = state.get("captured_knights", {}).get(side, {})
+    total_captured = sum(captured.values())
+    if total_captured == 0:
+        if side == "ghibelline":
+            state["meta"]["end_substep_done"] = state["meta"].get("end_substep_done", []) + ["ransom"]
+        advance_campaign_side_or_step(state)
+        return {"state_changes": {"ransom": "no captures"}, "rule_citation": "4.9.2"}
+    cost = (total_captured + 5) // 6   # ceil(N/6)
+    pay = bool(args.get("pay", True))
+    if pay:
+        # Find a paying Lord with enough Coin
+        coin_from = args.get("coin_from")
+        candidates = ([state["lords"][coin_from]] if coin_from else
+                      [l for l in state["lords"].values()
+                       if l["side"] == side and l["status"] == "mustered"])
+        payer = next((l for l in candidates if l["assets"].get("Coin", 0) >= cost), None)
+        if payer is None:
+            raise IllegalAction("INSUFFICIENT_COIN",
+                                f"Ransom needs {cost} Coin total; no eligible Lord can pay.", "4.9.2")
+        payer["assets"]["Coin"] -= cost
+        # Coin goes to enemy pool — distribute to enemy Mustered Lords (first one)
+        enemy = "ghibelline" if side == "guelph" else "guelph"
+        enemy_lords = [l for l in state["lords"].values()
+                       if l["side"] == enemy and l["status"] == "mustered"]
+        if enemy_lords:
+            enemy_lords[0]["assets"]["Coin"] = enemy_lords[0]["assets"].get("Coin", 0) + cost
+        # Recover half (rounded UP) units, distribute to own Mustered
+        recover_half = {u: (c + 1) // 2 for u, c in captured.items()}
+        recovered_units = sum(recover_half.values())
+        # Distribute
+        targets_ids = args.get("distribute_to") or [
+            lid for lid, l in state["lords"].items()
+            if l["side"] == side and l["status"] == "mustered"
+        ]
+        if not targets_ids:
+            advance_campaign_side_or_step(state)
+            return {"state_changes": {"ransom": "paid but no Lords to receive"}, "rule_citation": "4.9.2"}
+        i = 0
+        for u, c in recover_half.items():
+            for _ in range(c):
+                t = state["lords"][targets_ids[i % len(targets_ids)]]
+                t.setdefault("forces", {})[u] = t["forces"].get(u, 0) + 1
+                i += 1
+        # Remainder returns to pool (nothing to do — they're just not added back)
+        # Clear captured ledger
+        state["captured_knights"][side] = {}
+        if side == "ghibelline":
+            state["meta"]["end_substep_done"] = state["meta"].get("end_substep_done", []) + ["ransom"]
+        advance_campaign_side_or_step(state)
+        return {
+            "state_changes": {"ransom_paid": cost, "recovered_total": recovered_units},
+            "rule_citation": "4.9.2",
+        }
+    else:
+        # LANGUISH: enemy rolls Revolt OR adds Treachery (their choice) per 6 captured
+        n_rolls = (total_captured + 5) // 6
+        enemy = "ghibelline" if side == "guelph" else "guelph"
+        results = []
+        for _ in range(n_rolls):
+            r = rng.roll(f"languish_{side}")
+            results.append({"die": r.value})
+            _add_treachery_to_enemy(state, "<languish>", enemy)
+        # Captured units removed (Lost)
+        state["captured_knights"][side] = {}
+        if side == "ghibelline":
+            state["meta"]["end_substep_done"] = state["meta"].get("end_substep_done", []) + ["ransom"]
+        advance_campaign_side_or_step(state)
+        return {
+            "state_changes": {"languished": True, "rolls": n_rolls, "removed_units": total_captured},
+            "rule_citation": "4.9.2",
+        }
+
+
+def _h_end_game_check(state, side, args, rng) -> dict[str, Any]:
+    """4.9.3 Game End check: if this was the scenario's last 60-Day Turn,
+    the game ends. Otherwise proceed."""
+    from .flow import current_campaign_step, advance_campaign_step
+    if current_campaign_step(state) != "end_campaign":
+        raise IllegalAction("WRONG_STEP", "Game-end check in end_campaign.", "4.9.3")
+    cal = state["calendar"]
+    if cal.get("end_box") and state["meta"]["turn"] >= cal["end_box"] - 1:
+        # Game ends — winner by VP
+        g, h = state["vp"].get("guelph", 0), state["vp"].get("ghibelline", 0)
+        winner = None
+        if g > h:
+            winner = "guelph"
+        elif h > g:
+            winner = "ghibelline"
+        state["meta"]["phase"] = "victory"
+        state["meta"]["game_over"] = True
+        state["meta"]["winner"] = winner
+        return {
+            "state_changes": {"game_ended": True, "winner": winner, "vp_g": g, "vp_h": h},
+            "rule_citation": "4.9.3 / 5.3",
+        }
+    state["meta"]["end_substep_done"] = state["meta"].get("end_substep_done", []) + ["game_check"]
+    state["meta"]["active_player"] = "guelph"
+    return {"state_changes": {"game_ended": False}, "rule_citation": "4.9.3"}
+
+
+def _h_end_repair(state, side, args, rng) -> dict[str, Any]:
+    """4.9.4 REPAIR (per Errata): Remove ONE Siege marker from each TOWN
+    and CITY that has 3 or 4 Siege markers. Castles do NOT Repair."""
+    from .flow import current_campaign_step
+    if current_campaign_step(state) != "end_campaign":
+        raise IllegalAction("WRONG_STEP", "Repair in end_campaign.", "4.9.4")
+    repaired = []
+    for name, loc in state["locales"].items():
+        if loc["type"] not in ("town", "city"):
+            continue
+        total = sum(s.get("count", 1) for s in loc.get("siege", []))
+        if 3 <= total <= 4:
+            # Reduce by 1
+            for s in loc["siege"]:
+                if s.get("count", 1) >= 1:
+                    s["count"] -= 1
+                    if s["count"] <= 0:
+                        loc["siege"].remove(s)
+                    break
+            repaired.append(name)
+    state["meta"]["end_substep_done"] = state["meta"].get("end_substep_done", []) + ["repair"]
+    # Repair is not per-side; reset active to Guelph for the next substep.
+    state["meta"]["active_player"] = "guelph"
+    return {"state_changes": {"repaired": repaired}, "rule_citation": "4.9.4 (Errata)"}
+
+
+def _h_end_waste(state, side, args, rng) -> dict[str, Any]:
+    """4.9.5 WASTE: each side selects and discards one Asset OR one
+    'This Lord' Capability from each of its Lords who has MORE THAN ONE
+    of any type of Asset or more than one such card.
+
+    args:
+      discards: dict {lord_id: {"asset": "Coin"} OR {"capability": "F12"}}
+    """
+    from .flow import current_campaign_step, advance_campaign_side_or_step
+    if current_campaign_step(state) != "end_campaign":
+        raise IllegalAction("WRONG_STEP", "Waste in end_campaign.", "4.9.5")
+    discards = args.get("discards", {})
+    own_lords = [(lid, l) for lid, l in state["lords"].items()
+                 if l["side"] == side and l["status"] == "mustered"]
+    waste_log = []
+    for lid, lord in own_lords:
+        # Eligible if has >1 of any Asset type or >1 'This Lord' Capability
+        has_multi_asset = any(c > 1 for c in lord.get("assets", {}).values())
+        has_multi_cap = len(lord.get("capabilities", [])) > 1
+        if not (has_multi_asset or has_multi_cap):
+            continue
+        choice = discards.get(lid)
+        if choice is None:
+            # Default: discard the first Asset with count > 1
+            for a, c in lord["assets"].items():
+                if c > 1:
+                    lord["assets"][a] -= 1
+                    waste_log.append({"lord_id": lid, "discarded_asset": a})
+                    break
+            else:
+                # Fall back to discarding a Capability
+                if lord.get("capabilities"):
+                    cap_id = lord["capabilities"].pop()
+                    state["decks"][side]["aow_deck"].append(cap_id)
+                    waste_log.append({"lord_id": lid, "discarded_capability": cap_id})
+        else:
+            if "asset" in choice:
+                a = choice["asset"]
+                if lord["assets"].get(a, 0) <= 0:
+                    raise IllegalAction("BAD_DISCARD", f"{lid} has no {a} to discard.", "4.9.5")
+                lord["assets"][a] -= 1
+                waste_log.append({"lord_id": lid, "discarded_asset": a})
+            elif "capability" in choice:
+                cap_id = choice["capability"]
+                if cap_id not in lord.get("capabilities", []):
+                    raise IllegalAction("BAD_DISCARD", f"{lid} has no '{cap_id}' Capability.", "4.9.5")
+                lord["capabilities"].remove(cap_id)
+                state["decks"][side]["aow_deck"].append(cap_id)
+                waste_log.append({"lord_id": lid, "discarded_capability": cap_id})
+    if side == "ghibelline":
+        state["meta"]["end_substep_done"] = state["meta"].get("end_substep_done", []) + ["waste"]
+    advance_campaign_side_or_step(state)
+    return {"state_changes": {"waste": waste_log}, "rule_citation": "4.9.5"}
+
+
+def _h_end_reset(state, side, args, rng) -> dict[str, Any]:
+    """4.9.6 RESET: set aside used Treachery cards; unstack Lieutenants;
+    discard 'This Campaign' Events; advance Calendar Levy marker; flip
+    to Levy phase."""
+    from .flow import current_campaign_step
+    if current_campaign_step(state) != "end_campaign":
+        raise IllegalAction("WRONG_STEP", "Reset in end_campaign.", "4.9.6")
+    # Set aside used Treachery cards (Phase 3e: all Treachery cards in any side's plan this Campaign return to set-aside)
+    for s in ("guelph", "ghibelline"):
+        deck = state["decks"][s]
+        treach_in_command = [c for c in deck["command_deck"] if c.startswith("treachery_")]
+        for c in treach_in_command:
+            deck["command_deck"].remove(c)
+            deck["treachery_set_aside"].append(c)
+    # Unstack Lieutenants
+    for lord in state["lords"].values():
+        lord.get("flags", {}).pop("has_lower_lord", None)
+        lord.get("flags", {}).pop("lower_lord_of", None)
+    # Discard 'This Campaign' Events
+    state.pop("active_events", None)
+    # Advance Calendar
+    cal = state["calendar"]
+    cur_box = cal["levy_box"]
+    if str(cur_box) in cal["boxes"] and "levy" in cal["boxes"][str(cur_box)]["markers"]:
+        cal["boxes"][str(cur_box)]["markers"].remove("levy")
+    new_box = cur_box + 1
+    if new_box <= 16 and (cal.get("end_box") is None or new_box < cal["end_box"]):
+        cal["levy_box"] = new_box
+        cal["boxes"].setdefault(str(new_box),
+            {"cylinders": [], "services": [], "victory": [], "markers": []})
+        cal["boxes"][str(new_box)]["markers"].append("levy")
+        state["meta"]["turn"] = new_box
+        state["meta"]["phase"] = "levy"
+        state["meta"]["levy_step"] = "3.1"
+        state["meta"]["campaign_step"] = None
+        state["meta"]["active_player"] = "guelph"
+        state["meta"]["end_substep_done"] = []
+        # Plan stacks reset for next Campaign
+        state["plan_stacks"] = {"guelph": [], "ghibelline": []}
+    else:
+        state["meta"]["phase"] = "victory"
+        state["meta"]["game_over"] = True
+        g, h = state["vp"].get("guelph", 0), state["vp"].get("ghibelline", 0)
+        state["meta"]["winner"] = "guelph" if g > h else ("ghibelline" if h > g else None)
+    return {"state_changes": {"reset_done": True}, "rule_citation": "4.9.6"}
+
+
+_HANDLERS.update({
+    "end_grow":          _h_end_grow,
+    "end_grow_skip":     _h_end_grow_skip,
+    "end_ransom":        _h_end_ransom,
+    "end_game_check":    _h_end_game_check,
+    "end_repair":        _h_end_repair,
+    "end_waste":         _h_end_waste,
+    "end_reset":         _h_end_reset,
+})

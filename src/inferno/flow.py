@@ -104,11 +104,19 @@ def advance_campaign_step(state: dict[str, Any]) -> None:
 
 
 def advance_campaign_side_or_step(state: dict[str, Any]) -> None:
-    """Within Campaign capability_discard / plan steps: pass to other side
-    if first, else advance to next Campaign step."""
+    """Within Campaign capability_discard / plan / end_campaign substeps:
+    pass to other side if first, else advance to next Campaign step
+    (except in end_campaign — substeps drive their own progression via
+    state.meta.end_substep_done).
+    """
     side = current_side(state)
+    step = current_campaign_step(state)
     if side == SIDE_ORDER[0]:
         state["meta"]["active_player"] = SIDE_ORDER[1]
+    elif step == "end_campaign":
+        # End-of-Campaign substeps stay within end_campaign; active resets to
+        # Guelph for the next substep.
+        state["meta"]["active_player"] = SIDE_ORDER[0]
     else:
         advance_campaign_step(state)
 

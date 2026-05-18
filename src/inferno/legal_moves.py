@@ -227,11 +227,7 @@ def _enum_campaign(state) -> list[dict[str, Any]]:
     if step == "command_phase":
         return _enum_command_phase(state, side)
     if step == "end_campaign":
-        return [{
-            "action": "<phase_3c_pending>",
-            "description": "End-Campaign 4.9 steps (Grow/Ransom/Repair/Waste/Reset) implemented in Phase 3c.",
-            "rule_citation": "4.9",
-        }]
+        return _enum_end_campaign(state, side)
     return [{
         "action": "<unknown_campaign_step>",
         "description": f"Unknown campaign step: {step}",
@@ -673,3 +669,77 @@ def _enum_approach_response(state, pending) -> list[dict[str, Any]]:
     except (KeyError, AttributeError, TypeError):
         pass
     return out
+
+
+
+def _enum_end_campaign(state, side) -> list[dict[str, Any]]:
+    """Per 4.9, end-of-Campaign substeps run in order:
+       Grow -> Ransom -> Game-end check -> Repair -> Waste -> Reset.
+
+    The state.meta.end_substep_done list tracks per-side progress. Phase 3e
+    presents the next eligible action.
+    """
+    done = state["meta"].get("end_substep_done", [])
+    turn = state["meta"]["turn"]
+    # 4.9.1 Grow — only on Grow turns
+    if "grow" not in done:
+        if turn in sd.GROW_BOXES:
+            return [{
+                "action": "end_grow", "side": side,
+                "description": f"4.9.1 Grow at Box {turn}: reduce enemy Ravage to ceil(N/2).",
+                "rule_citation": "4.9.1",
+            }, {
+                "action": "end_grow_skip", "side": side,
+                "description": "Skip Grow (no enemy Ravages or default).",
+                "rule_citation": "4.9.1",
+            }]
+        else:
+            return [{
+                "action": "end_grow_skip", "side": side,
+                "description": "Skip Grow (not a Grow turn).",
+                "rule_citation": "4.9.1",
+            }]
+    # 4.9.2 Ransom
+    if "ransom" not in done:
+        captured = state.get("captured_knights", {}).get(side, {})
+        total = sum(captured.values())
+        if total > 0:
+            cost = (total + 5) // 6
+            return [
+                {"action": "end_ransom", "side": side, "args": {"pay": True},
+                 "description": f"Ransom {total} captured units for {cost} Coin; recover ceil(N/2).",
+                 "rule_citation": "4.9.2"},
+                {"action": "end_ransom", "side": side, "args": {"pay": False},
+                 "description": f"Languish: skip Ransom; enemy adds {cost} Treachery/Revolt.",
+                 "rule_citation": "4.9.2"},
+            ]
+        else:
+            return [{"action": "end_ransom", "side": side, "args": {"pay": True},
+                     "description": "No captures; auto-advance.", "rule_citation": "4.9.2"}]
+    # 4.9.3 Game-end check (run once for the campaign, not per-side)
+    if "game_check" not in done:
+        return [{
+            "action": "end_game_check", "side": side,
+            "description": "Check if last Turn — game end if so.",
+            "rule_citation": "4.9.3",
+        }]
+    # 4.9.4 Repair (auto-applied via action call)
+    if "repair" not in done:
+        return [{
+            "action": "end_repair", "side": side,
+            "description": "Repair: remove 1 Siege marker from any Town/City with 3-4 markers.",
+            "rule_citation": "4.9.4",
+        }]
+    # 4.9.5 Waste — per-side; presents the action
+    if "waste" not in done:
+        return [{
+            "action": "end_waste", "side": side,
+            "description": "Waste: each Lord with multi-Assets discards one.",
+            "rule_citation": "4.9.5",
+        }]
+    # 4.9.6 Reset — finalizes the Campaign
+    return [{
+        "action": "end_reset", "side": side,
+        "description": "Reset: set aside Treachery, unstack Lieutenants, advance Calendar.",
+        "rule_citation": "4.9.6",
+    }]
