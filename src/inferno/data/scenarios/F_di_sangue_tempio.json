@@ -1,20 +1,136 @@
 {
-  "$schema": "../state_schema.json",
   "scenario_id": "F",
   "name": "Di Sangue t'Empio",
-  "subtitle": "1259 to 1261",
-  "length_note": "Full-length scenario",
+  "subtitle": "Your Fill of Blood",
+  "length_note": "Full-length; Feb-Mar 1259 (box 1) through end of Aug-Sep 1261 (up to 16 Turns), variable Exhaustion end",
   "calendar": {
     "first_turn_box": 1,
-    "last_turn_box": 16
+    "last_turn_box": 16,
+    "end_box": null,
+    "levy_box": 1,
+    "victory_boxes": {
+      "4": [
+        "gold"
+      ],
+      "6": [
+        "purple"
+      ]
+    },
+    "cylinders_on_calendar": {
+      "1": [
+        "provenzano"
+      ],
+      "3": [
+        "colle"
+      ],
+      "4": [
+        "santa_fiora"
+      ],
+      "5": [
+        "giordano"
+      ],
+      "7": [
+        "guido_guerra",
+        "astimberg"
+      ],
+      "8": [
+        "orvieto"
+      ],
+      "9": [
+        "lucca",
+        "pisa"
+      ]
+    },
+    "services_on_calendar": {
+      "3": [
+        "firenze",
+        "arezzo",
+        "siena"
+      ]
+    }
   },
-  "phase_0_note": "Stub only. Phase 1 fills setup, calendar markers, lord placements, and capabilities per RoP 6.0.",
-  "setup": {
-    "map": {},
-    "calendar": {},
-    "lord_mats": {},
-    "decks": {},
-    "remove_from_play": [],
-    "special_rules": []
-  }
+  "map": {
+    "lord_locations": {
+      "firenze": "Firenze",
+      "arezzo": "Arezzo",
+      "siena": "Siena"
+    },
+    "allegiance_markers": {
+      "Volterra": [
+        {
+          "side": "guelph",
+          "value": 1
+        },
+        {
+          "side": "guelph",
+          "value": 1
+        }
+      ],
+      "Montalcino": [
+        {
+          "side": "guelph",
+          "value": 1
+        },
+        {
+          "side": "guelph",
+          "value": 1
+        }
+      ],
+      "Montepulciano": [
+        {
+          "side": "guelph",
+          "value": 1
+        },
+        {
+          "side": "guelph",
+          "value": 1
+        }
+      ],
+      "Poggio Bonizio": [
+        {
+          "side": "ghibelline",
+          "value": 1
+        },
+        {
+          "side": "ghibelline",
+          "value": 1
+        }
+      ],
+      "Cortona": [
+        {
+          "side": "ghibelline",
+          "value": 1
+        },
+        {
+          "side": "ghibelline",
+          "value": 1
+        }
+      ]
+    },
+    "ravaged": {},
+    "ruins": {},
+    "siege": {},
+    "bypass": {},
+    "capabilities_in_play": [],
+    "held_events": {
+      "guelph": [
+        "F3"
+      ]
+    }
+  },
+  "mustered": {
+    "guelph": [
+      "firenze",
+      "arezzo"
+    ],
+    "ghibelline": [
+      "siena"
+    ]
+  },
+  "removed_from_play": [],
+  "special_rules": [
+    "night_march",
+    "exhaustion"
+  ],
+  "$schema": "../state_schema.json"
 }

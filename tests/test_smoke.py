@@ -36,13 +36,14 @@ def test_all_six_scenarios_listed():
 
 
 @pytest.mark.parametrize("sid", SCENARIO_IDS)
-def test_each_scenario_stub_loads(sid: str):
-    """Stub data must be loadable and self-identifying."""
+def test_each_scenario_loads(sid: str):
+    """Scenario JSON must be loadable and self-identifying."""
     data = load_scenario_data(sid)
     assert data["scenario_id"] == sid
     assert data["name"] == SCENARIO_NAMES[sid]
-    assert "setup" in data
     assert "calendar" in data
+    assert "map" in data
+    assert "mustered" in data
 
 
 def test_unknown_scenario_raises():
@@ -122,11 +123,14 @@ def test_cli_scenarios_lists_all_six():
         assert SCENARIO_NAMES[sid] in r.stdout
 
 
-def test_cli_new_phase_0_noop(tmp_path: Path):
+def test_cli_new_writes_state_file(tmp_path: Path):
     out = tmp_path / "x.state.json"
     r = _run_cli(["new", "A", "--seed", "42", "--out", str(out)])
     assert r.returncode == 0
-    assert "Phase 0" in r.stdout
+    assert out.exists()
+    import json
+    state = json.loads(out.read_text())
+    assert state["meta"]["scenario"] == "A"
 
 
 def test_cli_state_summary_on_synthetic_stub(tmp_path: Path):
@@ -134,7 +138,7 @@ def test_cli_state_summary_on_synthetic_stub(tmp_path: Path):
     the CLI exercisable end-to-end before the loader exists."""
     r = _run_cli(["state", str(tmp_path / "missing.state.json"), "--mode", "summary"])
     assert r.returncode == 0
-    assert "scenario" in r.stdout
+    assert "Scenario" in r.stdout or "scenario" in r.stdout.lower()
 
 
 def test_cli_legal_moves_returns_stub(tmp_path: Path):
@@ -172,4 +176,4 @@ def test_cli_load_validates(tmp_path: Path):
     src.write_text(json.dumps({"meta": {"scenario": "A"}}))
     r = _run_cli(["load", str(src)])
     assert r.returncode == 0
-    assert "scenario" in r.stdout
+    assert "Scenario" in r.stdout or "scenario" in r.stdout.lower()

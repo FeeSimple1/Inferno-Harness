@@ -1,20 +1,116 @@
 {
-  "$schema": "../state_schema.json",
   "scenario_id": "A",
   "name": "Dolenti Note",
   "subtitle": "Notes of Pain",
-  "length_note": "Introductory, two Turns; Feb-Mar 1259 Levy through Apr-May 1259",
+  "length_note": "Introductory, two Turns; Feb-Mar 1259 (box 1) Levy through Apr-May 1259 (box 2)",
   "calendar": {
     "first_turn_box": 1,
-    "last_turn_box": 2
+    "last_turn_box": 2,
+    "end_box": 3,
+    "levy_box": 1,
+    "victory_boxes": {
+      "4": [
+        "purple",
+        "gold"
+      ]
+    },
+    "cylinders_on_calendar": {
+      "1": [
+        "provenzano"
+      ]
+    },
+    "services_on_calendar": {
+      "3": [
+        "firenze",
+        "arezzo",
+        "siena"
+      ]
+    }
   },
-  "phase_0_note": "Stub only. Phase 1 fills setup, calendar markers, lord placements, and capabilities per RoP 6.0.",
-  "setup": {
-    "map": {},
-    "calendar": {},
-    "lord_mats": {},
-    "decks": {},
-    "remove_from_play": [],
-    "special_rules": []
-  }
+  "map": {
+    "lord_locations": {
+      "firenze": "Firenze",
+      "arezzo": "Arezzo",
+      "siena": "Siena"
+    },
+    "allegiance_markers": {
+      "Montalcino": [
+        {
+          "side": "guelph",
+          "value": 1
+        },
+        {
+          "side": "guelph",
+          "value": 1
+        }
+      ],
+      "Montepulciano": [
+        {
+          "side": "guelph",
+          "value": 1
+        },
+        {
+          "side": "guelph",
+          "value": 1
+        }
+      ],
+      "Poggio Bonizio": [
+        {
+          "side": "ghibelline",
+          "value": 1
+        },
+        {
+          "side": "ghibelline",
+          "value": 1
+        }
+      ],
+      "Cortona": [
+        {
+          "side": "ghibelline",
+          "value": 1
+        },
+        {
+          "side": "ghibelline",
+          "value": 1
+        }
+      ]
+    },
+    "ravaged": {},
+    "ruins": {},
+    "siege": {},
+    "bypass": {},
+    "capabilities_in_play": [],
+    "held_events": {
+      "guelph": [
+        "F3"
+      ]
+    }
+  },
+  "mustered": {
+    "guelph": [
+      "firenze",
+      "arezzo"
+    ],
+    "ghibelline": [
+      "siena"
+    ]
+  },
+  "removed_from_play": [
+    "pisa",
+    "astimberg",
+    "santa_fiora",
+    "giordano",
+    "siena_comune",
+    "orvieto",
+    "guido_guerra",
+    "colle",
+    "lucca",
+    "firenze_comune"
+  ],
+  "special_rules": [
+    "night_march",
+    "sudden_campaign",
+    "preamble"
+  ],
+  "$schema": "../state_schema.json"
 }

@@ -1,20 +1,156 @@
 {
-  "$schema": "../state_schema.json",
   "scenario_id": "C",
   "name": "Santafior Oscura",
-  "subtitle": "Early 1260",
-  "length_note": "Short, Limited Call to Arms",
+  "subtitle": "Dark Santa Fiora",
+  "length_note": "Short, three Turns; Winter 1259-1260 Levy (box 6) through Apr-May 1260 (box 8)",
   "calendar": {
-    "first_turn_box": 1,
-    "last_turn_box": 3
+    "first_turn_box": 6,
+    "last_turn_box": 8,
+    "end_box": 9,
+    "levy_box": 6,
+    "victory_boxes": {
+      "9": [
+        "gold"
+      ],
+      "10": [
+        "purple"
+      ]
+    },
+    "cylinders_on_calendar": {
+      "6": [
+        "firenze",
+        "siena",
+        "provenzano"
+      ],
+      "8": [
+        "guido_guerra",
+        "santa_fiora"
+      ],
+      "9": [
+        "lucca",
+        "pisa"
+      ]
+    },
+    "services_on_calendar": {
+      "8": [
+        "colle",
+        "giordano"
+      ]
+    }
   },
-  "phase_0_note": "Stub only. Phase 1 fills setup, calendar markers, lord placements, and capabilities per RoP 6.0.",
-  "setup": {
-    "map": {},
-    "calendar": {},
-    "lord_mats": {},
-    "decks": {},
-    "remove_from_play": [],
-    "special_rules": []
-  }
+  "map": {
+    "lord_locations": {
+      "colle": "Colle",
+      "giordano": "Siena"
+    },
+    "allegiance_markers": {
+      "Volterra": [
+        {
+          "side": "guelph",
+          "value": 1
+        },
+        {
+          "side": "guelph",
+          "value": 1
+        }
+      ],
+      "Montalcino": [
+        {
+          "side": "guelph",
+          "value": 1
+        },
+        {
+          "side": "guelph",
+          "value": 1
+        }
+      ],
+      "Montepulciano": [
+        {
+          "side": "guelph",
+          "value": 1
+        },
+        {
+          "side": "guelph",
+          "value": 1
+        }
+      ],
+      "Grosseto": [
+        {
+          "side": "guelph",
+          "value": 1
+        },
+        {
+          "side": "guelph",
+          "value": 1
+        }
+      ],
+      "Montemassi": [
+        {
+          "side": "guelph",
+          "value": 1
+        }
+      ],
+      "Montepescali": [
+        {
+          "side": "guelph",
+          "value": 1
+        }
+      ],
+      "Poggio Bonizio": [
+        {
+          "side": "ghibelline",
+          "value": 1
+        },
+        {
+          "side": "ghibelline",
+          "value": 1
+        }
+      ]
+    },
+    "ravaged": {
+      "Colle": "gold",
+      "Montespertoli": "gold",
+      "San Casciano": "gold",
+      "Barberino": "gold",
+      "Castelnuovo Berardenga": "gold",
+      "Monte San Savino": "gold"
+    },
+    "ruins": {
+      "Castelnuovo Berardenga": "gold",
+      "Monte San Savino": "gold"
+    },
+    "siege": {},
+    "bypass": {},
+    "capabilities_in_play": [
+      {
+        "id": "S22",
+        "name": "Manfredi",
+        "side": "ghibelline",
+        "scope": "side_wide"
+      }
+    ],
+    "held_events": {}
+  },
+  "mustered": {
+    "guelph": [
+      "colle"
+    ],
+    "ghibelline": [
+      "giordano"
+    ]
+  },
+  "removed_from_play": [
+    "arezzo",
+    "orvieto",
+    "astimberg"
+  ],
+  "special_rules": [
+    "alliance_treaty",
+    "maremma_war"
+  ],
+  "scenario_notes": [
+    "Alliance Treaty: S22 Manfredi Capability adds 3 VP to the Ghibelline score.",
+    "Maremma War: Ghibellines (only) conduct CtA in first Levy; skip all other CtA. Ghibelline Lords may not cross the dashed line until Guelphs place a Siege or Ravage marker. Grosseto with 2 Siege markers and no Lord inside Surrenders at once."
+  ],
+  "$schema": "../state_schema.json"
 }

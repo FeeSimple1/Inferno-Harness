@@ -1,20 +1,145 @@
 {
-  "$schema": "../state_schema.json",
   "scenario_id": "D",
   "name": "Arbia Colorata in Rosso",
-  "subtitle": "Late 1260",
-  "length_note": "Short, Both sides Call to Arms",
+  "subtitle": "Arbia Dyed Red",
+  "length_note": "Three Turns; Jun-Jul 1260 (box 9) through Oct-Nov 1260 (box 11)",
   "calendar": {
-    "first_turn_box": 1,
-    "last_turn_box": 3
+    "first_turn_box": 9,
+    "last_turn_box": 11,
+    "end_box": 12,
+    "levy_box": 9,
+    "victory_boxes": {
+      "5": [
+        "gold"
+      ],
+      "7": [
+        "purple"
+      ]
+    },
+    "cylinders_on_calendar": {
+      "9": [
+        "firenze",
+        "lucca",
+        "siena",
+        "pisa"
+      ]
+    },
+    "services_on_calendar": {
+      "10": [
+        "santa_fiora"
+      ],
+      "11": [
+        "arezzo",
+        "colle",
+        "orvieto",
+        "giordano",
+        "provenzano",
+        "astimberg"
+      ],
+      "12": [
+        "guido_guerra"
+      ]
+    }
   },
-  "phase_0_note": "Stub only. Phase 1 fills setup, calendar markers, lord placements, and capabilities per RoP 6.0.",
-  "setup": {
-    "map": {},
-    "calendar": {},
-    "lord_mats": {},
-    "decks": {},
-    "remove_from_play": [],
-    "special_rules": []
-  }
+  "map": {
+    "lord_locations": {
+      "guido_guerra": "Lombardia-Bologna West",
+      "arezzo": "Arezzo",
+      "orvieto": "Arezzo",
+      "colle": "Colle",
+      "astimberg": "Siena",
+      "provenzano": "Montepulciano",
+      "santa_fiora": "Montepulciano",
+      "giordano": "Massa Marittima"
+    },
+    "allegiance_markers": {
+      "Volterra": [
+        {
+          "side": "guelph",
+          "value": 1
+        },
+        {
+          "side": "guelph",
+          "value": 1
+        }
+      ],
+      "Montalcino": [
+        {
+          "side": "guelph",
+          "value": 1
+        },
+        {
+          "side": "guelph",
+          "value": 1
+        }
+      ],
+      "Montepulciano": [
+        {
+          "side": "guelph",
+          "value": 1
+        },
+        {
+          "side": "guelph",
+          "value": 1
+        }
+      ],
+      "Casole": [
+        {
+          "side": "guelph",
+          "value": 1
+        }
+      ],
+      "Poggio Bonizio": [
+        {
+          "side": "ghibelline",
+          "value": 1
+        },
+        {
+          "side": "ghibelline",
+          "value": 1
+        }
+      ]
+    },
+    "ravaged": {
+      "Montespertoli": "gold",
+      "Barberino": "gold",
+      "San Casciano": "gold",
+      "Monte San Savino": "gold"
+    },
+    "ruins": {
+      "Castelnuovo Berardenga": "gold",
+      "Monte San Savino": "gold"
+    },
+    "siege": {
+      "Montepulciano": [
+        {
+          "side": "ghibelline",
+          "color": "gold",
+          "count": 2
+        }
+      ]
+    },
+    "bypass": {},
+    "capabilities_in_play": [],
+    "held_events": {}
+  },
+  "mustered": {
+    "guelph": [
+      "arezzo",
+      "colle",
+      "guido_guerra",
+      "orvieto"
+    ],
+    "ghibelline": [
+      "giordano",
+      "provenzano",
+      "astimberg",
+      "santa_fiora"
+    ]
+  },
+  "removed_from_play": [],
+  "special_rules": [
+    "escalation"
+  ],
+  "$schema": "../state_schema.json"
 }

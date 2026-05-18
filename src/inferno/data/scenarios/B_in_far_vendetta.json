@@ -1,20 +1,130 @@
 {
-  "$schema": "../state_schema.json",
   "scenario_id": "B",
   "name": "In Far Vendetta",
-  "subtitle": "1259 to 1260",
-  "length_note": "Medium scenario",
+  "subtitle": "[Honor] in Vengeance",
+  "length_note": "Medium, up to five Turns; Aug-Sep 1259 (box 4) Levy through end of Apr-May 1260 (box 8)",
   "calendar": {
-    "first_turn_box": 1,
-    "last_turn_box": 8
+    "first_turn_box": 4,
+    "last_turn_box": 8,
+    "end_box": 9,
+    "levy_box": 4,
+    "victory_boxes": {
+      "5": [
+        "gold"
+      ],
+      "6": [
+        "purple"
+      ]
+    },
+    "cylinders_on_calendar": {
+      "4": [
+        "colle",
+        "santa_fiora"
+      ],
+      "5": [
+        "giordano"
+      ],
+      "7": [
+        "guido_guerra",
+        "astimberg"
+      ],
+      "8": [
+        "orvieto"
+      ],
+      "9": [
+        "lucca",
+        "pisa"
+      ]
+    },
+    "services_on_calendar": {
+      "6": [
+        "firenze",
+        "arezzo",
+        "siena",
+        "provenzano"
+      ]
+    }
   },
-  "phase_0_note": "Stub only. Phase 1 fills setup, calendar markers, lord placements, and capabilities per RoP 6.0.",
-  "setup": {
-    "map": {},
-    "calendar": {},
-    "lord_mats": {},
-    "decks": {},
-    "remove_from_play": [],
-    "special_rules": []
-  }
+  "map": {
+    "lord_locations": {
+      "firenze": "Firenze",
+      "arezzo": "Arezzo",
+      "siena": "Siena",
+      "provenzano": "Siena"
+    },
+    "allegiance_markers": {
+      "Volterra": [
+        {
+          "side": "guelph",
+          "value": 1
+        },
+        {
+          "side": "guelph",
+          "value": 1
+        }
+      ],
+      "Montalcino": [
+        {
+          "side": "guelph",
+          "value": 1
+        },
+        {
+          "side": "guelph",
+          "value": 1
+        }
+      ],
+      "Montepulciano": [
+        {
+          "side": "guelph",
+          "value": 1
+        },
+        {
+          "side": "guelph",
+          "value": 1
+        }
+      ],
+      "Poggio Bonizio": [
+        {
+          "side": "ghibelline",
+          "value": 1
+        },
+        {
+          "side": "ghibelline",
+          "value": 1
+        }
+      ]
+    },
+    "ravaged": {
+      "Monte San Savino": "gold",
+      "Castelnuovo Berardenga": "gold",
+      "Cortona": "gold"
+    },
+    "ruins": {
+      "Monte San Savino": "gold",
+      "Castelnuovo Berardenga": "gold",
+      "Cortona": "gold"
+    },
+    "siege": {},
+    "bypass": {},
+    "capabilities_in_play": [],
+    "held_events": {}
+  },
+  "mustered": {
+    "guelph": [
+      "firenze",
+      "arezzo"
+    ],
+    "ghibelline": [
+      "siena",
+      "provenzano"
+    ]
+  },
+  "removed_from_play": [],
+  "special_rules": [
+    "reprisal_war"
+  ],
+  "scenario_notes": [
+    "Reprisal War: Before first AoW draw, Ghibellines assign S18 La Cavallata, S19 Gualdana, S20 Masnadieri to their Lords; then draw two more as usual. Skip the Grow step (4.9.2) of Autumn 1259 (Turn 5) only."
+  ],
+  "$schema": "../state_schema.json"
 }

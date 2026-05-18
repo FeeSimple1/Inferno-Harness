@@ -1,20 +1,134 @@
 {
-  "$schema": "../state_schema.json",
   "scenario_id": "E",
   "name": "Lasciate Ogne Speranza",
-  "subtitle": "1261",
-  "length_note": "Short, No Call to Arms",
+  "subtitle": "Abandon All Hope",
+  "length_note": "Three Turns; Dec 1260 (box 12) through May 1261 (box 14)",
   "calendar": {
-    "first_turn_box": 1,
-    "last_turn_box": 4
+    "first_turn_box": 12,
+    "last_turn_box": 14,
+    "end_box": 15,
+    "levy_box": 12,
+    "victory_boxes": {
+      "6": [
+        "purple"
+      ],
+      "7": [
+        "yellow"
+      ]
+    },
+    "cylinders_on_calendar": {
+      "12": [
+        "siena",
+        "pisa"
+      ],
+      "13": [
+        "firenze",
+        "colle",
+        "orvieto"
+      ]
+    },
+    "services_on_calendar": {
+      "14": [
+        "arezzo",
+        "lucca",
+        "giordano",
+        "astimberg"
+      ]
+    }
   },
-  "phase_0_note": "Stub only. Phase 1 fills setup, calendar markers, lord placements, and capabilities per RoP 6.0.",
-  "setup": {
-    "map": {},
-    "calendar": {},
-    "lord_mats": {},
-    "decks": {},
-    "remove_from_play": [],
-    "special_rules": []
-  }
+  "map": {
+    "lord_locations": {
+      "lucca": "Lucca",
+      "arezzo": "Arezzo",
+      "giordano": "Firenze",
+      "astimberg": "Siena"
+    },
+    "allegiance_markers": {
+      "Firenze": [
+        {
+          "side": "ghibelline",
+          "value": 1
+        },
+        {
+          "side": "ghibelline",
+          "value": 1
+        },
+        {
+          "side": "ghibelline",
+          "value": 1
+        }
+      ],
+      "San Casciano": [
+        {
+          "side": "ghibelline",
+          "value": 1
+        }
+      ],
+      "Barberino": [
+        {
+          "side": "ghibelline",
+          "value": 1
+        }
+      ]
+    },
+    "ravaged": {
+      "San Casciano": "gold",
+      "Barberino": "gold",
+      "Castelnuovo Berardenga": "gold",
+      "Castiglione": "gold",
+      "Monteriggioni": "purple",
+      "Casole": "purple",
+      "Montemassi": "purple",
+      "Montepulciano": "purple"
+    },
+    "ruins": {
+      "Monteriggioni": "purple",
+      "Casole": "purple",
+      "Montemassi": "purple",
+      "Montepulciano": "purple"
+    },
+    "siege": {},
+    "bypass": {},
+    "capabilities_in_play": [
+      {
+        "id": "S23",
+        "name": "Taglia",
+        "side": "ghibelline",
+        "scope": "side_wide"
+      }
+    ],
+    "held_events": {}
+  },
+  "mustered": {
+    "guelph": [
+      "lucca",
+      "arezzo"
+    ],
+    "ghibelline": [
+      "giordano",
+      "astimberg"
+    ]
+  },
+  "removed_from_play": [
+    "guido_guerra",
+    "provenzano",
+    "santa_fiora",
+    "siena_comune",
+    "firenze_comune"
+  ],
+  "special_rules": [
+    "league",
+    "spoils_of_victory",
+    "resistance",
+    "exhaustion"
+  ],
+  "starting_assets_override": {
+    "giordano": {
+      "Coin": 2
+    }
+  },
+  "scenario_notes": [
+    "Resistance: Before first Levy, Lucca and Arezzo each conduct an extra Muster (3.4). Double Guelph VP except for Ravaged (5.1)."
+  ],
+  "$schema": "../state_schema.json"
 }
