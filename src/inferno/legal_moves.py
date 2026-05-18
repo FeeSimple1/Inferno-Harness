@@ -153,6 +153,11 @@ def _enum_muster(state, side) -> list[dict[str, Any]]:
     levy_box = state["calendar"]["levy_box"]
 
     for lid, lord in own_mustered.items():
+        # Lordship gate (3.4): skip Lords who have used all their Lordship.
+        rating = lord.get("ratings", {}).get("L", 0)
+        used = lord.get("flags", {}).get("lordship_used", 0)
+        if used >= rating:
+            continue
         for tlid, tlord in own_on_calendar.items():
             if (tlord.get("calendar_box") or 0) <= levy_box:
                 for seat in tlord.get("seats", []):

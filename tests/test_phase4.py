@@ -163,3 +163,53 @@ class TestCapabilityLookups:
         hits = ce.active_capabilities_for(s, "lordship_bonus_for")
         assert len(hits) == 1
         assert hits[0]["card_id"] == "F22"
+
+
+# =====================================================================
+# Self-play sweep regressions — caught real bugs (Lordship + Exhaustion)
+# =====================================================================
+class TestLordshipExhausted:
+    """Per CROSS_PROJECT_LESSONS §4 self-play sweep: greedy agent
+    caught the harness offering muster moves indefinitely. Per 3.4:
+    each Lord can only spend Lordship actions = his L rating."""
+
+    def test_lordship_exhausted_blocks_further_muster(self):
+        from inferno.scenarios import load_scenario
+        s = load_scenario("A", seed=1)
+        # Drive through to 3.4
+        for name, side in [
+            ("levy_aow_draw","guelph"),("levy_aow_draw","ghibelline"),
+            ("levy_pay_done","guelph"),("levy_pay_done","ghibelline"),
+            ("levy_disband_done","guelph"),("levy_disband_done","ghibelline"),
+        ]:
+            dispatch(s, {"action": name, "side": side})
+        # Firenze has L=3. After 3 muster actions, his Lordship should be exhausted.
+        for _ in range(3):
+            dispatch(s, {"action": "levy_muster_transport", "side": "guelph",
+                         "args": {"lord_id": "firenze", "kind": "Cart"}})
+        # 4th muster action with Firenze should be rejected
+        with pytest.raises(IllegalAction) as exc:
+            dispatch(s, {"action": "levy_muster_transport", "side": "guelph",
+                         "args": {"lord_id": "firenze", "kind": "Cart"}})
+        assert exc.value.code == "LORDSHIP_EXHAUSTED"
+
+
+class TestScenarioFExhaustion:
+    """Scenario F's Exhaustion rule (only triggers from Turn 9 onward)."""
+
+    def test_exhaustion_not_rolled_before_turn_9(self):
+        from inferno.scenarios import load_scenario
+        s = load_scenario("F", seed=1)
+        # turn = 1
+        assert s["meta"]["turn"] == 1
+        dispatch(s, {"action": "levy_aow_draw", "side": "guelph"})
+        # exhaustion_rolled_this_levy should NOT have been set
+        assert not s["meta"].get("exhaustion_rolled_this_levy")
+
+    def test_exhaustion_rolled_from_turn_9(self):
+        from inferno.scenarios import load_scenario
+        s = load_scenario("F", seed=1)
+        # Force turn to 9
+        s["meta"]["turn"] = 9
+        dispatch(s, {"action": "levy_aow_draw", "side": "guelph"})
+        assert s["meta"].get("exhaustion_rolled_this_levy") is True

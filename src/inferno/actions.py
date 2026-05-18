@@ -106,12 +106,15 @@ def _h_levy_aow_draw(state, side: str, args, rng) -> dict[str, Any]:
     First Levy: deploy each as a Capability (lower half).
     Later Levy: implement each as an Event (upper half).
 
-    Phase 2 records what was drawn and how it was deployed (Capability
-    in play, Held event, etc.). The harness does NOT execute per-card
-    effects — that's Phase 4. The LLM consumer reads the card text from
-    the AoW Reference and applies effects manually.
+    Per BRIEF Phase 4: Immediate Events are now executed via
+    apply_event_effect(); Held / This-Levy / This-Campaign Events are
+    routed appropriately. Cards with Battle/Storm in-round modifiers
+    return manual-application flags for the LLM consumer.
     """
     _require_step(state, "3.1")
+    # Exhaustion rule (scenario F special): roll at start of each Levy
+    # from Turn 9 onward.
+    _maybe_exhaustion_roll(state, rng)
     deck = state["decks"][side]["aow_deck"]
     if len(deck) < 2:
         raise IllegalAction("EMPTY_DECK", f"AoW deck for {side} has < 2 cards.", "3.1")
@@ -480,6 +483,7 @@ def _h_levy_muster_lord(state, side, args, rng) -> dict[str, Any]:
     muster_lord = _require_lord(state, mlid, side)
     if muster_lord["status"] != "mustered":
         raise IllegalAction("MUSTER_LORD_NOT_ON_MAP", f"{mlid} is not Mustered.", "3.4")
+    _consume_lordship(state, mlid)
     target_lord = _require_lord(state, tlid, side)
     if target_lord["status"] != "on_calendar":
         raise IllegalAction("TARGET_NOT_READY", f"{tlid} is not waiting on Calendar.", "3.4.1")
@@ -572,6 +576,7 @@ def _h_levy_muster_vassal(state, side, args, rng) -> dict[str, Any]:
     lord = _require_lord(state, lid, side)
     if lord["status"] != "mustered":
         raise IllegalAction("LORD_NOT_ON_MAP", f"{lid} is not Mustered.", "3.4")
+    _consume_lordship(state, lid)
     for v in lord["vassals"]:
         if v["name"] == vname:
             target = v
@@ -614,6 +619,7 @@ def _h_levy_muster_transport(state, side, args, rng) -> dict[str, Any]:
     lord = _require_lord(state, lid, side)
     if lord["status"] != "mustered":
         raise IllegalAction("LORD_NOT_ON_MAP", f"{lid} is not Mustered.", "3.4")
+    _consume_lordship(state, lid)
     if kind == "Ship" and lord["name"] != "Pisa Podestà":
         raise IllegalAction(
             "SHIPS_PISA_ONLY",
@@ -646,6 +652,7 @@ def _h_levy_muster_capability(state, side, args, rng) -> dict[str, Any]:
     lord = _require_lord(state, lid, side)
     if lord["status"] != "mustered":
         raise IllegalAction("LORD_NOT_ON_MAP", f"{lid} is not Mustered.", "3.4")
+    _consume_lordship(state, lid)
     deck = state["decks"][side]["aow_deck"]
     if not deck:
         raise IllegalAction("EMPTY_DECK", "No AoW cards left to draw.", "3.4.4")
@@ -2055,6 +2062,24 @@ _HANDLERS.update({
 # =====================================================================
 # Phase 3d: Bypass-state March (4.3.6) + Lieutenants (4.1.3) + 1.6 helper
 # =====================================================================
+
+
+def _consume_lordship(state, mustering_lord_id: str) -> None:
+    """Each 3.4 sub-action consumes 1 Lordship from the Mustering Lord.
+    Raises IllegalAction if Lordship exhausted."""
+    lord = state["lords"].get(mustering_lord_id)
+    if lord is None:
+        return
+    rating = lord.get("ratings", {}).get("L", 0)
+    used = lord.setdefault("flags", {}).get("lordship_used", 0)
+    if used >= rating:
+        raise IllegalAction(
+            "LORDSHIP_EXHAUSTED",
+            f"{mustering_lord_id} has used all {rating} Lordship actions this Muster segment.",
+            "3.4",
+        )
+    lord["flags"]["lordship_used"] = used + 1
+
 def _check_disband_on_zero_forces(state, lord_id: str) -> bool:
     """1.6: a Lord who loses his last unit outside combat Disbands.
     Returns True if Disbanded."""
@@ -2530,6 +2555,7 @@ def _h_end_reset(state, side, args, rng) -> dict[str, Any]:
         state["meta"]["campaign_step"] = None
         state["meta"]["active_player"] = "guelph"
         state["meta"]["end_substep_done"] = []
+        state["meta"]["exhaustion_rolled_this_levy"] = False
         # Plan stacks reset for next Campaign
         state["plan_stacks"] = {"guelph": [], "ghibelline": []}
     else:
@@ -2598,3 +2624,26 @@ def _capability_bonus_lordship(state, lord_id: str) -> int:
             if lord_slug in hook["lordship_bonus_for"]:
                 bonus += hook.get("lordship_value", 0)
     return bonus
+
+
+
+def _maybe_exhaustion_roll(state, rng) -> None:
+    """Scenario F Exhaustion: from Turn 9 onward, roll 1d6 at start of
+    each Levy. On 1-3: place End marker in box 16, or slide existing
+    End marker 1 box LEFT (lower).
+    """
+    if state["meta"].get("exhaustion_rolled_this_levy"):
+        return
+    # Only F has this rule; check scenario.
+    if state["meta"]["scenario"] != "F":
+        return
+    if state["meta"]["turn"] < 9:
+        return
+    r = rng.roll("exhaustion_F")
+    state["meta"]["exhaustion_rolled_this_levy"] = True
+    cal = state["calendar"]
+    if r.value <= 3:
+        if cal.get("end_box") is None:
+            cal["end_box"] = 16
+        else:
+            cal["end_box"] = max(cal["end_box"] - 1, state["meta"]["turn"] + 1)
