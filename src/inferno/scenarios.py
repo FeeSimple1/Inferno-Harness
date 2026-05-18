@@ -75,6 +75,11 @@ def load_scenario(scenario_id: str, seed: int) -> State:
         "pending": [],
         "history": [],
         "vp": {"guelph": 0.0, "ghibelline": 0.0},
+        "plan_stacks": {"guelph": [], "ghibelline": []},
+        "current_card": None,
+        "current_lord_id": None,
+        "actions_remaining": None,
+        "card_action_consumed_by_entire_card": False,
     }
     _wire_lords_into_locales(state)
     return state

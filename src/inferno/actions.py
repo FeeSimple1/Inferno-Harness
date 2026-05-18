@@ -731,3 +731,587 @@ _HANDLERS = {
     "levy_muster_done":        _h_levy_muster_done,
     "levy_cta_skip":           _h_levy_cta_skip,
 }
+
+
+# =====================================================================
+# CAMPAIGN PHASE — Step A: Capability Discard (pre-Plan)
+# =====================================================================
+def _h_campaign_discard_capability(state, side, args, rng) -> dict[str, Any]:
+    """Step A (pre-Plan): each side selects and discards side-wide
+    Capability cards exceeding number of Mustered Lords (Comuni do NOT
+    count as Mustered Lords for this).
+
+    args:
+      card_id:  the side-wide Capability to discard
+    """
+    _require_campaign_step(state, "capability_discard")
+    cid = args.get("card_id")
+    side_caps = [c for c in state["capabilities_in_play"]
+                 if c.get("side") == side and c.get("scope") == "side_wide"]
+    own_mustered_count = sum(
+        1 for l in state["lords"].values()
+        if l["side"] == side and l["status"] == "mustered" and not l.get("comune_of")
+    )
+    excess = len(side_caps) - own_mustered_count
+    if excess <= 0:
+        raise IllegalAction(
+            "NO_EXCESS_CAPS",
+            f"{side} has {len(side_caps)} side-wide Capabilities and "
+            f"{own_mustered_count} Mustered Lords; no excess to discard.",
+            "4.0 STEP A",
+        )
+    for i, c in enumerate(state["capabilities_in_play"]):
+        if c.get("id") == cid and c.get("side") == side and c.get("scope") == "side_wide":
+            state["capabilities_in_play"].pop(i)
+            # Discard returns to AoW deck per 1.9.1 / Reset semantics; in-play -> aow_deck.
+            state["decks"][side]["aow_deck"].append(cid)
+            return {
+                "state_changes": {"discarded": cid},
+                "rule_citation": "4.0 STEP A",
+            }
+    raise IllegalAction(
+        "CAP_NOT_FOUND",
+        f"{side} has no side-wide Capability {cid!r} in play.",
+        "4.0 STEP A",
+    )
+
+
+def _h_campaign_discard_done(state, side, args, rng) -> dict[str, Any]:
+    """End this side's capability-discard segment."""
+    _require_campaign_step(state, "capability_discard")
+    # Validate: no remaining excess
+    side_caps = [c for c in state["capabilities_in_play"]
+                 if c.get("side") == side and c.get("scope") == "side_wide"]
+    own_mustered_count = sum(
+        1 for l in state["lords"].values()
+        if l["side"] == side and l["status"] == "mustered" and not l.get("comune_of")
+    )
+    if len(side_caps) > own_mustered_count:
+        raise IllegalAction(
+            "EXCESS_REMAINS",
+            f"{side} still has {len(side_caps)} side-wide Capabilities > {own_mustered_count} Mustered Lords; must discard more.",
+            "4.0 STEP A",
+        )
+    from .flow import advance_campaign_side_or_step
+    advance_campaign_side_or_step(state)
+    return {"state_changes": {"step": "capability_discard_done"}, "rule_citation": "4.0 STEP A"}
+
+
+# =====================================================================
+# CAMPAIGN PHASE — Step B: Plan (4.1)
+# =====================================================================
+def _h_plan_add_card(state, side, args, rng) -> dict[str, Any]:
+    """4.1.1/4.1.2: append a card to side's Plan stack (face down, order locked).
+
+    args:
+      card_id: command_<lord_id>, treachery_<lord_id>, or 'PASS'.
+    """
+    from .flow import current_campaign_step
+    if current_campaign_step(state) != "plan":
+        raise IllegalAction("WRONG_STEP", f"plan_add_card requires Campaign step plan; got {current_campaign_step(state)!r}.", "4.1")
+    cid = args.get("card_id")
+    stack = state["plan_stacks"][side]
+    # Validate card type and availability.
+    if cid == cd_PASS_CARD_ID():
+        # Pass card — unlimited supply.
+        stack.append(cid)
+        return {"state_changes": {"appended": cid, "stack_size": len(stack)}, "rule_citation": "4.1.1"}
+    if cid.startswith("command_"):
+        if cid not in state["decks"][side]["command_deck"] or stack.count(cid) > 0:
+            raise IllegalAction("CARD_NOT_AVAILABLE", f"{cid!r} not available in {side}'s Command deck or already in plan.", "4.1.1")
+        stack.append(cid)
+        return {"state_changes": {"appended": cid, "stack_size": len(stack)}, "rule_citation": "4.1.1"}
+    if cid.startswith("treachery_"):
+        if cid not in state["decks"][side]["command_deck"] or stack.count(cid) > 0:
+            raise IllegalAction(
+                "TREACHERY_NOT_AVAILABLE",
+                f"{cid!r} not in {side}'s Command deck (Treachery cards enter via Revolt triggers, 1.4.3).",
+                "4.1.1",
+            )
+        stack.append(cid)
+        return {"state_changes": {"appended": cid, "stack_size": len(stack)}, "rule_citation": "4.1.1"}
+    raise IllegalAction("UNKNOWN_CARD_TYPE", f"Card id {cid!r} not recognised.", "4.1.1")
+
+
+def _h_plan_done(state, side, args, rng) -> dict[str, Any]:
+    """Declare this side's Plan complete. Validates size matches the
+    Season's Plan size from PLAN_SIZE_BY_SEASON."""
+    from .flow import current_campaign_step, advance_campaign_side_or_step
+    if current_campaign_step(state) != "plan":
+        raise IllegalAction("WRONG_STEP", f"plan_done requires Campaign step plan; got {current_campaign_step(state)!r}.", "4.1")
+    season = sd.SEASON_BY_BOX.get(state["meta"]["turn"], "winter")
+    target_size = sd.PLAN_SIZE_BY_SEASON[season]
+    actual_size = len(state["plan_stacks"][side])
+    if actual_size != target_size:
+        raise IllegalAction(
+            "PLAN_WRONG_SIZE",
+            f"{side}'s Plan has {actual_size} cards; Season {season!r} requires {target_size} (turn {state['meta']['turn']}).",
+            "4.1.2",
+        )
+    advance_campaign_side_or_step(state)
+    return {
+        "state_changes": {"plan_size": actual_size, "season": season},
+        "rule_citation": "4.1.2",
+    }
+
+
+# =====================================================================
+# CAMPAIGN PHASE — Step C: Command Phase (4.2)
+# =====================================================================
+def _h_command_reveal(state, side, args, rng) -> dict[str, Any]:
+    """Flip the top card of the active side's Plan stack (4.2)."""
+    from .flow import current_campaign_step
+    if current_campaign_step(state) != "command_phase":
+        raise IllegalAction("WRONG_STEP", "command_reveal valid only in command_phase.", "4.2")
+    stack = state["plan_stacks"][side]
+    if not stack:
+        # Both stacks empty: advance to end_campaign.
+        if all(len(state["plan_stacks"][s]) == 0 for s in ("guelph", "ghibelline")):
+            from .flow import advance_campaign_step
+            advance_campaign_step(state)
+            return {"state_changes": {"both_plans_empty": True}, "rule_citation": "4.2"}
+        # If only this side's is empty but other's isn't, pass.
+        _flip_active_side(state)
+        return {"state_changes": {"side_empty_passes": side}, "rule_citation": "4.2"}
+    cid = stack.pop(0)
+    state["current_card"] = cid
+
+    # Decide if Lord acts (Command card with on-map Lord) or card lapses.
+    if cid == "PASS":
+        return _finish_card(state, side, reason="pass_card", citation="4.2.4")
+
+    if cid.startswith("command_"):
+        lord_id = cid.removeprefix("command_")
+        lord = state["lords"].get(lord_id)
+        if lord is None or lord["status"] != "mustered":
+            return _finish_card(state, side, reason="lord_off_map", citation="4.2.4")
+        # Set up action budget = Command rating
+        rating = lord.get("ratings", {}).get("C", 0)
+        state["current_lord_id"] = lord_id
+        state["actions_remaining"] = rating
+        state["card_action_consumed_by_entire_card"] = False
+        return {
+            "state_changes": {
+                "card_revealed": cid, "lord_id": lord_id, "actions_remaining": rating,
+            },
+            "rule_citation": "4.2.1",
+        }
+
+    if cid.startswith("treachery_"):
+        # 4.2.3 Treachery card — Lord takes Revolt/Bribe/Pass; Phase 3a does
+        # not implement Revolt or Bribe (those are 4.7.5 / 4.7.6, Phase 3c).
+        # For Phase 3a the only legal response to a Treachery card is to
+        # let it lapse (treat as Pass).
+        return _finish_card(state, side, reason="treachery_pass_phase_3a", citation="4.2.3")
+
+    raise IllegalAction("UNKNOWN_CARD_ON_TOP", f"Unrecognized card on top: {cid!r}.", "4.2")
+
+
+def _finish_card(state, side, reason: str, citation: str) -> dict[str, Any]:
+    """Conclude the current revealed card. Runs FPD (4.8) then flips active side."""
+    state["current_card"] = None
+    state["current_lord_id"] = None
+    state["actions_remaining"] = None
+    fpd_result = _run_fpd(state)
+    _flip_active_side(state)
+    return {
+        "state_changes": {"card_finished": True, "reason": reason, "fpd": fpd_result},
+        "rule_citation": citation,
+    }
+
+
+def _flip_active_side(state) -> None:
+    cur = state["meta"]["active_player"]
+    state["meta"]["active_player"] = "ghibelline" if cur == "guelph" else "guelph"
+
+
+def _h_cmd_end_card(state, side, args, rng) -> dict[str, Any]:
+    """Active Lord declares end of card's actions. Triggers FPD then flips side."""
+    _require_active_lord(state, side, args.get("lord_id"))
+    return _finish_card(state, side, reason="end_card", citation="4.2.6")
+
+
+# =====================================================================
+# Simple Command actions (4.6, 4.7.1, 4.7.2, 4.7.3, 4.7.4, 4.7.7)
+# =====================================================================
+def _h_cmd_tax(state, side, args, rng) -> dict[str, Any]:
+    """4.7.4 TAX (entire-card): Unbesieged Lord at one of his Seats gains
+    +1 Coin (Podestà: +2). Uses the ENTIRE Command card."""
+    lid = _require_active_lord(state, side, args.get("lord_id"))
+    lord = state["lords"][lid]
+    loc = state["locales"].get(lord.get("location") or "")
+    if not loc:
+        raise IllegalAction("NO_LOCATION", f"{lid} has no map Locale.", "4.7.4")
+    if loc.get("siege"):
+        raise IllegalAction("BESIEGED", f"{lid} is Besieged at {loc['name']} and cannot Tax.", "4.7.4")
+    if lord["location"] not in lord.get("seats", []):
+        raise IllegalAction(
+            "NOT_AT_OWN_SEAT",
+            f"Tax requires Lord at one of his Seats. {lid} is at {lord['location']!r}; seats={lord.get('seats')}.",
+            "4.7.4",
+        )
+    gain = 2 if lord.get("podesta") else 1
+    lord["assets"]["Coin"] = lord["assets"].get("Coin", 0) + gain
+    # Tax uses the entire card — consume all remaining actions.
+    state["actions_remaining"] = 0
+    state["card_action_consumed_by_entire_card"] = True
+    # Mark Moved/Fought? Tax doesn't mark per rules — but the card ends.
+    return _finish_card_with({"taxed": lid, "coin_gained": gain}, state, side,
+                              reason="tax_entire_card", citation="4.7.4")
+
+
+def _h_cmd_forage(state, side, args, rng) -> dict[str, Any]:
+    """4.7.1 FORAGE (1 action): +1 Provender at Friendly Unbesieged
+    Stronghold (auto, not Ruins); elsewhere depends on Season."""
+    lid = _require_active_lord(state, side, args.get("lord_id"))
+    lord = state["lords"][lid]
+    loc = state["locales"].get(lord.get("location") or "")
+    if not loc:
+        raise IllegalAction("NO_LOCATION", f"{lid} has no map Locale.", "4.7.1")
+    if loc.get("ravaged"):
+        raise IllegalAction("LOCALE_RAVAGED", f"{loc['name']} is Ravaged; cannot Forage.", "4.7.1")
+    # 4.7.1: may NOT be Besieged by Enemy Lords >= Stronghold Size.
+    # Simplified Phase 3a: any Siege marker blocks Forage (refined later).
+    if loc.get("siege"):
+        raise IllegalAction("BESIEGED", f"{lid} is Besieged; Forage blocked (Phase 3a simplified).", "4.7.1")
+
+    season = sd.SEASON_BY_BOX.get(state["meta"]["turn"], "winter")
+    friendly_stronghold = _is_friendly_stronghold(state, loc, side)
+    if friendly_stronghold:
+        # Automatic +1, any Season (4.7.1).
+        lord["forces"]  # touch
+        lord["assets"]["Provender"] = min(lord["assets"].get("Provender", 0) + 1, 16)
+        result = {"forage_method": "friendly_stronghold_auto", "season": season}
+    else:
+        # Elsewhere: Summer auto; Spring/Autumn 1d6 1-3; Winter no Forage.
+        if season == "summer":
+            lord["assets"]["Provender"] = min(lord["assets"].get("Provender", 0) + 1, 16)
+            result = {"forage_method": "summer_auto", "season": season}
+        elif season == "winter":
+            raise IllegalAction(
+                "NO_WINTER_FORAGE",
+                "No Forage outside Friendly Strongholds in Winter.",
+                "4.7.1",
+            )
+        else:
+            r = rng.roll(f"forage_{lid}_{season}")
+            got_one = r.value <= 3
+            if got_one:
+                lord["assets"]["Provender"] = min(lord["assets"].get("Provender", 0) + 1, 16)
+            result = {"forage_method": f"{season}_die_roll", "die": r.value, "gained": int(got_one), "season": season}
+    state["actions_remaining"] -= 1
+    lord["flags"]["moved_fought"] = True
+    return _maybe_end_card({"forage": result, "lord_id": lid}, state, side, citation="4.7.1")
+
+
+def _h_cmd_ravage(state, side, args, rng) -> dict[str, Any]:
+    """4.7.2 RAVAGE: 1 action at Castle, 2 actions at Town/City.
+    Locale must be Enemy aligned and not already Ravaged."""
+    lid = _require_active_lord(state, side, args.get("lord_id"))
+    lord = state["lords"][lid]
+    target_name = args.get("target_locale", lord.get("location"))
+    target = state["locales"].get(target_name)
+    if not target:
+        raise IllegalAction("UNKNOWN_LOCALE", f"Locale {target_name!r} not found.", "4.7.2")
+
+    # SMOKE-Inferno-001: Ravage pre-checks — own-territory, ravaged, friendly. See CROSS_PROJECT_LESSONS §1.
+    if target.get("ravaged"):
+        raise IllegalAction("ALREADY_RAVAGED", f"{target_name} is already Ravaged.", "4.7.2")
+    if _is_friendly_locale(state, target, side):
+        raise IllegalAction("FRIENDLY_LOCALE", f"Cannot Ravage Friendly {target_name}.", "4.7.2")
+
+    cost = 2 if target["type"] in ("town", "city") else 1
+    if state["actions_remaining"] < cost:
+        raise IllegalAction(
+            "INSUFFICIENT_ACTIONS",
+            f"Ravage costs {cost} actions at {target['type']}; {state['actions_remaining']} remaining.",
+            "4.7.2",
+        )
+    # Mark Ravaged (color = OPPOSITE printed Allegiance).
+    target["ravaged"] = "purple" if target["allegiance"] == "guelph" else "gold"
+    # Gains:
+    if target["type"] == "castle":
+        lord["assets"]["Provender"] = min(lord["assets"].get("Provender", 0) + 1, 16)
+        gains = {"Provender": 1}
+    else:
+        lord["assets"]["Provender"] = min(lord["assets"].get("Provender", 0) + 1, 16)
+        lord["assets"]["Loot"] = min(lord["assets"].get("Loot", 0) + 1, 8)
+        gains = {"Provender": 1, "Loot": 1}
+    # VP: 1/2 to side opposite of printed
+    ravager_side = "guelph" if target["allegiance"] == "ghibelline" else "ghibelline"
+    state["vp"][ravager_side] = min(state["vp"].get(ravager_side, 0.0) + 0.5, 17.5)
+    state["actions_remaining"] -= cost
+    lord["flags"]["moved_fought"] = True
+    return _maybe_end_card({
+        "ravaged_locale": target_name, "marker_color": target["ravaged"],
+        "gains": gains, "vp_to_side": ravager_side, "actions_spent": cost,
+    }, state, side, citation="4.7.2")
+
+
+def _h_cmd_supply(state, side, args, rng) -> dict[str, Any]:
+    """4.6 SUPPLY (1 action): add Provender from a Source via Transport.
+
+    Phase 3a simplification: Source = the Lord's OWN Seat at a Stronghold
+    he occupies (covers the trivial in-Seat case). Routed Supply via a
+    chain of Locales + Carts is Phase 3b work (depends on path-finding).
+    """
+    lid = _require_active_lord(state, side, args.get("lord_id"))
+    lord = state["lords"][lid]
+    loc_name = lord.get("location")
+    if loc_name not in lord.get("seats", []):
+        raise IllegalAction(
+            "SUPPLY_PATH_NOT_PHASE_3A",
+            f"Phase 3a Supply requires Lord at his own Seat (no routed Supply yet); {lid} is at {loc_name!r}.",
+            "4.6.1",
+        )
+    loc = state["locales"].get(loc_name)
+    if not loc:
+        raise IllegalAction("NO_LOCATION", f"{lid} has no map Locale.", "4.6")
+    if loc.get("ruins"):
+        raise IllegalAction("SOURCE_RUINED", f"Ruined Seat cannot be a Source.", "4.6.1")
+    # Size determines max Provender from this Source:
+    #   Castle=1, Town=2, City=3, Outpost=1.
+    size_map = {"castle": 1, "town": 2, "city": 3, "outpost": 1}
+    add = size_map.get(loc["type"], 1)
+    lord["assets"]["Provender"] = min(lord["assets"].get("Provender", 0) + add, 16)
+    state["actions_remaining"] -= 1
+    return _maybe_end_card({"supply_added": add, "from": loc_name}, state, side, citation="4.6.2")
+
+
+def _h_cmd_sail(state, side, args, rng) -> dict[str, Any]:
+    """4.7.3 SAIL — Pisa Podestà only, entire-card, any Season except Winter.
+
+    Phase 3a notes:
+      - Movement validation (Ship count vs Forces/Provender/Loot) deferred
+        to Phase 3b/3c (depends on March's transport accounting).
+      - Sailing to an Enemy Stronghold places a Siege marker (4.7.3) —
+        Siege subsystem is Phase 3c. Phase 3a rejects sail-to-Enemy.
+    """
+    lid = _require_active_lord(state, side, args.get("lord_id"))
+    lord = state["lords"][lid]
+    if lord["name"] != "Pisa Podestà":
+        raise IllegalAction("SAIL_PISA_ONLY", "Only Pisa Podestà may Sail.", "4.7.3")
+    season = sd.SEASON_BY_BOX.get(state["meta"]["turn"], "winter")
+    if season == "winter":
+        raise IllegalAction("NO_WINTER_SAIL", "Sail is unavailable in Winter.", "4.7.3")
+    src_name = lord.get("location")
+    src = state["locales"].get(src_name)
+    if not src or not src.get("port"):
+        raise IllegalAction("NOT_AT_PORT", f"Sail requires a Port; {lid} is at {src_name!r}.", "4.7.3")
+    if src.get("siege"):
+        raise IllegalAction("BESIEGED", f"{lid} is Besieged at {src_name}.", "4.7.3")
+    dest_name = args.get("dest_locale")
+    dest = state["locales"].get(dest_name)
+    if not dest:
+        raise IllegalAction("UNKNOWN_DEST", f"Destination {dest_name!r} not found.", "4.7.3")
+    if not dest.get("port"):
+        raise IllegalAction("DEST_NOT_PORT", f"{dest_name} is not a Port.", "4.7.3")
+    # Phase 3a: reject Sail to an Enemy Stronghold (Siege subsystem is Phase 3c).
+    if not _is_friendly_locale(state, dest, side):
+        raise IllegalAction(
+            "SAIL_TO_ENEMY_PHASE_3C",
+            f"Sail to Enemy Stronghold places a Siege marker (4.7.3); Siege is Phase 3c. "
+            f"Sail to a Friendly or already-Bypassed Enemy Port until then.",
+            "4.7.3",
+        )
+    # Move
+    if src_name and lid in src.get("lords_present", []):
+        src["lords_present"].remove(lid)
+    lord["location"] = dest_name
+    dest.setdefault("lords_present", []).append(lid)
+    lord["flags"]["moved_fought"] = True
+    # Sail uses entire card.
+    state["actions_remaining"] = 0
+    state["card_action_consumed_by_entire_card"] = True
+    return _finish_card_with({"sailed_from": src_name, "to": dest_name}, state, side,
+                              reason="sail_entire_card", citation="4.7.3")
+
+
+def _h_cmd_pass(state, side, args, rng) -> dict[str, Any]:
+    """4.7.7 PASS — burn 1 (or all remaining) actions doing nothing."""
+    lid = _require_active_lord(state, side, args.get("lord_id"))
+    n = int(args.get("count", 1))
+    n = min(n, state["actions_remaining"] or 0)
+    state["actions_remaining"] = max(0, (state["actions_remaining"] or 0) - n)
+    return _maybe_end_card({"passed_actions": n}, state, side, citation="4.7.7")
+
+
+# =====================================================================
+# FPD cycle (4.8)
+# =====================================================================
+def _run_fpd(state) -> dict[str, Any]:
+    """4.8 Feed/Pay/Disband. Phase 3a auto-processes the cycle.
+
+    4.8.1 FEED: Lords marked Moved/Fought feed (1/2/3 Provender per
+                1-6/7-12/13+ units). Sharing at same Locale. Unfed:
+                Service shifts 1 box left.
+    4.8.2 PAY:  Both sides may Pay (3.2 rules).
+    4.8.2 DISBAND: Lords at/past Service limit Disband per 3.3.
+    4.8.3 Remove Moved/Fought markers.
+
+    Phase 3a: Pay step is auto-skipped (LLM Pay decisions during FPD are
+    a separate sub-step; skip for now — players who want to Pay during
+    Campaign should do so explicitly when implemented in Phase 3b). The
+    Errata-modified Disband (Beyond Service Limit Revolt/Treachery
+    applies, Podestà cylinder placed on next box + Service Rating) is
+    delegated to the same handlers as Levy Disband.
+    """
+    summary: dict[str, Any] = {"feed": [], "disband": []}
+    # 4.8.1 FEED
+    for lid, lord in state["lords"].items():
+        if not lord.get("flags", {}).get("moved_fought"):
+            continue
+        units = sum(lord.get("forces", {}).values())
+        need = 0 if units == 0 else (1 if units <= 6 else 2 if units <= 12 else 3)
+        # Lord feeds himself first; Sharing deferred.
+        available = lord["assets"].get("Provender", 0) + lord["assets"].get("Loot", 0)
+        if available >= need:
+            paid_prov = min(need, lord["assets"].get("Provender", 0))
+            lord["assets"]["Provender"] = lord["assets"].get("Provender", 0) - paid_prov
+            need_after_prov = need - paid_prov
+            lord["assets"]["Loot"] = max(0, lord["assets"].get("Loot", 0) - need_after_prov)
+            summary["feed"].append({"lord_id": lid, "units": units, "need": need, "fed": True})
+        else:
+            # UNFED: Service marker shifts 1 box left.
+            cur = lord.get("service_box")
+            if cur is not None:
+                new = cur - 1
+                boxes = state["calendar"]["boxes"]
+                if str(cur) in boxes and lid in boxes[str(cur)]["services"]:
+                    boxes[str(cur)]["services"].remove(lid)
+                if new < 1:
+                    state["calendar"]["off_left_service"].append(lid)
+                    lord["service_box"] = None
+                else:
+                    lord["service_box"] = new
+                    boxes.setdefault(str(new), {"cylinders": [], "services": [], "victory": [], "markers": []})
+                    boxes[str(new)]["services"].append(lid)
+            summary["feed"].append({"lord_id": lid, "units": units, "need": need, "fed": False, "service_shift": -1})
+
+    # 4.8.2 DISBAND (per 3.3.1 + 3.3.2, with Errata for Campaign timing)
+    levy_box = state["calendar"]["levy_box"]
+    for side in ("guelph", "ghibelline"):
+        for lid, lord in list(state["lords"].items()):
+            if lord["side"] != side or lord["status"] != "mustered":
+                continue
+            svc = lord.get("service_box")
+            if svc is None:
+                # Off-Calendar (e.g., off_left_service): treat as Beyond Service Limit.
+                _disband_beyond_service_limit(state, lid)
+                summary["disband"].append({"lord_id": lid, "kind": "beyond_via_off_left"})
+                continue
+            if svc < levy_box:
+                _disband_beyond_service_limit(state, lid)
+                summary["disband"].append({"lord_id": lid, "kind": "beyond"})
+            elif svc == levy_box:
+                _disband_at_service_limit(state, lid, levy_box)
+                summary["disband"].append({"lord_id": lid, "kind": "at"})
+
+    # 4.8.3 remove Moved/Fought
+    for lord in state["lords"].values():
+        lord["flags"].pop("moved_fought", None)
+
+    return summary
+
+
+# =====================================================================
+# Helpers (Campaign)
+# =====================================================================
+def _require_campaign_step(state, expected: str) -> None:
+    from .flow import current_campaign_step
+    cur = current_campaign_step(state)
+    if cur != expected:
+        raise IllegalAction(
+            "WRONG_CAMPAIGN_STEP",
+            f"Expected Campaign step {expected!r}; got {cur!r}.",
+            citation="4.0",
+        )
+
+
+def _require_active_lord(state, side, lord_id: str | None) -> str:
+    cur_lid = state.get("current_lord_id")
+    if cur_lid is None:
+        raise IllegalAction("NO_ACTIVE_LORD", "No Lord is currently activated.", "4.2")
+    if lord_id and lord_id != cur_lid:
+        raise IllegalAction(
+            "WRONG_LORD",
+            f"Active Lord is {cur_lid}; action targeted {lord_id!r}.",
+            "4.2",
+        )
+    lord = state["lords"].get(cur_lid)
+    if lord is None or lord["side"] != side:
+        raise IllegalAction("WRONG_LORD_SIDE", f"Active lord {cur_lid!r} not on {side}.", "2.2.4")
+    if state.get("actions_remaining", 0) is None or state.get("actions_remaining", 0) <= 0:
+        raise IllegalAction("NO_ACTIONS_LEFT", "Active Lord has no actions remaining.", "4.2")
+    return cur_lid
+
+
+def _is_friendly_locale(state, locale: dict, side: str) -> bool:
+    """A Locale is Friendly to `side` if the printed allegiance is `side`
+    AND there are no enemy Allegiance markers, OR there are `side`
+    Allegiance markers on top. Phase 3a's simplified check uses the
+    printed allegiance plus any current allegiance markers.
+    """
+    enemy = "ghibelline" if side == "guelph" else "guelph"
+    markers = locale.get("current_allegiance", []) or []
+    enemy_markers = sum(1 for m in markers if m.get("side") == enemy)
+    own_markers = sum(1 for m in markers if m.get("side") == side)
+    if enemy_markers > 0 and own_markers == 0:
+        return False
+    if locale["allegiance"] == side:
+        return True
+    return own_markers > 0
+
+
+def _is_friendly_stronghold(state, locale, side) -> bool:
+    if locale["type"] == "outpost":
+        return locale["allegiance"] == side
+    if locale.get("ruins"):
+        return False
+    return _is_friendly_locale(state, locale, side)
+
+
+def _maybe_end_card(payload: dict, state, side, citation: str) -> dict[str, Any]:
+    """If actions_remaining <= 0 (or entire-card consumed), finish; else
+    return the action result without ending the card."""
+    if state.get("card_action_consumed_by_entire_card") or (state.get("actions_remaining") or 0) <= 0:
+        return _finish_card_with(payload, state, side, reason="actions_exhausted", citation=citation)
+    return {"state_changes": payload, "rule_citation": citation}
+
+
+def _finish_card_with(payload: dict, state, side, reason: str, citation: str) -> dict[str, Any]:
+    state["current_card"] = None
+    state["current_lord_id"] = None
+    state["actions_remaining"] = None
+    state["card_action_consumed_by_entire_card"] = False
+    fpd = _run_fpd(state)
+    _flip_active_side(state)
+    return {
+        "state_changes": {**payload, "card_finished": True, "reason": reason, "fpd": fpd},
+        "rule_citation": citation,
+    }
+
+
+def cd_PASS_CARD_ID():
+    """Late-bound import so card_data is loaded after this module."""
+    from . import card_data as cd
+    return cd.PASS_CARD_ID
+
+
+# =====================================================================
+# Register Campaign handlers
+# =====================================================================
+_HANDLERS.update({
+    "campaign_discard_capability":   _h_campaign_discard_capability,
+    "campaign_discard_done":         _h_campaign_discard_done,
+    "plan_add_card":                 _h_plan_add_card,
+    "plan_done":                     _h_plan_done,
+    "command_reveal":                _h_command_reveal,
+    "cmd_tax":                       _h_cmd_tax,
+    "cmd_forage":                    _h_cmd_forage,
+    "cmd_ravage":                    _h_cmd_ravage,
+    "cmd_supply":                    _h_cmd_supply,
+    "cmd_sail":                      _h_cmd_sail,
+    "cmd_pass":                      _h_cmd_pass,
+    "cmd_end_card":                  _h_cmd_end_card,
+})

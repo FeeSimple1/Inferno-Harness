@@ -1846,3 +1846,49 @@ def adjacent_to(locale: str) -> list[tuple[str, str]]:
         elif b == locale:
             out.append((a, way))
     return out
+
+
+# ============================================================================
+# CALENDAR SEASONS (per Inferno SoP "Plan size by season" + Grow rule)
+# ============================================================================
+# Mapping from Calendar box (1..16) to Season. Each box is one 60-day Turn.
+# Box 1 starts at Feb-Mar 1259 (Inferno Scenario A). Each year covers 6 boxes:
+#   Feb-Mar, Apr-May, Jun-Jul, Aug-Sep, Oct-Nov, Dec-Jan.
+#
+# Inferno_Sequence_of_Play.txt Plan-size table:
+#   Spring = 7, Summer = 6, Autumn = 7, Winter = 4
+#
+# The Grow rule explicitly identifies "late-Spring (April-May)" and "Autumn
+# (October-November)" - so Apr-May -> Spring, Oct-Nov -> Autumn. The other
+# months are partitioned below; this exact mapping is logged as Q-001 in
+# RULES_QUESTIONS.md pending user confirmation against the Inferno RoP
+# season-color band on the Calendar.
+SEASON_BY_BOX = {
+     1: "winter",   # Feb-Mar 1259
+     2: "spring",   # Apr-May 1259  (Grow eligible)
+     3: "summer",   # Jun-Jul 1259
+     4: "summer",   # Aug-Sep 1259  (assumed; see Q-001)
+     5: "autumn",   # Oct-Nov 1259  (Grow eligible)
+     6: "winter",   # Dec-Jan 1259-60
+     7: "winter",   # Feb-Mar 1260
+     8: "spring",   # Apr-May 1260  (Grow eligible)
+     9: "summer",   # Jun-Jul 1260
+    10: "summer",   # Aug-Sep 1260  (assumed)
+    11: "autumn",   # Oct-Nov 1260  (Grow eligible)
+    12: "winter",   # Dec-Jan 1260-61
+    13: "winter",   # Feb-Mar 1261
+    14: "spring",   # Apr-May 1261  (Grow eligible)
+    15: "summer",   # Jun-Jul 1261
+    16: "summer",   # Aug-Sep 1261  (assumed)
+}
+
+PLAN_SIZE_BY_SEASON = {
+    "spring": 7,
+    "summer": 6,
+    "autumn": 7,
+    "winter": 4,
+}
+
+# Grow turns (4.9.1): late-Spring (Apr-May) and Autumn (Oct-Nov)
+GROW_BOXES = {2, 5, 8, 11, 14}
+

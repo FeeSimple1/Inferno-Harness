@@ -477,3 +477,8 @@ CARDS_BY_SIDE = {
 
 # War-event flag (for CtA trigger detection — 3.5)
 WAR_EVENT_IDS = {c["id"] for c in GUELPH_CARDS + GHIBELLINE_CARDS if c["is_war"]}
+
+# Pass cards (per 4.1.1: fill Plan when a side has too few on-map Lords).
+# Modeled as a single virtual ID; each side may include any number of these
+# in its Plan, capped by Plan size for that Season.
+PASS_CARD_ID = "PASS"
