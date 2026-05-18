@@ -1,0 +1,20 @@
+{
+  "$schema": "../state_schema.json",
+  "scenario_id": "B",
+  "name": "In Far Vendetta",
+  "subtitle": "1259 to 1260",
+  "length_note": "Medium scenario",
+  "calendar": {
+    "first_turn_box": 1,
+    "last_turn_box": 8
+  },
+  "phase_0_note": "Stub only. Phase 1 fills setup, calendar markers, lord placements, and capabilities per RoP 6.0.",
+  "setup": {
+    "map": {},
+    "calendar": {},
+    "lord_mats": {},
+    "decks": {},
+    "remove_from_play": [],
+    "special_rules": []
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "$schema": "../state_schema.json",
+  "scenario_id": "E",
+  "name": "Lasciate Ogne Speranza",
+  "subtitle": "1261",
+  "length_note": "Short, No Call to Arms",
+  "calendar": {
+    "first_turn_box": 1,
+    "last_turn_box": 4
+  },
+  "phase_0_note": "Stub only. Phase 1 fills setup, calendar markers, lord placements, and capabilities per RoP 6.0.",
+  "setup": {
+    "map": {},
+    "calendar": {},
+    "lord_mats": {},
+    "decks": {},
+    "remove_from_play": [],
+    "special_rules": []
+  }
+}

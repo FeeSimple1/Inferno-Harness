@@ -1,0 +1,20 @@
+{
+  "$schema": "../state_schema.json",
+  "scenario_id": "D",
+  "name": "Arbia Colorata in Rosso",
+  "subtitle": "Late 1260",
+  "length_note": "Short, Both sides Call to Arms",
+  "calendar": {
+    "first_turn_box": 1,
+    "last_turn_box": 3
+  },
+  "phase_0_note": "Stub only. Phase 1 fills setup, calendar markers, lord placements, and capabilities per RoP 6.0.",
+  "setup": {
+    "map": {},
+    "calendar": {},
+    "lord_mats": {},
+    "decks": {},
+    "remove_from_play": [],
+    "special_rules": []
+  }
+}

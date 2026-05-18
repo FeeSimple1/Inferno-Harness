@@ -1,0 +1,20 @@
+{
+  "$schema": "../state_schema.json",
+  "scenario_id": "F",
+  "name": "Di Sangue t'Empio",
+  "subtitle": "1259 to 1261",
+  "length_note": "Full-length scenario",
+  "calendar": {
+    "first_turn_box": 1,
+    "last_turn_box": 16
+  },
+  "phase_0_note": "Stub only. Phase 1 fills setup, calendar markers, lord placements, and capabilities per RoP 6.0.",
+  "setup": {
+    "map": {},
+    "calendar": {},
+    "lord_mats": {},
+    "decks": {},
+    "remove_from_play": [],
+    "special_rules": []
+  }
+}

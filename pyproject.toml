@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "inferno-harness"
+version = "0.0.0"
+description = "Rules-enforcement harness for GMT's Inferno (L&C Volume III)."
+requires-python = ">=3.11"
+readme = "README.md"
+authors = [{ name = "Eric Goodemote" }]
+license = { text = "Private" }
+
+# Phase 0: stdlib only. argparse + json + dataclasses are enough for the
+# CLI shell. No runtime deps yet.
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+]
+
+[project.scripts]
+inferno = "inferno.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"inferno.data" = ["*.json", "scenarios/*.json"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-v"

@@ -1,0 +1,20 @@
+{
+  "$schema": "../state_schema.json",
+  "scenario_id": "A",
+  "name": "Dolenti Note",
+  "subtitle": "Notes of Pain",
+  "length_note": "Introductory, two Turns; Feb-Mar 1259 Levy through Apr-May 1259",
+  "calendar": {
+    "first_turn_box": 1,
+    "last_turn_box": 2
+  },
+  "phase_0_note": "Stub only. Phase 1 fills setup, calendar markers, lord placements, and capabilities per RoP 6.0.",
+  "setup": {
+    "map": {},
+    "calendar": {},
+    "lord_mats": {},
+    "decks": {},
+    "remove_from_play": [],
+    "special_rules": []
+  }
+}

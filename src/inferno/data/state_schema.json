@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/FeeSimple1/Inferno-Harness/blob/main/src/inferno/data/state_schema.json",
+  "title": "Inferno Harness State",
+  "description": "Top-level shape of an Inferno harness state file. Phase 0 sketch only; sub-schemas (Lord, Locale, Calendar, AoW deck, etc.) are filled in by Phase 1+.",
+  "type": "object",
+  "required": ["meta", "calendar", "lords", "locales", "decks", "capabilities_in_play", "pending", "history", "vp"],
+  "properties": {
+    "meta": {
+      "type": "object",
+      "required": ["scenario", "rules_edition", "rng_seed", "turn", "phase", "active_player", "game_over"],
+      "properties": {
+        "scenario": {"type": "string", "enum": ["A", "B", "C", "D", "E", "F", "<unset>"]},
+        "rules_edition": {"type": "string"},
+        "rng_seed": {"type": "integer", "minimum": 0},
+        "turn": {"type": "integer", "minimum": 0},
+        "phase": {"type": "string", "enum": ["levy", "campaign", "feed_pay_disband", "end_campaign", "victory"]},
+        "levy_step": {"type": ["string", "null"]},
+        "active_player": {"type": "string", "enum": ["guelph", "ghibelline"]},
+        "game_over": {"type": "boolean"},
+        "winner": {"type": ["string", "null"], "enum": ["guelph", "ghibelline", null]}
+      }
+    },
+    "calendar": {"type": "object", "description": "Calendar boxes -> markers. Schema filled in Phase 1."},
+    "lords": {"type": "object", "description": "lord_id -> Lord data. Schema filled in Phase 1."},
+    "locales": {"type": "object", "description": "locale_id -> Locale data. Schema filled in Phase 1."},
+    "decks": {"type": "object", "description": "Per-side AoW deck composition. Schema filled in Phase 2."},
+    "capabilities_in_play": {"type": "array"},
+    "pending": {
+      "type": "array",
+      "description": "Pending decisions. Each: {type, side, options, info}. See BRIEF 'Non-Combat Pending Decisions'."
+    },
+    "history": {"type": "array"},
+    "vp": {
+      "type": "object",
+      "properties": {
+        "guelph": {"type": "number", "maximum": 17.5, "minimum": 0},
+        "ghibelline": {"type": "number", "maximum": 17.5, "minimum": 0}
+      }
+    }
+  }
+}
