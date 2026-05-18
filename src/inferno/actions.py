@@ -158,9 +158,14 @@ def _h_levy_aow_draw(state, side: str, args, rng) -> dict[str, Any]:
                 })
                 notes.append(f"{cid} -> {kind} ({card['event_name']})")
             else:
-                # Immediate event: Phase 4 executes. Phase 2 returns it to deck.
+                # Immediate event: apply effect immediately (Phase 4 wiring).
+                from . import card_effects as ce
+                effect_result = ce.apply_event_effect(state, cid, side, {}, rng)
                 state["decks"][side]["aow_discard"].append(cid)
-                notes.append(f"{cid} -> Immediate Event ({card['event_name']}); effect pending manual application")
+                notes.append({
+                    "card_id": cid, "name": card["event_name"], "kind": "immediate",
+                    "effect": effect_result,
+                })
 
     # After both sides have drawn, mark first_levy as done.
     if not is_first:
@@ -2544,3 +2549,52 @@ _HANDLERS.update({
     "end_waste":         _h_end_waste,
     "end_reset":         _h_end_reset,
 })
+
+
+# =====================================================================
+# Phase 4: Card effects integration
+# =====================================================================
+def _h_play_event(state, side, args, rng) -> dict[str, Any]:
+    """Play a Held Event card from this side's aow_held list.
+
+    args:
+      card_id:  Held Event card to play
+      effect_args: dict of card-specific args (target Lord/Locale/etc.)
+    """
+    cid = args.get("card_id")
+    if not cid:
+        raise IllegalAction("MISSING_CARD", "play_event requires card_id.", "3.1.3")
+    held = state["decks"][side]["aow_held"]
+    if cid not in held:
+        raise IllegalAction("CARD_NOT_HELD", f"{cid!r} not in {side}'s Held Events.", "3.1.3")
+    held.remove(cid)
+    state["decks"][side]["aow_discard"].append(cid)
+    from . import card_effects as ce
+    effect_args = args.get("effect_args", {})
+    effect_result = ce.apply_event_effect(state, cid, side, effect_args, rng)
+    return {
+        "state_changes": {"played": cid, "effect": effect_result},
+        "rule_citation": "3.1.3 / per-card",
+    }
+
+
+_HANDLERS["play_event"] = _h_play_event
+
+
+# =====================================================================
+# Phase 4: Capability hooks into existing handlers
+# =====================================================================
+
+def _capability_bonus_lordship(state, lord_id: str) -> int:
+    """F22 / S22 Tau Company-style Lordship bonus: adds to a Lord's Lordship."""
+    from . import card_effects as ce
+    bonus = 0
+    lord = state["lords"].get(lord_id, {})
+    side = lord.get("side")
+    for cap in state.get("capabilities_in_play", []):
+        hook = ce.CAPABILITY_TRIGGERS.get(cap.get("id"), {})
+        if "lordship_bonus_for" in hook and cap.get("side") == side:
+            lord_slug = sd.LORD_IDS.get(lord.get("name", ""), "")
+            if lord_slug in hook["lordship_bonus_for"]:
+                bonus += hook.get("lordship_value", 0)
+    return bonus

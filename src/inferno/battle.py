@@ -611,6 +611,13 @@ def resolve_storm(state, attackers: list[str], defenders: list[str],
     siege_count = sum(s.get("count", 1) for s in locale.get("siege", []))
     siegeworks_die = list(range(1, siege_count + 1))  # 1..N nullifies a hit
     walls_die = list(sd.STRONGHOLDS.get(stronghold_type, {}).get("walls_die", []))
+    # Capability: storm_walls_minus reduces effective Walls for the Attacker
+    # (e.g., F3 Siege Towers, F5 War Engineers). Phase 4: applied as Attacker's
+    # adjusted Siegeworks die range.
+    from . import card_effects as ce
+    storm_walls_minus = sum(c["value"] for c in ce.active_capabilities_for(state, "storm_walls_minus"))
+    if storm_walls_minus and walls_die:
+        walls_die = walls_die[:-storm_walls_minus] if len(walls_die) > storm_walls_minus else []
     if locale.get("walls_plus_one"):
         walls_die = walls_die + [max(walls_die) + 1 if walls_die else 5]
 
