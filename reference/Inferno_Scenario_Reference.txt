@@ -1,0 +1,299 @@
+================================================================================
+INFERNO - SCENARIO REFERENCE
+================================================================================
+Source: Inferno Rules of Play (Living Rules 2023-04-10), Section 6.0 Scenarios,
+        pages 26-30.
+Errata applied: Official Errata 10 April 2023.
+ 
+When the Rules of Play or Errata conflict with any other source, the Rules of
+Play and Errata take precedence (per user instruction).
+ 
+================================================================================
+GENERAL SETUP PROCEDURE (6.0)
+================================================================================
+ 
+Prepare general setup per 2.1.1. Agree on whether to use the Hidden Mats option
+(1.5.2) and/or the advanced Vassal Service rule (3.4.2). Choose a scenario
+(lettered A to F) below. Find the scenario and set it up:
+ 
+  MAP:          Place markers, Mustered Lord cylinders, and Capability cards
+                (if any) as listed.
+ 
+  CALENDAR:     Place markers and cylinders as listed and as shown in the
+                scenario's Calendar setup illustration. Use the "End" marker
+                to block the Levy/Campaign circle in the box AFTER the
+                scenario's last Campaign.
+ 
+  DECKS:        Each side has one Arts of War deck and one Command deck. Find
+                and set aside each Command deck's six Treachery cards.
+ 
+  LORD MATS:    Prepare the mats of Mustered Lords listed as if just Levied
+                (3.4.1), with their starting Forces, Assets, and Vassal Service
+                markers. Vassals other than Special Vassals (3.4.2) are Ready,
+                Service markers face up on their mat.
+ 
+  REMOVE FROM
+  PLAY:         Return the cylinders, Service markers, mats, and Command cards
+                of Lords listed as removed to the game box.
+ 
+  SPECIAL
+  RULES:        Note any listed scenario rules, such as "Night March" or
+                "Exhaustion".
+ 
+  BEGIN PLAY:   Commence the first Levy by shuffling each side's Arts of War
+                deck and drawing random Capabilities (3.1.1-3.1.2).
+ 
+================================================================================
+SCENARIOS GUIDE - QUICK OVERVIEW
+================================================================================
+ 
+  A. Dolenti Note - Early 1259           Introductory scenario, No Call to Arms
+  B. In Far Vendetta - 1259 to 1260      Medium scenario
+  C. Santafior Oscura - Early 1260       Short scenario, Limited Call to Arms
+  D. Arbia Colorata in Rosso - Late 1260 Short scenario, Both sides Call to Arms
+  E. Lasciate Ogne Speranza - 1261       Short scenario, No Call to Arms
+  F. Di Sangue t'Empio - 1259 to 1261    Full-length scenario
+ 
+================================================================================
+A. DOLENTI NOTE - EARLY 1259
+================================================================================
+"Notes of Pain" - When the town of Cortona declares itself Ghibelline, Guelph
+Arezzo's Podesta Astoldo de' Rossi prepares a night march on the rebels.
+Siena faces rebellions of its own.
+ 
+LENGTH: Introductory scenario (two Turns) begins with one or two Lords on each
+side dealing with enemy-allied towns. Play from February-March 1259 (box 1)
+Levy through end of April-May 1259 (box 2).
+  [Errata applied: Length corrected to "one or two Lords".]
+ 
+MAP:
+  - Firenze cylinder at Firenze.
+  - Arezzo cylinder at Arezzo.
+  - Siena cylinder at Siena.
+  - Two Guelph 1VP Allegiance markers each at Montalcino and Montepulciano.
+  - Two Ghibelline 1VP Allegiance markers each at Poggio Bonizio and Cortona.
+ 
+CALENDAR:
+  - Box 1: Levy marker and Provenzano cylinder.
+  - Box 3: End marker and Firenze, Arezzo, and Siena Service markers.
+  - Box 4: Purple and gold Victory markers.
+ 
+SET UP LORD MATS (1.5):
+  Guelphs:     Firenze Podesta, Arezzo.
+  Ghibellines: Siena Podesta.
+ 
+REMOVE FROM PLAY: All Lords not named above. (Left out to simplify the
+scenario.)
+ 
+SPECIAL RULES:
+  - Night March:    Guelphs begin Holding Event card F3 Surprise.
+  - Sudden Campaign: For the first Levy's Arts of War, instead draw one
+                    Capability then one Event (3.1).
+  - Preamble:       Skip all Call to Arms (3.5).
+ 
+================================================================================
+B. IN FAR VENDETTA - 1259 TO 1260
+================================================================================
+"[Honor] in Vengeance" - As towns resist Imperial authority, Siena burns Guelph
+holdings. But rebellion spreads, and Firenze readies to roll out its Carroccio
+for what would be a dry run for Montaperti.
+ 
+LENGTH: Medium scenario (up to five Turns). Play from the August-September
+1259 Levy (box 4) to the end of April-May 1260 (box 8).
+ 
+MAP:
+  - Firenze cylinder at Firenze.
+  - Arezzo cylinder at Arezzo.
+  - Siena and Provenzano cylinders at Siena.
+  - Two Guelph Allegiance markers each at Volterra, Montalcino, and
+    Montepulciano.
+  - Two Ghibelline Allegiance at Poggio Bonizio.
+  - Gold Ravaged and Ruins at Monte San Savino, Castelnuovo Berardenga, and
+    Cortona.
+ 
+CALENDAR:
+  - Box 4: Levy marker and Colle and Santa Fiora cylinders.
+  - Box 5: Gold Victory marker and Giordano cylinder.
+  - Box 6: Purple Victory marker and Firenze, Arezzo, Siena, and Provenzano
+           Service markers.
+  - Box 7: Guido Guerra and Astimberg cylinders.
+  - Box 8: Orvieto cylinder.
+  - Box 9: End marker, Lucca and Pisa cylinders.
+ 
+SET UP LORD MATS (1.5):
+  Guelphs:     Firenze Podesta, Arezzo.
+  Ghibellines: Siena Podesta, Provenzano.
+ 
+SPECIAL RULES:
+  - Reprisal War: Before their initial Arts of War draw, Ghibellines assign
+                  their Lords S18 La Cavallata, S19 Gualdana, and S20
+                  Masnadieri (then draw two more as usual). Skip the Grow
+                  step (4.9.2) of Autumn 1259 (Turn 5) only.
+ 
+================================================================================
+C. SANTAFIOR OSCURA - EARLY 1260
+================================================================================
+"Dark Santa Fiora" - With Tuscany heating up, the Hohenstaufen King of Sicily
+sends his cousin Count Giordano with German knights to Siena, as the Guelphs
+back fresh rebellions in the Maremma region.
+ 
+LENGTH: Short scenario (three Turns) focuses on quashing rebels south of Siena,
+with the Guelph player in a harassing role. Play from Winter 1259-1260 Levy
+(box 6) through April-May 1260 (box 8).
+ 
+MAP:
+  - Colle cylinder at Colle.
+  - Giordano cylinder at Siena.
+  - Two Guelph Allegiance markers each at Volterra, Montalcino,
+    Montepulciano, and Grosseto; one Guelph each at Montemassi and
+    Montepescali.
+  - Two Ghibelline Allegiance at Poggio Bonizio.
+  - Gold Ravaged at Colle, Montespertoli, San Casciano, and Barberino;
+    gold Ravaged and Ruins at Castelnuovo Berardenga and Monte San Savino.
+  - S22 Manfredi Capability card at Ghibelline edge.
+ 
+CALENDAR:
+  - Box 6: Levy marker and Firenze, Siena, and Provenzano cylinders.
+  - Box 8: Guido Guerra and Santa Fiora cylinders, Colle and Giordano
+           Service.
+  - Box 9: Gold Victory, End, Lucca and Pisa cylinders.
+  - Box 10: Purple Victory marker.
+ 
+SET UP LORD MATS (1.5):
+  Guelphs:     Colle.
+  Ghibellines: Giordano.
+ 
+REMOVE LORDS: Arezzo, Orvieto, Astimberg.
+ 
+SPECIAL RULES:
+  - Alliance Treaty: In this scenario, S22 Manfredi Capability adds 3 Victory
+                     points to the Ghibelline score.
+  - Maremma War:     Ghibellines (only) conduct Call to Arms in first Levy;
+                     skip all other Call to Arms (3.5). Ghibelline Lords may
+                     not cross the dashed line (1.3.1) until the Guelphs place
+                     a Siege or Ravage marker (4.3.5, 4.7.2). Grosseto with
+                     two Siege markers and no Lord inside Surrenders at once
+                     (4.5.1).
+ 
+================================================================================
+D. ARBIA COLORATA IN ROSSO - LATE 1260
+================================================================================
+"Arbia Dyed Red" - As Tuscany boils over, all muster for a grand reckoning.
+Firenze in the Fall of 1260 leads the Guelph alliance out to aid rebels in
+Siena's hinterland. The Ghibellines set to block them.
+ 
+LENGTH: Three-Turn scenario runs June-July 1260 (box 9) through
+October-November 1260 (box 11).
+ 
+MAP:
+  - Guido Guerra cylinder at his western Lombardia-Bologna Outpost,
+    Arezzo and Orvieto at Arezzo, Colle at Colle.
+  - Astimberg at Siena, Provenzano and Santa Fiora cylinders with two gold
+    Siege markers at Montepulciano, Giordano at Massa Marittima.
+  - Two Guelph Allegiance markers each at Volterra, Montalcino, and
+    Montepulciano; one at Casole.
+  - Two Ghibelline Allegiance at Poggio Bonizio.
+  - Gold Ravaged at Montespertoli, Barberino, San Casciano, Monte San
+    Savino; gold Ruins at Castelnuovo Berardenga and Monte San Savino.
+ 
+CALENDAR:
+  - Box 5: Gold Victory marker.
+  - Box 7: Purple Victory marker.
+  - Box 9: Levy marker and Firenze, Lucca, Siena, and Pisa cylinders.
+  - Box 10: Santa Fiora Service marker.
+  - Box 11: Arezzo, Colle, Orvieto, Giordano, Provenzano, and Astimberg
+            Service.
+  - Box 12: End marker, Guido Guerra Service.
+ 
+SET UP LORD MATS (1.5):
+  Guelphs:     Arezzo, Colle, Guido Guerra, Orvieto.
+  Ghibellines: Giordano, Provenzano, Astimberg, Santa Fiora.
+ 
+SPECIAL RULES:
+  - Escalation: In the first Levy, either side may trigger Call to Arms as
+                if it had drawn a WAR Event (3.5).
+ 
+================================================================================
+E. LASCIATE OGNE SPERANZA - 1261
+================================================================================
+"Abandon All Hope" - Exploiting the Guelph disaster at Montaperti, Ghibellines
+occupy Firenze and look to douse the conflagration. Guelphs flee to Lucca and
+Arezzo to fan the embers of resistance.
+ 
+LENGTH: Three-Turn scenario starts with a special "Resistance" Muster (see
+below) and runs December 1260 (box 12) through May 1261 (box 14).
+ 
+MAP:
+  - Lucca cylinder at Lucca, Arezzo at Arezzo, Giordano at Firenze,
+    Astimberg at Siena.
+  - Purple Ruins and Ravaged at Monteriggioni, Casole, Montemassi, and
+    Montepulciano.
+  - Three Ghibelline Allegiance at Firenze; one Ghibelline Allegiance each
+    at San Casciano and Barberino; gold Ravaged at San Casciano, Barberino,
+    Castelnuovo Berardenga, and Castiglione.
+ 
+CALENDAR:
+  - Box 6: Purple Victory marker.
+  - Box 7: Yellow Victory marker.
+  - Box 12: Levy marker, Siena and Pisa cylinders.
+  - Box 13: Firenze, Colle, and Orvieto cylinders.
+  - Box 14: Arezzo, Lucca, Giordano, and Astimberg Service markers.
+  - Box 15: End marker.
+ 
+SET UP LORD MATS (1.5):
+  Guelphs:     Lucca, Arezzo.
+  Ghibellines: Giordano, Astimberg.
+ 
+REMOVE FROM PLAY: All Lords not named above.
+ 
+SPECIAL RULES:
+  - League:           Ghibellines begin with S23 Taglia Capability.
+  - Spoils of Victory: Giordano starts with two Coin.
+  - Resistance:       Before first Levy, Lucca and Arezzo each conduct an
+                      extra Muster (3.4). Double Guelph victory points except
+                      for Ravaged (5.1).
+  - Exhaustion:       Skip all Call to Arms (3.5).
+ 
+================================================================================
+F. DI SANGUE T'EMPIO - 1259 TO 1261
+================================================================================
+"Your Fill of Blood" - The Guelphs of a flourishing Firenze in 1258 expel its
+Ghibelline notables. Rival Siena takes them in, touching off a war for Tuscany
+that will take almost three years to burn itself out.
+ 
+LENGTH: Full-length scenario. Play from the Levy of February-March 1259
+(box 1) through variable "Exhaustion" by end of August-September 1261
+(box 16, up to 16 Turns).
+ 
+MAP:
+  - Firenze cylinder at Firenze.
+  - Arezzo cylinder at Arezzo.
+  - Siena cylinder at Siena.
+  - Two Guelph Allegiance markers each at Volterra, Montalcino, and
+    Montepulciano.
+  - Two Ghibelline Allegiance markers each at Poggio Bonizio and Cortona.
+ 
+CALENDAR:
+  - Box 1: Levy marker and Provenzano cylinder.
+  - Box 3: Colle cylinder and Firenze, Arezzo, and Siena Service markers.
+  - Box 4: Gold Victory marker and Santa Fiora cylinder.
+  - Box 5: Giordano cylinder.
+  - Box 6: Purple Victory marker.
+  - Box 7: Guido and Astimberg cylinders.
+  - Box 8: Orvieto cylinder.
+  - Box 9: Lucca and Pisa cylinders.
+ 
+SET UP LORD MATS (1.5):
+  Guelphs:     Firenze Podesta, Arezzo.
+  Ghibellines: Siena Podesta.
+ 
+SPECIAL RULES:
+  - Night March: Guelphs begin Holding Event card F3 Surprise.
+  - Exhaustion:  At the start of each Levy beginning with June-July 1260
+                 (Turn 9), roll one die. On a roll of 1-3, put the End marker
+                 in Turn box 16 or - if already on the Calendar - slide it one
+                 box left (lower).
+ 
+================================================================================
+END OF DOCUMENT
+================================================================================

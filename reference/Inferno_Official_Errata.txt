@@ -1,0 +1,91 @@
+INFERNO Official Errata                                              10 April 2023
+ 
+================================================================================
+RULES OF PLAY
+================================================================================
+ 
+Page 12, 3.3.2 At Service Limit, line 2: insert "or Campaign" before "marker".
+    Line 3: delete "but trigger no Revolt or Treachery". Bullet 1, line 3: after
+    "box" insert "if Levy, or next box if Campaign (4.8.2),".
+ 
+Page 17, 4.3.5 Besiege or Bypass, paragraph 2: Add "Lords arriving outside a
+    Besieged or Bypassed Enemy Stronghold join in the Siege or Bypass or may
+    March on."
+ 
+Page 17, 4.4 Battle, line 3: Delete "Unbesieged, Unbypassed"; after "Lords in
+    the Locale", insert "not in a Stronghold".
+ 
+Page 18, Mixed Archery EXAMPLE should read "... one Men-at-Arms and one Militia
+    yields two Archery Hits, of which one counts as Crossbows."
+ 
+Page 20, 4.5.1 REVOLT AND TREACHERY, line 4: Delete "Sacked" before "Stronghold".
+ 
+Page 24, 4.9.2 LANGUISH, line 1: Insert "Captured" before "Knights".
+ 
+Page 24, 4.9.4 Repair, line 2: Replace "Stronghold" with "Town and City".
+ 
+Page 27, A. Dolenti Note, Length should say "one or two Lords".
+ 
+Page 31, Hold/Held: In parentheses, add "3.1.3".
+ 
+================================================================================
+BACKGROUND BOOK
+================================================================================
+ 
+Page 1, Table of Contents, left line 5, and page 6, 2nd heading on right,
+    delete "and Disband".
+ 
+Page 2, paragraph 2, line 3: "F2" should be "F3". Start Play, line 1, insert
+    "Flip Levy to Campaign."
+ 
+Page 8, next to last bullet, last line: delete "with a die roll".
+ 
+Page 14, righthand column, bullet 2, line 2: delete "Attacking".
+ 
+Page 16, bottom left: Provenzano's TREBUCHETS would NOT help yet, as there are
+    too few Siege markers.
+ 
+Page 32, F10 CLOSED GATES Tips: add "or adjacent" at end of last sentence.
+ 
+Page 38, F18 GROSSETO Tips para 1: delete last sentence beginning "The
+    benefit...". F19 VOLTERRA line 1: replace "to use" with "for".
+ 
+Page 39, F22 MANFREDI holds back, line 1: delete "Ghibelline". (But see card
+    clarification below.)
+ 
+Page 46, F22 TAU COMPANY Tips: Delete the sentence beginning "A Comune mat ...".
+ 
+Page 54, S21 SOVRINTENDENTE Lords: replace "None" with "Any". (See card
+    clarification below.)
+ 
+================================================================================
+CLARIFICATIONS
+================================================================================
+ 
+--- Player Aid Charts ---
+ 
+Battle & Storm sheet, Losses, line 5: Only REMOVED units to Captured (4.4.4
+    KNIGHTS' QUARTER).
+ 
+Revolt & Treachery Summary, Revolt Tables - How to Roll, bullets 1 & 3: If
+    ineligible Friendly Stronghold, bullet 3 applies (1.4.2 REVOLT?, bullets
+    1 & 3). Bullet 4: "X?" means table results showing an "X" over an
+    Allegiance marker, as illustrated to the right of the bullet.
+ 
+--- Rules of Play ---
+ 
+Page 6, 1.4.3 ADDING TREACHERY: Cards in a current Plan (even already used) are
+    not yet set aside so may not be added (4.1, 4.9.6).
+ 
+Page 23, 4.7.6 Bribe REQUIREMENTS: Unmustered Vassal can be any not currently
+    Mustered, including that of a removed Lord (3.3.1, 4.4.5, 6.0).
+ 
+--- Cards ---
+ 
+F22 MANFREDI holds back Event: An Unmustered Lord with Ritter shown on his mat
+    qualifies. The "Any" Ghibelline Lord symbol governs: Guelphs may not choose
+    a Guelph Lord with Turncoat Ritter (4.7.6).
+ 
+Page 54, S21 SOVRINTENDENTE Capability: Even though the card no Lords symbol,
+    any Ghibelline Lord can Levy this Capability per 3.4.3.
+ 

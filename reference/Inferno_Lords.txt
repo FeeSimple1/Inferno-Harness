@@ -1,0 +1,357 @@
+INFERNO - LORDS REFERENCE
+Compiled and verified against Rules of Play (LIVINGRULES_41023),
+Official Errata (10 April 2023), and Playbook.
+=============================================================================
+ 
+TERMINOLOGY NOTES
+-----------------
+- Lord ratings: Fealty (F) / Service (S) / Lordship (L) / Command (C)
+- Vassals have a Service Rating (used for Bribe defense per 4.7.6 and the
+  advanced Vassal Service rule per 3.4.2). Vassals do NOT have Command Ratings.
+- "Comune" (one m) = Commander's second mat (Firenze, Siena only).
+- "Commune" (two m's) = vassal type (Pistoia Commune, Bologna Commune, etc.).
+- Sestieri (Firenze), Terzi (Siena), and Carroccio Special Vassals have NO
+  Vassal Seats. They Muster only at the Leading City (3.4.2 EXCEPTION).
+- Special Vassals (Sestiere, Terzo, Carroccio, Altopascio) cannot be Bribed
+  (4.7.6).
+- Podestà Lords: Firenze, Arezzo, Colle, Lucca, Siena, Pisa (1.5.1).
+  Special Pay, Revolt, removal, Muster, and Tax effects apply.
+- Commanders: Firenze Podestà (Guelph) and Siena Podestà (Ghibelline).
+  Each can attach a second "Comune" mat via Call to Arms (3.5.3).
+ 
+ 
+=============================================================================
+GHIBELLINE LORDS (6 + Siena Comune)
+=============================================================================
+ 
+PISA PODESTÀ
+------------
+Side:     Ghibelline
+Seats:    Pisa, Pontedera, Castiglione della Pescaia
+Ratings:  F:3 / S:3 / L:3 / C:2
+Forces:   1 Cavalieri, 2 Men-at-Arms, 2 Militia
+Assets:   Coin x2, Cart x2, Ship x2, Provender x2
+Notes:    Podestà. Only Lord with Ships (enables Sail per 4.7.3 and Supply
+          via Ports per 4.6.1).
+ 
+Vassals:
+  1. Commune
+     Seat: Pisa | Service Rating: 2
+     Forces: 1 Cavalieri, 2 Armigieri
+  2. Gherardo della Gherardesca
+     Seat: Pontedera | Service Rating: 2
+     Forces: 1 Cavalieri, 1 Man-at-Arms, 1 Militia
+ 
+ 
+WALTHER VON ASTIMBERG
+---------------------
+Side:     Ghibelline
+Seats:    Siena, Casole
+Ratings:  F:3 / S:3 / L:3 / C:3
+Forces:   2 Ritter, 1 Man-at-Arms
+Assets:   Cart x1
+ 
+Vassals:
+  1. Berchtold von Arras
+     Seat: Siena | Service Rating: 4
+     Forces: 1 Ritter, 1 Man-at-Arms, 1 Militia
+  2. Heinrich von Astimberg
+     Seat: Siena | Service Rating: 4
+     Forces: 1 Ritter, 1 Man-at-Arms
+ 
+ 
+ALDOBRANDINO ALDOBRANDESCHI, COUNT OF SANTA FIORA
+-------------------------------------------------
+Side:     Ghibelline
+Seats:    Santa Fiora, Grosseto
+Ratings:  F:5 / S:2 / L:1 / C:2
+Forces:   1 Cavalieri, 1 Light Horse, 1 Berrovieri, 1 Man-at-Arms, 1 Armigieri
+Assets:   Coin x1, Cart x1, Provender x1
+ 
+Vassals:
+  1. Grosseto Commune
+     Seat: Grosseto | Service Rating: 2
+     Forces: 1 Berrovieri, 1 Armigieri, 1 Militia
+  2. Uguccione Casali (Cortona's Exiled)
+     Seat: Santa Fiora | Service Rating: 4
+     Forces: 1 Cavalieri, 1 Militia
+ 
+ 
+COUNT GIORDANO DI AGLIANO
+-------------------------
+Side:     Ghibelline
+Seats:    Siena, Massa Marittima
+Ratings:  F:4 / S:3 / L:3 / C:3
+Forces:   3 Ritter, 2 Men-at-Arms, 2 Militia
+Assets:   Cart x3
+ 
+Vassals:
+  1. Hohenstaufen - Royal Naples
+     Seat: Siena | Service Rating: 4
+     Forces: 1 Cavalieri, 1 Armigieri, 1 Militia
+  2. Massa Marittima Commune
+     Seat: Massa Marittima | Service Rating: 2
+     Forces: 1 Berrovieri, 2 Militia
+ 
+ 
+SIENA PODESTÀ
+-------------
+Side:     Ghibelline
+Seats:    Siena, Asinalunga
+Ratings:  F:5 / S:3 / L:3 / C:2
+Forces:   1 Cavalieri, 2 Men-at-Arms
+Assets:   Coin x2, Cart x2, Provender x2
+Notes:    Podestà. COMMANDER (Leading City of the Ghibellines).
+          Adds Siena Comune mat via Call to Arms (3.5.3).
+ 
+Vassals:
+  1. Buonincontro Guastelloni
+     Seat: Siena | Service Rating: 3
+     Forces: 1 Man-at-Arms, 1 Militia
+  2. Cacciaconti (Lords of Asinalunga)
+     Seat: Asinalunga | Service Rating: 2
+     Forces: 1 Light Horse, 1 Militia
+ 
+ 
+PROVENZANO SALVANI, CAPITANEUS
+------------------------------
+Side:     Ghibelline
+Seats:    Siena, San Quirico
+Ratings:  F:5 / S:3 / L:3 / C:2
+Forces:   1 Ritter, 1 Man-at-Arms, 1 Militia
+Assets:   Cart x1, Provender x1
+ 
+Vassals:
+  1. Farinata degli Uberti (Florentine Exile)
+     Seat: Siena | Service Rating: 5
+     Forces: 1 Cavalieri, 1 Armigieri, 1 Militia
+  2. Guglielmino Ubertini (Exiled Bishop of Arezzo)
+     Seat: San Quirico | Service Rating: 2
+     Forces: 1 Cavalieri, 1 Armigieri, 1 Man-at-Arms
+  3. Guido Novello Guidi (Exile)
+     Seat: Siena | Service Rating: 2
+     Forces: 1 Light Horse, 1 Man-at-Arms
+ 
+ 
+SIENA COMUNE
+------------
+Side:     Ghibelline (attached to Siena Podestà as Commander second mat)
+Notes:    No Lord ratings. Enters play only via Call to Arms (3.5.3).
+          Removed with Commander or when Forces are gone (1.6).
+          If Mustered, must include Carroccio plus at least one Terzo.
+ 
+Special Vassals (no Vassal Seats - Muster at Siena only):
+  - Carroccio
+    Forces: 1 Cavalieri, 1 Villici
+    VP if captured: 2 VP to Guelphs (5.1, 4.4.3)
+    Musters only in Call to Arms.
+    If retreated intact, Lords shift Service only 1 box left (4.4.3 EXCEPTION).
+  - Terzo di Camollia
+    Service Rating: 2 | Muster die: 4
+    Forces: 1 Cavalieri, 1 Armigieri, 1 Villici
+  - Terzo di San Martino
+    Service Rating: 2 | Muster die: 4
+    Forces: 1 Cavalieri, 1 Armigieri, 1 Villici
+  - Terzo di Città
+    Service Rating: 2 | Muster die: 5
+    Forces: 1 Cavalieri, 1 Armigieri, 1 Villici
+ 
+Assets: Coin x2, Cart x4
+ 
+ 
+=============================================================================
+GUELPH LORDS (6 + Firenze Comune)
+=============================================================================
+ 
+ORVIETO CAPITANEUS
+------------------
+Side:     Guelph
+Seats:    Orvieto Outpost, Chiusi
+Ratings:  F:5 / S:3 / L:2 / C:3
+Forces:   1 Cavalieri, 1 Light Horse, 1 Man-at-Arms, 1 Armigieri
+Assets:   Cart x2
+Notes:    Main Seat is an Outpost (1.3.1) - only the owning Lord may enter.
+          Excluded from F23 Via Francigena Capability.
+ 
+Vassals:
+  1. Sinibaldo Rubini di Orvieto
+     Seat: Orvieto | Service Rating: 3
+     Forces: 1 Cavalieri, 1 Man-at-Arms
+  2. Orvietani & Perugini Reserve
+     Seat: Orvieto | Service Rating: 2
+     Forces: 2 Militia
+ 
+ 
+GUIDO GUERRA GUIDI, CAPITANEUS PRO ECCLESIA
+-------------------------------------------
+Side:     Guelph
+Seats:    Poppi, Lombardia-Bologna East Outpost, Lombardia-Bologna West Outpost
+Ratings:  F:3 / S:4 / L:2 / C:2
+Forces:   1 Cavalieri, 1 Armigieri, 1 Militia
+Assets:   Cart x3
+Notes:    Not a Podestà (no Urban Army exception when Besieged).
+          Excluded from F23 Via Francigena Capability.
+ 
+Vassals:
+  1. Pistoia Comune
+     Seat: Lombardia-Bologna West Outpost | Service Rating: 2
+     Forces: 1 Berrovieri, 1 Man-at-Arms, 1 Militia
+  2. Lombardia (Guelph League)
+     Seats: Lombardia-Bologna East & West Outposts | Service Rating: 2
+     Forces: 1 Cavalieri, 2 Men-at-Arms
+  3. Bologna Comune
+     Seats: Lombardia-Bologna East & West Outposts | Service Rating: 2
+     Forces: 1 Light Horse, 1 Armigieri, 1 Militia
+ 
+ 
+AREZZO PODESTÀ
+--------------
+Side:     Guelph
+Seats:    Arezzo, Montevarchi
+Ratings:  F:3 / S:3 / L:2 / C:2
+Forces:   1 Cavalieri, 1 Berrovieri, 1 Man-at-Arms, 1 Armigieri, 1 Militia
+Assets:   Coin x1, Cart x2, Provender x2
+Notes:    Podestà.
+ 
+Vassals:
+  1. Bishop Donatello Tarlati
+     Seat: Arezzo | Service Rating: 2
+     Forces: 2 Berrovieri, 1 Armigieri, 1 Militia
+  2. Montevarchi Comune
+     Seat: Montevarchi | Service Rating: 2
+     Forces: 1 Armigieri, 1 Militia
+ 
+ 
+FIRENZE PODESTÀ
+---------------
+Side:     Guelph
+Seats:    Firenze, Prato, Poggio Bonizio
+Ratings:  F:5 / S:3 / L:3 / C:2
+Forces:   2 Cavalieri, 2 Men-at-Arms
+Assets:   Coin x2, Cart x2, Provender x2
+Notes:    Podestà. COMMANDER (Leading City of the Guelphs).
+          Adds Firenze Comune mat via Call to Arms (3.5.3).
+ 
+Vassals:
+  1. Cerchi Family
+     Seat: Firenze | Service Rating: 2
+     Forces: 1 Light Horse, 1 Militia
+  2. Prato Comune
+     Seat: Prato | Service Rating: 2
+     Forces: 1 Man-at-Arms, 1 Militia
+  3. Adimari Family
+     Seat: Firenze | Service Rating: 2
+     Forces: 1 Cavalieri, 1 Armigieri, 1 Militia
+ 
+ 
+COLLE PODESTÀ
+-------------
+Side:     Guelph
+Seats:    Colle, San Gimignano
+Ratings:  F:4 / S:3 / L:2 / C:2
+Forces:   1 Cavalieri, 1 Armigieri, 1 Militia
+Assets:   Coin x1, Cart x1, Provender x1
+Notes:    Podestà.
+ 
+Vassals:
+  1. San Gimignano Comune
+     Seat: San Gimignano | Service Rating: 3
+     Forces: 1 Man-at-Arms
+  2. San Miniato Comune
+     Seat: San Miniato | Service Rating: 3
+     Forces: 1 Berrovieri, 1 Armigieri
+  3. Antonio Incontri (Volterra Exiles)
+     Seat: Colle | Service Rating: 3
+     Forces: 1 Light Horse, 2 Armigieri
+  4. Aldobrandino Rosso (Count of Pitigliano)
+     Seat: Colle | Service Rating: 2
+     Forces: 1 Berrovieri, 1 Militia
+ 
+ 
+LUCCA PODESTÀ
+-------------
+Side:     Guelph
+Seats:    Lucca, Altopascio
+Ratings:  F:4 / S:2 / L:2 / C:2
+Forces:   1 Cavalieri, 1 Man-at-Arms, 1 Militia
+Assets:   Coin x2, Cart x2, Provender x2
+Notes:    Podestà.
+ 
+Vassals:
+  1. Tommaso & Anfrione degli Obizzi
+     Seat: Lucca | Service Rating: 4
+     Forces: 1 Berrovieri, 2 Armigieri
+ 
+ 
+FIRENZE COMUNE
+--------------
+Side:     Guelph (attached to Firenze Podestà as Commander second mat)
+Notes:    No Lord ratings. Enters play only via Call to Arms (3.5.3).
+          Removed with Commander or when Forces are gone (1.6).
+          If Mustered, must include Carroccio plus at least one Sestiere.
+ 
+Special Vassals (no Vassal Seats - Muster at Firenze only):
+  - Carroccio
+    Forces: 1 Cavalieri, 1 Villici
+    VP if captured: 2 VP to Ghibellines (5.1, 4.4.3)
+    Musters only in Call to Arms.
+    If retreated intact, Lords shift Service only 1 box left (4.4.3 EXCEPTION).
+  - Sixth of Porta San Piero
+    Service Rating: 2 | Muster die: 3
+    Forces: 2 Cavalieri, 1 Villici
+  - Sixth of Porta del Duomo
+    Service Rating: 2 | Muster die: 3
+    Forces: 1 Cavalieri, 1 Armigieri, 1 Villici
+  - Sixth of San Brancazio
+    Service Rating: 2 | Muster die: 3
+    Forces: 1 Cavalieri, 1 Armigieri, 1 Villici
+  - Sixth of Borgo SS. Apostoli
+    Service Rating: 2 | Muster die: 3
+    Forces: 1 Cavalieri, 1 Armigieri, 1 Villici
+  - Sixth of San Pier Scheraggio
+    Service Rating: 2 | Muster die: 3
+    Forces: 1 Cavalieri, 1 Armigieri, 1 Villici
+  - Sixth of Oltrarno
+    Service Rating: 2 | Muster die: 3
+    Forces: 1 Cavalieri, 1 Armigieri, 1 Villici
+ 
+Assets: Coin x2, Cart x4
+ 
+ 
+=============================================================================
+SET-ASIDE SPECIAL VASSAL
+=============================================================================
+ 
+ALTOPASCIO (Tau Company)
+------------------------
+Side:     Guelph (Firenze OR Lucca)
+Type:     Special Vassal, set aside at start
+Seat:     Altopascio (must be Friendly to Muster)
+Forces:   1 Cavalieri
+Notes:    Activated only when Tau Company Capability (F22) is in play.
+          Tau Company gives Firenze and Lucca Lordship +1 each (every Muster
+          and Call to Arms it is in effect, whether or not Altopascio is
+          Mustered).
+          Either Firenze or Lucca may Muster Altopascio for 0 actions per
+          usual Vassal Muster rules (3.4.2).
+          Discard of Tau Company Capability Disbands Altopascio.
+          Cannot be Bribed (4.7.6 - Special Vassals are immune).
+ 
+ 
+=============================================================================
+ROSTER SUMMARY
+=============================================================================
+Total: 14 mats (12 Lord mats + 2 Comune mats)
+ 
+Ghibelline (7 mats):
+  Pisa Podestà, Walther von Astimberg, Santa Fiora, Giordano,
+  Siena Podestà (Commander) + Siena Comune, Provenzano Salvani
+ 
+Guelph (7 mats):
+  Orvieto, Guido Guerra, Arezzo Podestà,
+  Firenze Podestà (Commander) + Firenze Comune, Colle Podestà, Lucca Podestà
+ 
+Six Podestà (1.5.1): Firenze, Arezzo, Colle, Lucca, Siena, Pisa.
+Two Commanders (1.5.1): Firenze (Guelph Leading City), Siena (Ghibelline
+                        Leading City).
+ 

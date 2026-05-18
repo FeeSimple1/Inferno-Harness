@@ -1,0 +1,1222 @@
+================================================================================
+INFERNO – ARTS OF WAR CARD REFERENCE
+================================================================================
+Source: Inferno Playbook (Background Book), Arts of War – Notes (pp. 33-55)
+Errata applied: Official Errata 10 April 2023
+
+Card structure: each card has an upper Event (fleeting, 3.1.3) and a lower
+Capability (lasting, 3.4.4). Only one section is in effect at a time. When
+card text contradicts the rules, card text takes precedence (1.9.1).
+
+Bold-italic markers in card text:
+  Hold        – keep drawn Event hidden for later use at holder's discretion.
+  This Levy   – Event in effect to end of current Levy.
+  This Campaign – Event in effect to end of current Campaign.
+  This Lord   – Capability tied to a specific Lord's mat.
+
+================================================================================
+GUELPH EVENTS (top half of card)
+================================================================================
+
+--------------------------------------------------------------------------------
+F1. AMBUSH
+--------------------------------------------------------------------------------
+Text:  Hold: Play as Enemy Avoids Battle (4.3.4). Enemy chooses 1 Avoiding
+       Lord to Battle or Withdraw instead.
+Lords: Any Ghibelline.
+Tips:  Play after one or a group of inactive Lords declare Avoid Battle
+       (4.3.4) forces the owner to choose any one of those Lords (including
+       Commander with Comune) to instead stay in the Locale and either Defend
+       in Battle or Withdraw into a Friendly Stronghold there (if it has one).
+       Other Avoiding Lords must depart.
+
+--------------------------------------------------------------------------------
+F2. BETRAYALS
+--------------------------------------------------------------------------------
+Text:  For each Stronghold with any Guelph Siege markers, roll on Revolt
+       table or add 1 Treachery.
+Lords: Any Guelph (for Treachery).
+Tips:  Count the number of Sieges underway by the side playing the card (each
+       Besieged Enemy Stronghold counts as one). That side may choose to roll
+       on its Revolt table a number of times (1.4.2) plus select and add a
+       number of currently set-aside Treachery cards to its Command deck
+       (1.4.3) in sum equal to that number of Besieged Strongholds. The
+       player may see the outcome of a Revolt roll before deciding what to
+       choose next.
+
+--------------------------------------------------------------------------------
+F3. SURPRISE
+--------------------------------------------------------------------------------
+Text:  Hold: Play upon Besieging a Stronghold where no other Lord (4.3.5).
+       Place 2 Siege (not 1). Then Storm up to 3 Rounds, Walls -2.
+Lords: Any Guelph.
+Tips:  The Lord involved must be of the side playing the card and may not be
+       a group (neither Commander with other Lords nor a Lieutenant, but may
+       be a Commander with Comune). The Lord must have just Marched to an
+       Enemy Stronghold Locale where there are neither Enemy nor Friendly
+       Lords already. Place two Siege markers instead of the usual one
+       (4.3.5). An immediate Storm for at least one Round is mandatory
+       (4.5.2), costing no actions, and may continue to three Rounds even
+       though there are only two Siege markers. Walls -2 means treat Walls
+       1-4 as Walls 1-2 (or 1-3 if Walls +1 marker). Siegeworks of two
+       markers will give the Attacker Walls 1-2 (4.5.2).
+
+--------------------------------------------------------------------------------
+F4. SUDDEN CLASH
+--------------------------------------------------------------------------------
+Text:  Hold: Play on a Guelph Lord in Battle. Round 1, that Lord's Horse
+       Melee precedes all Archery and selects its targets.
+Lords: Any Guelph.
+Tips:  Use of the Event shifts Melee by Horse units on one mat (not a
+       Commander's Podestà and Comune both) of the playing side in Round 1
+       ahead of both sides' Archery in the Strike Initiative order (4.4.2).
+       If both sides play Sudden Clash, the selected Defending Lord's Horse
+       Melee is first, then affected Attacker's, then the rest. Also, that
+       Lord's Horse Melee Round 1 selects targets as described under 4.4.2
+       ASSIGN HITS TO UNITS.
+
+--------------------------------------------------------------------------------
+F5. ROAD WORKS – Woodcutters clear the way
+--------------------------------------------------------------------------------
+Text:  This Campaign Guelph Lords treat Track as Road and move Laden as if
+       Unladen.
+Lords: All Guelphs.
+Tips:  Any Guelph this March can take up to two Provender per Cart Unladen,
+       but not more than that. Also, the first such March Way costs 0
+       actions even if Track (4.3.2-.3). Discard the card at Turn's end.
+
+--------------------------------------------------------------------------------
+F6. HILLS
+--------------------------------------------------------------------------------
+Text:  Hold: May play Defending in Battle. Double Guelph Archery Hits, added
+       Hits as Bowmen not Crossbow.
+Lords: All Guelphs.
+Tips:  Play Hills at the outset of Battle (4.4.1 Events), not in Storm and
+       only if Defending. It increases the Hits from all of your side's
+       Archery throughout that Battle. It does not affect Melee. Total all
+       Hits against each target Lord, double that amount, then round. Any
+       added Hits from doubling Crossbow Archery do not reduce Enemy Armor
+       and never select their targets (4.4.2 ASSIGN HITS TO UNITS). Round
+       any such odd or half Hits to count as Crossbows.
+       EXAMPLE: Firenze with its Comune Flanking Strike a single Ghibelline
+       Lord. The Podestà has 3x Militia and Arcieri, which would usually
+       total three Archery Hits. The Comune has 5x Armigeri with Balestrieri
+       and Palvesari, which usually would add five Crossbow Hits (-2 to
+       Armor) that select targets. If Defending with Hills, the two Firenze
+       mats Striking a single Ghibelline Lord would double the usual eight
+       Archery Hits to a mighty 16 Hits, of which still only five Hits would
+       count as Crossbows and thus select their targets and apply a -2 to
+       Armor Protection rolls.
+
+--------------------------------------------------------------------------------
+F7. GREEK FIRE
+--------------------------------------------------------------------------------
+Text:  Hold: Play on Besieging Lord to reduce to 1 Siege marker, remove 1 of
+       his units, and discard 1 of his "This Lord" Capabilities.
+Lords: Any Ghibelline.
+Tips:  Play at any time (even in the midst of Storm). Choose any one Enemy
+       Lord outside any Besieged Stronghold (the Lord need not be Active).
+       Select one unit and one "This Lord" Capability card (if any) at his
+       mat(s): he removes that unit to the pool and discards that card.
+       Remove any Siege markers there beyond one.
+
+--------------------------------------------------------------------------------
+F8. SWAMP
+--------------------------------------------------------------------------------
+Text:  Hold: May play Defending in non-Summer Battle. Ghibelline Horse does
+       not Strike in Round 1.
+Lords: All Ghibellines.
+Tips:  Play at the outset of Battle (4.4.1 Events), not Storm, not on Attack,
+       and not if the current Turn is in Summer. It prevents all Horse units
+       of all Enemy Lords from Striking in the first Round. It does affect
+       their ability to absorb Hits.
+
+--------------------------------------------------------------------------------
+F9. GENOVA breaks Pisan blockade
+--------------------------------------------------------------------------------
+Text:  Shift Firenze, Lucca, and Colle cylinder or Service 1 Calendar box
+       each or add 1 of their Treachery.
+Lords: Firenze, Lucca, and Colle.
+Tips:  The Guelph player chooses the direction of all shifts so would shift
+       all these Friendly cylinders on the Calendar left and Service markers
+       right. Instead, the player could select any one Treachery card that is
+       currently set aside (not one already available or in the Plan) to add
+       to the Guelph Command deck.
+
+--------------------------------------------------------------------------------
+F10. CLOSED GATES
+--------------------------------------------------------------------------------
+Text:  Remove 1 gold Ruins or, if none, remove 1 purple Ruins where
+       Stronghold then eligible for Revolt (1.4.1); it Revolts (1.4.4).
+Lords: None.
+Tips:  Remove any one Ruins giving the other side ½VP. If there are none on
+       the map, instead replace a Ruins benefitting your side with Allegiance
+       markers equal to the Stronghold Value. Eligible means that there
+       cannot be an Enemy Lord there or adjacent. [Errata: "or adjacent"
+       added.]
+
+--------------------------------------------------------------------------------
+F11. POGGIO BONIZIO answers Firenze's call
+--------------------------------------------------------------------------------
+Text:  Hold: Play if Poggio Bonizio Guelph to give a Lord Lordship +3 OR add
+       1 Treachery.
+Lords: Any Guelph.
+Tips:  Play the Event only at any moment that Poggio Bonizio (near map
+       center) is free of Ghibelline 1VP (gold) Allegiance markers. Play it
+       during either Muster (3.4) or, if declared, Call to Arms Allies
+       (3.5.4) to add three to the Lordship rating of any one Guelph Lord.
+       Or play it to select any one set-aside Guelph Treachery card—not one
+       then in the Plan—to add to the Command deck.
+
+--------------------------------------------------------------------------------
+F12. CAMP ATTACK
+--------------------------------------------------------------------------------
+Text:  Hold: My play in Battle. Round 1, take 2 Assets from each Enemy Lord
+       there as Spoils, then remove 2 more from each.
+Lords: All Ghibellines.
+Tips:  Play Camp Attack at the outset of Battle (4.4.1 Events), not Storm.
+       Take and remove Enemy Assets as specified on the card (including from
+       both a Commander's Podestà and Comune as separate Lords) at any one
+       time during Round 1, distributing taken Assets among Friendly Lords
+       at the Battle (4.4.3) even if Conceding the Field. Spoils may not
+       include Ships, but removed Assets may (representing other affairs
+       diverting the Pisan navy).
+
+--------------------------------------------------------------------------------
+F13. NO TIME FOR COWARDS
+--------------------------------------------------------------------------------
+Text:  Shift Firenze, Arezzo, and Lucca cylinders or Service 1 Calendar box
+       each or add 1 of their Treachery.
+Lords: Firenze, Arezzo, Lucca.
+Tips:  The Guelph player chooses the direction of shifts (Friendly cylinders
+       left and Service markers right) or instead selects any one set-aside
+       Guelph Treachery card to add to the Command deck.
+
+--------------------------------------------------------------------------------
+F14. PROVENZANO sent as ambassador
+--------------------------------------------------------------------------------
+Text:  If Guelph Siege underway, shift Provenzano cylinder or Service 2
+       Calendar boxes or add 1 Treachery.
+Lords: Provenzano (for shift) or any Guelph (for Treachery).
+Tips:  Implement this Event only if at least one Guelph (purple) Siege marker
+       is somewhere on the map. The Guelph player chooses whether to shift
+       Provenzano's cylinder right or Service marker left (if either is on
+       the Calendar) or to add any one set-aside Treachery card to the
+       Guelph Command deck.
+
+--------------------------------------------------------------------------------
+F15. CASOLE
+--------------------------------------------------------------------------------
+Text:  Hold: Play for Firenze Treachery at a Castle to succeed for 0 Coin or
+       to add Firenze Treachery.
+Lords: Firenze.
+Tips:  Play at the moment that Firenze's Podestà uses his Treachery card for
+       Revolt (4.7.5) or Bribe (4.7.6) when the target is or is at a Castle
+       for that Treachery to succeed automatically without committing or
+       paying any Coin. For Revolt, the Castle must be eligible (1.4.1). Or
+       play whenever Firenze's Treachery card (only) remains or has been set
+       aside (neither in the Command deck nor in the Plan) to add it to the
+       Guelph deck.
+
+--------------------------------------------------------------------------------
+F16. A BLOODY RED STREAM – Desperate stand
+--------------------------------------------------------------------------------
+Text:  Hold: Play in Battle for first Guelph Lord who Routs instead to roll
+       each unit's Protection now to recover from Rout.
+Lords: Any Guelph.
+Tips:  Play at the outset of Battle (4.4.1 Events). At the first moment
+       (only) in that Battle that absorbing a Hit causes a Guelph Lord to
+       Rout (4.4.2, possibly either a Commander's Podestà or Comune), pause
+       and roll each of his Routed units' unmodified Protection as if
+       checking for Loss (4.4.4)—success shifts those units back up into
+       the Forces section of their mat; failure has no effect. If at least
+       one Routed unit recovers, that Lord does not (yet) Rout. Then continue
+       with any additional Hits and Battle steps.
+
+--------------------------------------------------------------------------------
+F17. FOREIGN HELP
+--------------------------------------------------------------------------------
+Text:  Shift Guido or Orvieto Service 2 boxes or, if desired, set aside 1
+       Treachery from Guelph deck to shift their cylinders left to current
+       Levy.
+Lords: Guido Guerra or Orvieto (for shifts) and any Guelph (for Treachery).
+Tips:  Shift Service right, or instead select any one Guelph Treachery card
+       already acquired for and still in the Guelph Command deck (not from
+       the Plan) to set aside again in order to shift one or both Guido
+       Guerra's or Orvieto's cylinder into the current Turn's box from
+       anywhere on the Calendar to the right of that box. If neither Service
+       marker is on the Calendar, the Guelph player may but is not required
+       to so set aside a Treachery card. If setting aside a Treachery card
+       and only one of the two named Lords has a cylinder on the Calendar to
+       the right of the current Turn, the player may move that cylinder only.
+
+--------------------------------------------------------------------------------
+F18. GROSSETO
+--------------------------------------------------------------------------------
+Text:  Hold: Play for Treachery at Grosseto to succeed for 0 Coin or, if
+       Grosseto Guelph, to shift Santa Fiora cylinder or Service 2 boxes.
+Lords: Any Guelph (for Treachery) and Santa Fiora (for shifts).
+Tips:  For the first option, play for any Guelph Treachery Revolt or Bribe
+       (4.7.5 or 4.7.6) to succeed automatically without committing or paying
+       any Coin, as long as the target is or is at Grosseto. For Revolt,
+       Grosseto must be eligible (1.4.1).
+       [Errata: last sentence beginning "The benefit..." deleted.]
+       For the second option, play at any time that Grosseto is marked with
+       Guelph Allegiance markers to shift Santa Fiora's cylinder right (if
+       on the Calendar) or his Service marker left (if he is Mustered).
+
+--------------------------------------------------------------------------------
+F19. VOLTERRA
+--------------------------------------------------------------------------------
+Text:  Hold: Play for Treachery at Volterra to succeed for 0 Coin or, if
+       Volterra Guelph, to shift Pisa cylinder or Service 2 boxes.
+       [Errata: "to use" replaced with "for".]
+Lords: Any Guelph (for Treachery) and Pisa (for shifts).
+Tips:  See Event F18 Grosseto: Volterra works the same, applied instead to
+       the Town of Volterra or to Pisa's Podestà.
+
+--------------------------------------------------------------------------------
+F20. HEAT & FROST
+--------------------------------------------------------------------------------
+Text:  Play before Feed in Summer or Winter for Wastage (4.9.5) now, twice
+       at Siege or if Moved / Fought. If Summer, remove 1 Ritter.
+Lords: All Ghibellines and all Guelphs.
+Tips:  Implement the Event only if Summer or Winter and immediately before
+       any Lord(s) having Moved/Fought triggers Feed (4.8.1). All Lords of
+       both sides conduct Wastage, each proceeding twice through 4.9.5 if at
+       a Locale with Siege markers or marked Moved/Fought. The removed unit
+       goes to the pool, not Captured Knights.
+
+--------------------------------------------------------------------------------
+F21. PRIMO POPOLO – Guelph merchant class
+--------------------------------------------------------------------------------
+Text:  Shift Firenze or Arezzo cylinder or Service 2 Calendar boxes or add
+       1 of their Treachery.
+Lords: Firenze or Arezzo.
+Tips:  Shift cylinder left or Service right. Add Treachery only if that card
+       is set aside (not already added or in the Plan).
+
+--------------------------------------------------------------------------------
+F22. MANFREDI holds back
+--------------------------------------------------------------------------------
+Text:  Select a Lord with Ritter. Shift his cylinder or Service 1 Calendar
+       box or remove 3 of his Assets.
+       [Errata: "Ghibelline" deleted from "a Ghibelline Lord with Ritter".]
+Lords: Any Ghibelline (who has or has obtained at least one Ritter).
+Tips:  The Lord affected must have at least one Ritter unit in his mat's
+       Forces area. It can be a Lord who has obtained a Ritter via Ransom,
+       including either Siena mat. As the Lord involved is Enemy, shift his
+       cylinder right or Service left. Alternatively, select up to three
+       total of his Coin, Loot, Provender, Carts, and/or Ships and remove
+       them to the Asset markers pool.
+       [Clarification: An Unmustered Lord with Ritter shown on his mat
+       qualifies. The "Any" Ghibelline Lord symbol governs: Guelphs may not
+       choose a Guelph Lord with Turncoat Ritter (4.7.6).]
+
+--------------------------------------------------------------------------------
+F23. TREASURERS
+--------------------------------------------------------------------------------
+Text:  Hold: Play to pay 2 Coin to declare Call to Arms OR to add 1 Treachery.
+Lords: Any Guelph.
+Tips:  To use the Event, the Guelphs must be able to remove two Coin total
+       from any Guelph Lord(s), (who may be Besieged). Play as desired during
+       any Call to Arms segment to trigger Call to Arms, including after the
+       Ghibellines have declined to declare Call to Arms. Or play at any time
+       to pay the Coin to select any set-aside Guelph Treachery card to add
+       to the Guelph Command deck.
+
+--------------------------------------------------------------------------------
+F24. DOCTORS
+--------------------------------------------------------------------------------
+Text:  Hold: Play in Battle or Storm for Firenze and Arezzo each to restore
+       to their Forces half of their Lost units (round up).
+Lords: Firenze and Arezzo.
+Tips:  Play at the outset of a Battle or Storm (4.4.1 Events). At the end,
+       after all Loss rolls (4.4.4), Arezzo, Firenze Podestà, and Firenze
+       Comune, whichever are involved in the combat, each separately restore
+       half their Lost units, including any Knights that received Quarter.
+
+--------------------------------------------------------------------------------
+F25. VAL D'ORCIA – War
+--------------------------------------------------------------------------------
+Text:  If a Castle marked Guelph, shift Colle cylinder or Service 3 Calendar
+       boxes. Guelphs may declare Call to Arms.
+Lords: Colle (for shift).
+Tips:  Conduct shift (cylinder left or Service right) at the moment of
+       drawing the Event if any originally Ghibelline Castle (not Town or
+       City) has Guelph 1VP markers. The Capability on the card will not be
+       available that Levy. After Muster, Guelphs may trigger Call to Arms
+       if desired (3.5), regardless of whether the rest of the Event text
+       applied.
+
+--------------------------------------------------------------------------------
+F26. MONTALCINO – War
+--------------------------------------------------------------------------------
+Text:  If a Town marked Guelph, shift Firenze, Arezzo, AND Orvieto cylinder
+       or Service 1 box each. Guelphs may declare Call to Arms.
+Lords: Firenze, Arezzo, and Orvieto (for shifts).
+Tips:  Conduct shifts (cylinders left or Service right) at the moment of
+       drawing the Event if any originally Ghibelline Town (not Castle or
+       City) has Guelph 1VP markers. The Capability on the card will not be
+       available that Levy. After Muster, Guelphs may trigger Call to Arms
+       if desired (3.5), regardless of whether the rest of the Event text
+       applied.
+
+================================================================================
+GUELPH CAPABILITIES (bottom half of card)
+================================================================================
+
+--------------------------------------------------------------------------------
+F1. STORES & WELL WATER
+--------------------------------------------------------------------------------
+Text:  Guelph Seats each can Supply up to 4 Provender, even to a Lord
+       Besieged there.
+Lords: All Guelphs.
+Tips:  With Stores & Well Water in effect, Supply can provide up to four
+       Provender from each Seat used as a Source, rather than Provender
+       equal to Stronghold Size, including from Ruined Seats and from
+       Outposts. The Capability also allows a Lord to take Supply actions
+       while Besieged at his own Seat, using that Seat as a Source. Supply
+       otherwise still follows the usual rules, including the need for
+       Transport (4.6). Stores & Well Water does not affect Supply using
+       Ships and Ports.
+
+--------------------------------------------------------------------------------
+F2. GUASTATORI – Sappers
+--------------------------------------------------------------------------------
+Text:  This Lord's Siege adds 2 markers instead of 1. His Pass (4.7.7)
+       replaces Enemy Siege there with Bypass.
+Lords: Any Guelph.
+Tips:  A Lord with Guastatori when first Besieging a Stronghold still places
+       just a single Siege marker (4.3.5). With enough Lords present to add
+       markers by the usual Siege rules (4.5.1), he would add two markers
+       instead of one when taking a Siege action, so increasing markers from
+       one to three or from two to four (maximum) on a single card. If
+       Besieged, a Lord with Guastatori when activated by his Command actions
+       or Treachery card could Pass (and do nothing else, 4.7.7) to remove
+       all Enemy Siege markers and place Bypass on the Enemy Lords at his
+       Locale. A Comune mat with this card gives the Commander the effects.
+       Other Lords at a Siege than the Lord with Guastatori do not gain
+       either effect.
+
+--------------------------------------------------------------------------------
+F3. SIEGE TOWERS
+--------------------------------------------------------------------------------
+Text:  This Lord Attacking in Storm from Round 2 on Strikes first with
+       Archery and Melee.
+Lords: Any Guelph.
+Tips:  Any Lord with Siege Towers at a Storm Locale gains the benefit; it
+       need not be the Lord taking the Storm action. A Commander's Podestà
+       or Comune mat with this card gets the effect, not both. On Round 1,
+       there is no effect. For Round 2 and all later Rounds, Initiative
+       order is all this Lord's Strikes first, then continue in the normal
+       order for Garrison and other Lords (4.4.2, 4.5.2 STRONGHOLD EFFECTS).
+
+--------------------------------------------------------------------------------
+F4. TREBUCHETS
+--------------------------------------------------------------------------------
+Text:  This Lord Unrouted at Storm or Sally where 3-4 Siege reduces Enemy
+       Siegeworks or Walls -1.
+Lords: Any Guelph.
+Tips:  Any Lord mat with this card participating in a Storm or Sally grants
+       the effect to its entire side, so long as that mat (including a
+       Commander's Podestà or Comune mat separately) has not Routed.
+       EXAMPLES: Storming with Trebuchets reduces Walls 1-4 to Walls 1-3
+       (4.5.2). Sallying with Trebuchets against three Siege markers reduces
+       Siegeworks to Walls 1-2 (4.5.3).
+
+--------------------------------------------------------------------------------
+F5. WAR ENGINEERS
+--------------------------------------------------------------------------------
+Text:  This Lord's Siege adds marker to any size Stronghold. Besieged, he
+       can use entire Command to reduce to 1 Siege there.
+Lords: Any Guelph.
+Tips:  A Lord with War Engineers can upon his Siege action add a marker
+       regardless of Stronghold Size or how many Lords are present. "Entire
+       Command" means this Lord when Besieged may devote all actions on his
+       Command action card (not a Treachery card) to remove all but one
+       Enemy Siege marker there. A Comune mat with this card gives the
+       Commander the effect.
+
+--------------------------------------------------------------------------------
+F6 & F7. FEDITORI – Vanguard knights
+--------------------------------------------------------------------------------
+Text:  Up to 4 of this Lord's Cavalieri in Battle Melee Strike x2 Rounds 1
+       and 2.
+Lords: Any Guelph.
+Tips:  Feditori has no effect in Storm or from Round 3 of Battle on. A
+       Commander's Podestà or Comune mat with this card gets the effect,
+       not both mats. A mat may have only one Feditori card.
+
+--------------------------------------------------------------------------------
+F8. BALESTRE GROSSE – Large crossbows
+--------------------------------------------------------------------------------
+Text:  This Lord's Men-at-Arms in Storm have Crossbows x½, -2 to target's
+       Armor, that select targets if Defending.
+Lords: Any Guelph.
+Tips:  Balestre Grosse has no effect in Battle and, in Storm, enables this
+       Lord's Men-at-Arms Crossbows to select targets (4.4.2 ASSIGN HITS)
+       only if Defending, not if Attacking. Crossbow units Strike with both
+       Missile and Melee. Palvesari do not affect Balestre Grosse Men-at-Arms
+       Crossbows because they only enhance Armigeri. A Commander's Podestà
+       or Comune mat with this card gets the effect, not both mats (should
+       a Comune obtain Turncoat Men-at-Arms).
+
+--------------------------------------------------------------------------------
+F9-F11. BALESTRIERI – Crossbowmen
+--------------------------------------------------------------------------------
+Text:  Up to 3 of this Lord's Armigeri have Crossbows x1, -2 to target Armor,
+       that select targets in Storm Defense.
+Lords: Any Guelph.
+Tips:  Balestrieri give up to three of this Lord's Armigeri Crossbow Archery
+       in Battle or Storm, on Attack or Defense. Crossbow units Strike with
+       both Missile and Melee. The Crossbowmen select targets (4.4.2 ASSIGN
+       HITS) only if Defending in Storm, not if in Battle or if Attacking
+       in Storm. See F13-F15/S13-S15 Palvesari, however, which if with the
+       same Lord enable all his Armigeri Crossbows always to select targets.
+       A Commander's Podestà or Comune mat with this card gets the effect,
+       not both mats. A mat may have only one Balestrieri card.
+
+--------------------------------------------------------------------------------
+F12. ARMY RESERVE
+--------------------------------------------------------------------------------
+Text:  Firenze, Arezzo, and Lucca Cavalieri in Battle Melee Strike x2 from
+       Round 3 on.
+Lords: Firenze, Arezzo, and Lucca.
+Tips:  Firenze Podestà, Firenze Comune, Arezzo, and Lucca, whichever are
+       involved in the Battle, each gain the effect. Army Reserve has no
+       effect in Storm or during Rounds 1 or 2 of Battle.
+
+--------------------------------------------------------------------------------
+F13-F15. PALVESARI – Shieldmen
+--------------------------------------------------------------------------------
+Text:  This Lord's Armigeri have Armor 1-4, until 3 Rout. Their Crossbows
+       always select targets.
+Lords: Any Guelph.
+Tips:  Palvesari give the Armor benefit (an increase from Armor 1-2 to Armor
+       1-4) to all that Lord mat's Armigeri units. At the moment that a
+       third Armigeri unit on that mat becomes Routed, the Armor benefit is
+       cancelled for all Armigeri remaining among that mat's Forces. In
+       addition, Palvesari enables all Armigeri Crossbows (using Balestrieri
+       at the same mat) to select their targets (4.4.2 ASSIGN HITS)
+       regardless of Storm or Battle, Attack or Defense, even after three
+       Armigeri rout. A Commander's Podestà or Comune mat with this card
+       gets the effect, not both. A mat may have only one Palvesari card.
+
+--------------------------------------------------------------------------------
+F16 & F17. ARCIERI – Bowmen
+--------------------------------------------------------------------------------
+Text:  This Lord's Militia have Archery x1.
+Lords: Any Guelph.
+Tips:  Bowmen Militia units Strike with both Missile and Melee. A
+       Commander's Podestà or Comune mat with this card gets the effect (if
+       they have Militia), not both mats. A mat may have only one Arcieri
+       card.
+
+--------------------------------------------------------------------------------
+F18. LA CAVALLATA – Long-range raiders
+--------------------------------------------------------------------------------
+Text:  This Lord may pay 1 Prov to use entire Command to Ravage adjacent
+       Locale, not at Unbesieged Enemy Lord.
+Lords: Any Guelph.
+Tips:  This Lord must have or Share (1.5.2) one Provender and use all
+       actions on his Command action card (not a Treachery card) to use this
+       Capability. Expend the Provender and Ravage an adjacent Locale, which
+       for a Ghibelline Lord may be an Unravaged Guelph Outpost. The target
+       Locale may not have an Unbesieged Enemy Lord, even if Bypassed.
+       Otherwise follow Ravage rules—place a Ravaged marker and gain Loot
+       or Provender normally (4.7.2). A Comune mat with this card gives the
+       Commander the effect.
+
+--------------------------------------------------------------------------------
+F19. GUALDANA – Horse marauders
+--------------------------------------------------------------------------------
+Text:  This Lord treats any Horse unit as Berrovieri for Ravage.
+Lords: Any Guelph.
+Tips:  A Lord with Gualdana and any Horse unit(s) on his mat(s) can Ravage
+       for double Provender and Loot (4.7.2) even if none of his units are
+       Berrovieri. A Comune mat with this card gives the Commander the
+       effect, as long as either mat has at least one Horse unit.
+
+--------------------------------------------------------------------------------
+F20. MASNADIERI – Looters
+--------------------------------------------------------------------------------
+Text:  This Lord may Ravage for 0 actions, taking no Loot.
+Lords: Any Guelph.
+Tips:  A Lord with Masnadieri uses zero actions to Ravage instead of one at
+       a Castle or two at a Town or City. The Lord must still be active on
+       his Command actions card and otherwise follow Ravage rules (4.7.2).
+       Masnadieri can combine in effect with Gualdana for double Loot and
+       Provender but does not aid Ravage adjacent with La Cavallata because
+       La Cavallata requires an entire Command card rather than a set
+       number of actions. A Comune mat with Masnadieri gives that Commander
+       the Capability's effect.
+
+--------------------------------------------------------------------------------
+F21. DISTRINGITORES – Officers dress ranks
+--------------------------------------------------------------------------------
+Text:  Each Round after Archery, a Guelph Podestà may roll 2 Routed units'
+       Armor for them to recover.
+Lords: Firenze, Arezzo, Lucca, and Colle.
+Tips:  The owning side each Battle or Storm Round after all Archery and
+       before all Melee that Round selects up to any two Routed units with
+       Armor on that side (so, not Light Horse or Militia). Roll against
+       modified Armor as applicable; Armigeri with Palvesari would roll
+       Armor 1-4, for example. If successful, slide recovered units back up
+       into the mat's Forces section. "A Guelph Podestà" means a single
+       Podestà Lord in Battle or Storm each Round, so may be a Commander's
+       Podestà or Comune mat but not both in the same Round. Only Armored
+       units may roll, not Unarmored Light Horse or Militia.
+
+--------------------------------------------------------------------------------
+F22. TAU COMPANY – Chivalric order
+--------------------------------------------------------------------------------
+Text:  Firenze and Lucca have Lordship +1 and may Muster Altopascio for 0
+       actions.
+Lords: Firenze and Lucca.
+Tips:  Firenze and Lucca each receive the Lordship benefit every Muster and
+       (if declared) Call to Arms segment that Tau Company is in effect,
+       whether or not Altopascio is Mustered to any Lord. Either may Muster
+       Altopascio Special Vassal by the usual Vassal Muster rules, except
+       that the Lord expends no Lordship to do so (3.4.2 ALTOPASCIO).
+       [Errata: sentence beginning "A Comune mat..." deleted.]
+       Ghibelline Bribe may not target Altopascio (4.7.6).
+
+--------------------------------------------------------------------------------
+F23. VIA FRANCIGENA – Pilgrims' road
+--------------------------------------------------------------------------------
+Text:  Guelph Lords except Guido and Orvieto start at any Lord Seat (not
+       Vassal Seat) that is Friendly Command +1.
+Lords: All Guelphs except Guido Guerra and Orvieto.
+Tips:  The effect applies to Firenze, Arezzo, Lucca, and Colle Podestà
+       Lords. "Command +1" means that a Lord with Command Rating "2" instead
+       could take three Command actions on his card, for example (1.5.3,
+       4.2.1). The added Command applies for that Lord's entire Command
+       card, regardless of whether the Lord ends up still at a Friendly Lord
+       Seat. Even though the Capability is named for the Francigena road,
+       Lords do not need to be on or near any particular Way on the map to
+       benefit from its effect.
+
+--------------------------------------------------------------------------------
+F24. ASTROLOGERS
+--------------------------------------------------------------------------------
+Text:  Each Guelph Lord on his first Command card each Campaign on die roll
+       of 1-2 is Command +1.
+Lords: All Guelphs.
+Tips:  When Astrologers is in effect, the side upon each of its revealed
+       Command cards checks whether that is the first card for that Lord
+       that Campaign (including any Treachery cards). If it is (and is an
+       actions rather than Treachery card), the player rolls one die: on a
+       roll of "1" or "2", add one to that Lord's Command Rating for that
+       card. A Lord with Command Rating "2" instead could take three Command
+       actions, for example (1.5.3, 4.2.1).
+
+--------------------------------------------------------------------------------
+F25. REINFORCED WALLS
+--------------------------------------------------------------------------------
+Text:  Guelph Tax may instead mark Seat used Walls +1 if not already marked.
+       Remove if Ruins.
+Lords: All Guelphs.
+Tips:  Use of Reinforced Walls requires a Tax action by the usual rules
+       (4.7.4) except that the Lord receives no Coin but instead places an
+       available "Walls +1" marker in his side's color at his Locale (his
+       Stronghold Seat, 1.3.1 WALLS +1). The Seat may not be Ruins, an
+       Outpost, or already marked Walls +1. Walls +1 markers are a limit on
+       play, so the Capability has no effect if the side already has four
+       such markers on the map. S23 Economic Sanctions when in effect blocks
+       Guelph use of Reinforced Walls, since the latter requires Tax
+       Commands.
+
+--------------------------------------------------------------------------------
+F26. COSTRUTTORI – Master stonecutters
+--------------------------------------------------------------------------------
+Text:  Guelph Lords for a full Command card, 1 Coin, and 3 Prov remove Ruins
+       from their Locale.
+Lords: All Guelphs.
+Tips:  A Lord must have or Share (1.5.2) one Coin and three Provender and
+       devote all actions on his Command actions card (not a Treachery card)
+       to use the Capability's effect, which is to remove any Ruins marker
+       at his current Locale. Adjust Victory.
+
+================================================================================
+GHIBELLINE EVENTS (top half of card)
+================================================================================
+
+--------------------------------------------------------------------------------
+S1. AMBUSH
+--------------------------------------------------------------------------------
+Text:  Hold: Play as Enemy Avoids Battle (4.3.4). Enemy chooses 1 Avoiding
+       Lord to Battle or Withdraw instead.
+Lords: Any Guelph.
+Tips:  See F1 Ambush. Play after one or a group of inactive Lords declare
+       Avoid Battle (4.3.4) forces the owner to choose any one of those
+       Lords (including Commander with Comune) to instead stay in the Locale
+       and either Defend in Battle or Withdraw into a Friendly Stronghold
+       there (if it has one). Other Avoiding Lords must depart.
+
+--------------------------------------------------------------------------------
+S2. BETRAYALS
+--------------------------------------------------------------------------------
+Text:  For each Stronghold with any Ghibelline Siege markers, roll on Revolt
+       table or add 1 Treachery.
+Lords: Any Ghibelline (for Treachery).
+Tips:  See F2 Betrayals. Count Besieged Enemy Strongholds. The side may roll
+       on its Revolt table that many times (1.4.2) and/or select set-aside
+       Treachery cards to add to its Command deck (1.4.3), in any combination
+       summing to that count. Player may see each Revolt outcome before
+       deciding what to choose next.
+
+--------------------------------------------------------------------------------
+S3. SURPRISE
+--------------------------------------------------------------------------------
+Text:  Hold: Play upon Besieging a Stronghold where no other Lord (4.3.5).
+       Place 2 Siege (not 1). Then Storm up to 3 Rounds, Walls -2.
+Lords: Any Ghibelline.
+Tips:  See F3 Surprise. The Lord must just have Marched to an Enemy
+       Stronghold Locale free of Lords (own or Enemy); not a group, but may
+       be Commander with Comune. Place 2 Siege markers; immediate mandatory
+       Storm of at least 1 Round, costing no actions, up to 3 Rounds even
+       with only 2 Siege. Walls -2 means Walls 1-4 → 1-2 (or 1-3 with Walls
+       +1). Two-marker Siegeworks give Attacker Walls 1-2.
+
+--------------------------------------------------------------------------------
+S4. SUDDEN CLASH
+--------------------------------------------------------------------------------
+Text:  Hold: Play on a Ghibelline Lord in Battle. Round 1, that Lord's Horse
+       Melee precedes all Archery and selects its targets.
+Lords: Any Ghibelline.
+Tips:  Use of the Event shifts Melee by Horse units on one mat (not a
+       Commander's Podestà and Comune both) of the playing side in Round 1
+       ahead of both sides' Archery in the Strike Initiative order (4.4.2).
+       If both sides play Sudden Clash, the selected Defending Lord's Horse
+       Melee is first, then affected Attacker's, then the rest. Also, that
+       Lord's Horse Melee Round 1 selects targets per 4.4.2 ASSIGN HITS TO
+       UNITS.
+
+--------------------------------------------------------------------------------
+S5. ROAD WORKS – Woodcutters clear the way
+--------------------------------------------------------------------------------
+Text:  This Campaign Ghibelline Lords treat Track as Road and move Laden as
+       if Unladen.
+Lords: All Ghibellines.
+Tips:  See F5 Road Works. Ghibellines this March can take up to two Provender
+       per Cart Unladen, no more. First such March Way costs 0 actions even
+       if Track. Discard at Turn's end.
+
+--------------------------------------------------------------------------------
+S6. HILLS
+--------------------------------------------------------------------------------
+Text:  Hold: May play Defending in Battle. Double Ghibelline Archery Hits,
+       added Hits as Bowmen not Crossbow.
+Lords: All Ghibellines.
+Tips:  See F6 Hills. Play at outset of Battle, not Storm, only if Defending.
+       Doubles all your side's Archery Hits in that Battle; does not affect
+       Melee. Total Hits per target Lord, double, then round. Doubled
+       Crossbow Archery added Hits do not reduce Enemy Armor and never
+       select targets. Round odd or half Hits as Crossbows.
+
+--------------------------------------------------------------------------------
+S7. GREEK FIRE
+--------------------------------------------------------------------------------
+Text:  Hold: Play on Besieging Lord to reduce to 1 Siege marker, remove 1 of
+       his units, and discard 1 of his "This Lord" Capabilities.
+Lords: Any Guelph.
+Tips:  See F7 Greek Fire. Play any time, even mid-Storm. Choose any one
+       Enemy Lord outside any Besieged Stronghold (need not be Active).
+       Select one unit and one "This Lord" Capability card (if any) at his
+       mat(s); remove that unit to the pool and discard that card. Remove
+       Siege markers there beyond one.
+
+--------------------------------------------------------------------------------
+S8. SWAMP
+--------------------------------------------------------------------------------
+Text:  Hold: May play Defending in non-Summer Battle. Guelph Horse does not
+       Strike in Round 1.
+Lords: All Guelphs.
+Tips:  See F8 Swamp. Play at outset of Battle, not Storm, not on Attack, not
+       in Summer. Prevents all Horse of all Enemy Lords from Striking in
+       Round 1. Does not affect their ability to absorb Hits.
+
+--------------------------------------------------------------------------------
+S9. POPE AT BAY flees to Viterbo
+--------------------------------------------------------------------------------
+Text:  Set aside 1 Treachery to shift any 2 Guelph cylinders or Service 1
+       Calendar box or Orvieto by 3.
+Lords: Any Ghibelline (for Treachery card removal), any Guelphs (for 1-box
+       shifts), Orvieto (for 3-box shift).
+Tips:  Select any one Ghibelline Treachery card already acquired for and
+       still in the Ghibelline Command deck (not from the Plan) to set aside
+       again in order to shift cylinder(s) on the Calendar rightward or
+       Service leftward.
+
+--------------------------------------------------------------------------------
+S10. A BETTER PAID DEATH
+--------------------------------------------------------------------------------
+Text:  Shift cylinder or Service of any 2 Ghibelline Lords who are not a
+       Podestà 1 Calendar box or this Levy give 1 Lordship +2.
+Lords: Giordano, Astimberg, Provenzano, and Santa Fiora.
+Tips:  Shift two Ghibelline Lords' cylinders left and/or Service right.
+       Alternatively add two Lordship to the rating of one Lord for both
+       Muster (3.4) and, if declared, Call to Arms Allies (3.5.4) this Levy.
+       No Lord involved may be a Podestà.
+
+--------------------------------------------------------------------------------
+S11. VOLTERRA
+--------------------------------------------------------------------------------
+Text:  If Volterra Ghibelline, shift Colle Service 2 Calendar boxes or Pisa
+       cylinder left to current Levy or add 1 Treachery.
+Lords: Colle or Pisa (for shift), any Ghibelline (for Treachery).
+Tips:  Implement at the moment of drawing only if Volterra (center west of
+       map) is free of Guelph Allegiance markers. Shift Colle Service left,
+       or shift Pisa cylinder only if starting right of current Turn. Add
+       Treachery only if that card is set aside (not already added or in
+       the Plan).
+
+--------------------------------------------------------------------------------
+S12. CAMP ATTACK
+--------------------------------------------------------------------------------
+Text:  Hold: My play in Battle. Round 1, take 2 Assets from each Enemy Lord
+       there as Spoils, then remove 2 more from each.
+Lords: All Guelphs.
+Tips:  See F12 Camp Attack. Play at outset of Battle, not Storm. Take and
+       remove Enemy Assets as specified (including from a Commander's
+       Podestà and Comune as separate Lords) at any one time during Round 1,
+       distributing taken Assets among Friendly Lords at the Battle (4.4.3)
+       even if Conceding the Field. Spoils may not include Ships, but
+       removed Assets may.
+
+--------------------------------------------------------------------------------
+S13. GENTLE USILIA ransoms prisoners
+--------------------------------------------------------------------------------
+Text:  Hold: Play for the Guelphs (only) to conduct immediate Ransom (4.9.2).
+Lords: All Guelphs (to conduct Ransom), any Ghibellines (to receive Coin,
+       add Treachery).
+Tips:  Play at any time. The Guelph side must immediately conduct the usual
+       Ransom procedure, out of and in addition to the usual sequence of
+       play, including any Languish effect.
+
+--------------------------------------------------------------------------------
+S14. FRIARS sent to deceive Florentines
+--------------------------------------------------------------------------------
+Text:  This Campaign Guelphs shuffle and play chosen Command cards without
+       inspecting stack.
+Lords: All Guelphs.
+Tips:  The Capability on the card will not be available this Levy. When the
+       Guelph form their Campaign Plan this Turn, the player selects the
+       Command cards to be included, shuffles them, and places the stack
+       face down. Neither player may inspect that stack. Reveal and use
+       Command cards on Campaign as normal.
+
+--------------------------------------------------------------------------------
+S15. WAR LOANS
+--------------------------------------------------------------------------------
+Text:  Shift Siena, Provenzano, Giordano, OR Astimberg cylinder or Service 2
+       boxes or this Levy give 1 Lordship +2.
+Lords: Siena, Provenzano, Giordano, or Astimberg.
+Tips:  Shift one listed Lord's cylinder left or Service right. Alternatively,
+       add two Lordship to one of their Ratings for both Muster (3.4) and,
+       if declared, Call to Arms Allies (3.5.4) this Levy.
+
+--------------------------------------------------------------------------------
+S16. BOCCA DEGLI ABATI – Florentine betrays Guelphs
+--------------------------------------------------------------------------------
+Text:  Hold: Play on Guelph Lord in Battle. His Cavalieri take 1 Hit each;
+       1 that Routs joins Unrouted Forces of your Lord there.
+Lords: Any Guelph (at the Battle, to take Hits), any Ghibelline (at the
+       Battle, to receive unit).
+Tips:  Play at the outset of Battle (4.4.1 Events), not in Storm. If played
+       on Firenze Podestà or Comune, the Event affects only the units on
+       that one mat, not the other. At the moment played, each Cavalieri
+       unit on the affected mat must roll once against its Armor, Routing
+       normally if it fails. If any Rout, the Ghibelline player takes one of
+       them and adds it to the Forces of any Ghibelline mat in the Battle.
+
+--------------------------------------------------------------------------------
+S17. GHIBELLINE REFUGEES
+--------------------------------------------------------------------------------
+Text:  Hold: Play if Provenzano or Santa Fiora on map to shift the other's
+       cylinder 2 boxes or give each Lordship +2 or add 1 of their Treachery.
+Lords: Provenzano or Santa Fiora.
+Tips:  Play the Event only if one of the listed Lords is on the map. If the
+       cylinder of the other is on the Calendar, shift it left.
+       Alternatively, play upon either Muster (3.4) or, if declared, Call to
+       Arms Allies (3.5.4) to add two Lordship to the Rating of one or both
+       listed Lords. Or, play any time to add the set-aside Treachery card
+       of one listed Lord to the Ghibelline Command deck.
+
+--------------------------------------------------------------------------------
+S18. CORTONA
+--------------------------------------------------------------------------------
+Text:  Hold: Play for Treachery at Cortona to succeed for 0 Coin or, if
+       Cortona Ghibelline, to roll on Revolt table or add 1 Treachery.
+Lords: Any Ghibelline (for Treachery).
+Tips:  To play the Event for Treachery to succeed without rolling or paying
+       Coin, all other requirements for Treachery must be met, including
+       revealing a Treachery card in the Plan with that Lord in position
+       and the target eligible. The Treachery may be either Revolt or
+       Bribe, as long as the target is or is at Cortona. For Revolt,
+       Cortona must be eligible (1.4.1). To play the Event for a roll on
+       the Revolt Table or to select any set-aside Treachery card to add to
+       the Ghibelline deck, Cortona must at the moment of play have
+       Ghibelline Allegiance markers (so not Ruins).
+
+--------------------------------------------------------------------------------
+S19. BRIGANDS
+--------------------------------------------------------------------------------
+Text:  Hold: Play as Enemy Marches within 2 Locales of Giordano or Astimberg
+       for him to take 2 Coin or 2 Loot or 4 Carts and 4 Prov from that
+       Enemy.
+Lords: Any Guelph (to lose Assets), Giordano or Astimberg (to receive
+       Assets).
+Tips:  The target Guelph Lord must just have used a March action. (It may be
+       merely to Encamp or Sortie.) Count the range to the destination
+       Locale. If using Hidden Mats (1.5.2) and the first choice of Assets
+       is not fully available, the Ghibellines may alter their choice, until
+       declaring the last possible option (only).
+
+--------------------------------------------------------------------------------
+S20. HEAT & FROST
+--------------------------------------------------------------------------------
+Text:  Hold: Play before Feed in Summer or Winter for Wastage (4.9.5) now,
+       twice at Siege or if Moved / Fought. If Summer, remove 1 unit from
+       Guido.
+Lords: All Guelphs and all Ghibellines (for Wastage); Guido Guerra (for
+       unit removal).
+Tips:  See F20 Heat & Frost. Play only in Summer or Winter, immediately
+       before any Lord(s) having Moved/Fought triggers Feed (4.8.1). All
+       Lords of both sides conduct Wastage, each proceeding twice through
+       4.9.5 if at a Locale with Siege markers or marked Moved/Fought.
+       Removed unit goes to the pool, not Captured Knights.
+
+--------------------------------------------------------------------------------
+S21. CONSTITUTO – City statute
+--------------------------------------------------------------------------------
+Text:  Hold: Play to shift Siena or Pisa cylinder or Service 2 Calendar
+       boxes or give one of them Lordship +3.
+Lords: Siena or Pisa.
+Tips:  Play to shift the cylinder of one listed Lord left or his Service
+       right. Alternatively, play upon either Muster (3.4) or, if declared,
+       Call to Arms Allies (3.5.4) to add three Lordship to the Rating of
+       one of them.
+
+--------------------------------------------------------------------------------
+S22. CLOSED GATES
+--------------------------------------------------------------------------------
+Text:  Remove 1 purple Ruins or, if none, remove 1 gold Ruins where
+       Stronghold then eligible for Revolt (1.4.1); it Revolts (1.4.4).
+Lords: None.
+Tips:  See F10 Closed Gates. Remove any one Ruins giving the other side
+       ½VP. If none on the map, instead replace a Ruins benefitting your
+       side with Allegiance markers equal to the Stronghold Value. Eligible
+       means there cannot be an Enemy Lord there or adjacent.
+
+--------------------------------------------------------------------------------
+S23. ECONOMIC SANCTIONS
+--------------------------------------------------------------------------------
+Text:  This Campaign, no Guelph Tax.
+Lords: All Guelphs.
+Tips:  Guelphs this entire Turn's Campaign may not use Tax Commands,
+       including for F25 Reinforced Walls. The Capability on this card will
+       not be available this Turn.
+
+--------------------------------------------------------------------------------
+S24. DOCTORS
+--------------------------------------------------------------------------------
+Text:  Hold: Play in Battle or Storm for Siena and Pisa each to restore to
+       their Forces half of their Lost units (round up).
+Lords: Siena and Pisa.
+Tips:  Play at the outset of Battle or Storm (4.4.1 Events). After all Loss
+       rolls (4.4.4), Pisa, Siena Podestà, and Siena Comune—whichever are
+       involved in the combat—each separately restore half their Lost units,
+       including any Knights that received Quarter.
+
+--------------------------------------------------------------------------------
+S25. MAREMMA – War
+--------------------------------------------------------------------------------
+Text:  If Grosseto or adjacent Castle Guelph, shift 3 Ghibelline cylinders
+       or Service 1 box each. Ghibellines may declare Call to Arms.
+Lords: Any Ghibellines.
+Tips:  Conduct shifts (cylinders left or Service right) at the moment of
+       drawing the Event if any of Grosseto, Castiglione della Pescaia,
+       Montemassi, or Montepescali have Guelph 1VP markers. The Capability
+       on the card will not be available that Levy. After Muster,
+       Ghibellines may trigger Call to Arms if desired (3.5), regardless of
+       whether the rest of the Event text applied.
+
+--------------------------------------------------------------------------------
+S26. MONTEPULCIANO – War
+--------------------------------------------------------------------------------
+Text:  If a Town marked Guelph, shift Provenzano and Siena cylinder or
+       Service 1 box each. Ghibellines may declare Call to Arms.
+Lords: Siena and Provenzano.
+Tips:  Conduct shifts (cylinders left or Service right) at the moment of
+       drawing the Event if any originally Ghibelline Town (not Castle or
+       City) has Guelph 1VP markers. The Capability on the card will not be
+       available that Levy. After Muster, Ghibellines may trigger Call to
+       Arms if desired (3.5), regardless of whether the rest of the Event
+       text applied.
+
+================================================================================
+GHIBELLINE CAPABILITIES (bottom half of card)
+================================================================================
+
+--------------------------------------------------------------------------------
+S1. STORES & WELL WATER
+--------------------------------------------------------------------------------
+Text:  Ghibelline Seats each can Supply up to 4 Provender, even to a Lord
+       Besieged there.
+Lords: All Ghibellines.
+Tips:  See F1 Stores & Well Water. Supply provides up to 4 Provender per
+       Seat used as Source (rather than Provender = Stronghold Size),
+       including from Ruined Seats and Outposts. Allows Supply actions
+       while Besieged at own Seat, using that Seat as Source. Otherwise
+       follow Supply rules (Transport required, 4.6). Does not affect
+       Supply using Ships and Ports.
+
+--------------------------------------------------------------------------------
+S2. GUASTATORI – Sappers
+--------------------------------------------------------------------------------
+Text:  This Lord's Siege adds 2 markers instead of 1. His Pass (4.7.7)
+       replaces Enemy Siege there with Bypass.
+Lords: Any Ghibelline.
+Tips:  See F2 Guastatori. First Siege still places just 1 marker (4.3.5).
+       With enough Lords present per 4.5.1, his Siege action adds 2 markers
+       (1→3 or 2→4) on a single card. If Besieged, on his Command/Treachery
+       activation he may Pass (do nothing else, 4.7.7) to remove all Enemy
+       Siege markers and place Bypass on Enemy Lords at his Locale. Comune
+       mat with this card gives Commander the effects. Other Lords at the
+       Siege do not benefit.
+
+--------------------------------------------------------------------------------
+S3. SIEGE TOWERS
+--------------------------------------------------------------------------------
+Text:  This Lord Attacking in Storm from Round 2 on Strikes first with
+       Archery and Melee.
+Lords: Any Ghibelline.
+Tips:  See F3 Siege Towers. Any Lord with this card at a Storm Locale grants
+       the benefit (need not be the Lord taking the Storm action).
+       Commander's Podestà or Comune mat with this card gets the effect,
+       not both. No effect on Round 1. Round 2+: this Lord's Strikes first,
+       then continue normal Initiative for Garrison and other Lords.
+
+--------------------------------------------------------------------------------
+S4. TREBUCHETS
+--------------------------------------------------------------------------------
+Text:  This Lord Unrouted at Storm or Sally where 3-4 Siege reduces Enemy
+       Siegeworks or Walls -1.
+Lords: Any Ghibelline.
+Tips:  See F4 Trebuchets. Any Lord mat with this card in a Storm or Sally
+       grants the effect to its entire side, so long as that mat (including
+       Commander's Podestà or Comune separately) has not Routed. Storm
+       with Trebuchets reduces Walls 1-4 to 1-3. Sally with Trebuchets
+       against 3 Siege markers reduces Siegeworks to Walls 1-2.
+
+--------------------------------------------------------------------------------
+S5. WAR ENGINEERS
+--------------------------------------------------------------------------------
+Text:  This Lord's Siege adds marker to any size Stronghold. Besieged, he
+       can use entire Command to reduce to 1 Siege there.
+Lords: Any Ghibelline.
+Tips:  See F5 War Engineers. Lord's Siege action adds a marker regardless
+       of Stronghold Size or how many Lords are present. "Entire Command"
+       means when Besieged he may devote all actions on his Command actions
+       card (not Treachery) to remove all but one Enemy Siege marker there.
+       Comune mat with this card gives Commander the effect.
+
+--------------------------------------------------------------------------------
+S6. FEDITORI – Vanguard knights
+--------------------------------------------------------------------------------
+Text:  Up to 3 of this Lord's Cavalieri in Battle Melee Strike x2 Rounds 1
+       and 2.
+Lords: Siena, Provenzano, Pisa, or Santa Fiora.
+Tips:  See F6 & F7 Feditori. No effect in Storm or from Round 3 of Battle
+       on. Commander's Podestà or Comune mat with this card gets the effect,
+       not both. A mat may have only one Feditori card.
+
+--------------------------------------------------------------------------------
+S7. LUCERIA – Composite bow archers
+--------------------------------------------------------------------------------
+Text:  Up to 3 of this Lord's Militia have Archery x1½. Ignore this Lord's
+       Arcieri.
+Lords: Giordano, Astimberg, or Provenzano.
+Tips:  A Lord with Luceria and three or more Militia units would Strike with
+       five Archery Hits (4½ rounded up), doubled to nine Hits if Defending
+       with S6 Hills, for example. If the Lord happened also to have S16 or
+       S17 Arcieri, it would add no Hits.
+
+--------------------------------------------------------------------------------
+S8. BALESTRE GROSSE – Large crossbows
+--------------------------------------------------------------------------------
+Text:  This Lord's Men-at-Arms in Storm have Crossbows x½, -2 to target's
+       Armor, that select targets if Defending.
+Lords: Siena, Provenzano, or Santa Fiora.
+Tips:  See F8 Balestre Grosse. No effect in Battle. In Storm, enables this
+       Lord's Men-at-Arms Crossbows to select targets only if Defending.
+       Crossbow units Strike with both Missile and Melee. Palvesari does not
+       affect Balestre Grosse Men-at-Arms Crossbows (Palvesari only enhances
+       Armigeri). Commander's Podestà or Comune mat with this card gets
+       the effect, not both (should a Comune obtain Turncoat Men-at-Arms).
+
+--------------------------------------------------------------------------------
+S9-S11. BALESTRIERI – Crossbowmen
+--------------------------------------------------------------------------------
+Text:  Up to 3 of this Lord's Armigeri have Crossbows x1, -2 to target Armor,
+       that select targets in Storm Defense.
+Lords: Any Ghibelline.
+Tips:  See F9-F11 Balestrieri. Up to 3 Armigeri get Crossbow Archery in
+       Battle or Storm, on Attack or Defense. Crossbow units Strike with
+       both Missile and Melee. Crossbowmen select targets only if Defending
+       in Storm—not in Battle, not when Attacking in Storm. With S13-S15
+       Palvesari at the same Lord, all his Armigeri Crossbows always select
+       targets. Commander's Podestà or Comune mat with this card gets the
+       effect, not both. A mat may have only one Balestrieri card.
+
+--------------------------------------------------------------------------------
+S12. ARMY RESERVE
+--------------------------------------------------------------------------------
+Text:  Siena, Provenzano, and Pisa Cavalieri in Battle Melee Strike x2 from
+       Round 3 on.
+Lords: Siena, Provenzano, or Pisa.
+Tips:  See F12 Army Reserve. Siena Podestà, Siena Comune, Provenzano, and
+       Pisa, whichever are in the Battle, each gain the effect. No effect
+       in Storm or in Rounds 1-2 of Battle.
+
+--------------------------------------------------------------------------------
+S13-S15. PALVESARI – Shieldmen
+--------------------------------------------------------------------------------
+Text:  This Lord's Armigeri have Armor 1-4, until 3 Rout. Their Crossbows
+       always select targets.
+Lords: Any Ghibelline.
+Tips:  See F13-F15 Palvesari. Increases Armigeri Armor 1-2 to Armor 1-4 on
+       that mat. When a third Armigeri unit on that mat Routs, the Armor
+       benefit is cancelled for all remaining Armigeri in Forces. Also
+       enables all Armigeri Crossbows (with Balestrieri at the same mat) to
+       select targets regardless of Storm/Battle, Attack/Defense, even after
+       3 Armigeri rout. Commander's Podestà or Comune mat with this card
+       gets the effect, not both. A mat may have only one Palvesari card.
+
+--------------------------------------------------------------------------------
+S16 & S17. ARCIERI – Bowmen
+--------------------------------------------------------------------------------
+Text:  This Lord's Militia have Archery x1.
+Lords: Any Ghibelline.
+Tips:  See F16 & F17 Arcieri. Bowmen Militia Strike with both Missile and
+       Melee. Commander's Podestà or Comune mat with this card gets the
+       effect (if they have Militia), not both. A mat may have only one
+       Arcieri card.
+
+--------------------------------------------------------------------------------
+S18. LA CAVALLATA – Long-range raiders
+--------------------------------------------------------------------------------
+Text:  This Lord may pay 1 Prov to use entire Command to Ravage adjacent
+       Locale, not at Unbesieged Enemy Lord.
+Lords: Any Ghibelline.
+Tips:  See F18 La Cavallata. Lord must have or Share (1.5.2) one Provender
+       and use all actions on his Command actions card (not Treachery) for
+       this Capability. Spend the Prov and Ravage an adjacent Locale; for a
+       Ghibelline Lord this may be an Unravaged Guelph Outpost. Target
+       Locale may not have an Unbesieged Enemy Lord, even if Bypassed.
+       Otherwise normal Ravage rules (place Ravaged marker, gain Loot or
+       Provender, 4.7.2). Comune mat with this card gives Commander the
+       effect.
+
+--------------------------------------------------------------------------------
+S19. GUALDANA – Horse marauders
+--------------------------------------------------------------------------------
+Text:  This Lord treats any Horse unit as Berrovieri for Ravage.
+Lords: Any Ghibelline.
+Tips:  See F19 Gualdana. Lord with Gualdana and any Horse on his mat(s) can
+       Ravage for double Provender and Loot (4.7.2) even without Berrovieri.
+       Comune mat with this card gives Commander the effect, as long as
+       either mat has at least one Horse unit.
+
+--------------------------------------------------------------------------------
+S20. MASNADIERI – Looters
+--------------------------------------------------------------------------------
+Text:  This Lord may Ravage for 0 actions, taking no Loot.
+Lords: Any Ghibelline.
+Tips:  See F20 Masnadieri. Uses 0 actions to Ravage instead of 1 at a Castle
+       or 2 at a Town/City. Lord must still be active on his Command actions
+       card and follow Ravage rules (4.7.2). Combines with Gualdana for
+       double Loot/Prov but does not aid La Cavallata (which requires an
+       entire Command card, not a set number of actions). Comune mat with
+       Masnadieri gives Commander the effect.
+
+--------------------------------------------------------------------------------
+S21. SOVRINTENDENTE – Superintendent of castles
+--------------------------------------------------------------------------------
+Text:  Ghibelline Castle Garrisons replace their Militia with Crossbow x1
+       Armigeri.
+Lords: Any. [Errata: "None" replaced with "Any".]
+Tips:  With Sovrintendente in effect, Guelph Storm of any Castle (whether
+       originally Ghibelline or marked with Ghibelline Allegiance) will face
+       a Garrison of one Men-at-Arms with Crossbows x½, one Armigeri with
+       Crossbows x1, and one Cavalieri.
+       [Clarification: Even though the card has no Lords symbol, any
+       Ghibelline Lord can Levy this Capability per 3.4.3.]
+
+--------------------------------------------------------------------------------
+S22. MANFREDI
+--------------------------------------------------------------------------------
+Text:  Ghibelline Lords except Pisa start at any Lord Seat (not Vassal Seat)
+       that is Friendly Command +1.
+Lords: All Ghibellines except Pisa.
+Tips:  "Command +1" means a Lord with Command Rating "2" instead could take
+       three Command actions on his card, for example (1.5.3, 4.2.1). The
+       added Command applies for that Lord's entire Command card, regardless
+       of whether the Lord ends up still at a Friendly Lord Seat.
+
+--------------------------------------------------------------------------------
+S23. TAGLIA – Mercenary army
+--------------------------------------------------------------------------------
+Text:  Non-Podestà Ghibelline Lords may Muster 1 Unmustered Vassal of
+       another; when they do, they add 2x Carts.
+Lords: Giordano, Astimberg, Provenzano, and Santa Fiora.
+Tips:  Each of Giordano, Astimberg, Provenzano, and Santa Fiora may Muster
+       one Vassal to their own Forces, along with two Carts each, otherwise
+       following normal Vassal Muster rules (3.4.2). The Vassals may be
+       those of any other of those four Lords. The borrowed Vassals may not
+       currently be Mustered, including as Turncoats (4.7.6). Borrowed
+       Vassals Disband normally, such as when the host Lord Disbands (3.3).
+
+--------------------------------------------------------------------------------
+S24. ASTROLOGERS
+--------------------------------------------------------------------------------
+Text:  Each Ghibelline Lord on his first Command card each Campaign on die
+       roll of 1-2 is Command +1.
+Lords: All Ghibellines.
+Tips:  See F24 Astrologers. On each revealed Command card, check whether it
+       is the first card for that Lord that Campaign (including any
+       Treachery cards). If it is (and is an actions, not Treachery card),
+       roll one die: on 1-2, add one to that Lord's Command Rating for that
+       card.
+
+--------------------------------------------------------------------------------
+S25. REINFORCED WALLS
+--------------------------------------------------------------------------------
+Text:  Ghibelline Tax may instead mark Seat used Walls +1 if not already
+       marked. Remove if Ruins.
+Lords: All Ghibellines.
+Tips:  See F25 Reinforced Walls. Requires a Tax action by usual rules
+       (4.7.4) except Lord receives no Coin; instead place an available
+       "Walls +1" marker in his side's color at his Locale (his Stronghold
+       Seat, 1.3.1 WALLS +1). Seat may not be Ruins, an Outpost, or already
+       marked Walls +1. Walls +1 markers are a limit on play; no effect if
+       side already has four such markers on the map. S23 Economic
+       Sanctions blocks Guelph use of Reinforced Walls (the latter requires
+       Tax Commands).
+
+--------------------------------------------------------------------------------
+S26. COSTRUTTORI – Master stonecutters
+--------------------------------------------------------------------------------
+Text:  Ghibelline Lords for a full Command card, 1 Coin, and 3 Prov remove
+       Ruins from their Locale.
+Lords: All Ghibellines.
+Tips:  See F26 Costruttori. Lord must have or Share (1.5.2) one Coin and
+       three Provender and devote all actions on his Command actions card
+       (not Treachery) to remove any Ruins marker at his current Locale.
+       Adjust Victory.
+
+================================================================================
+END OF ARTS OF WAR CARD REFERENCE
+================================================================================

@@ -1,0 +1,824 @@
+================================================================================
+INFERNO - BATTLE & STORM COMBAT REFERENCE
+================================================================================
+Source: Inferno Rules of Play (Living Rules 2023-04-10), primarily Sections
+        4.4 (Battle), 4.5.2 (Storm). Cross-referenced with Playbook and
+        Official Errata (10 April 2023).
+
+When the Rules of Play or Errata conflict with any other source, the Rules of
+Play and Errata take precedence (per user instruction).
+
+This reference walks through Battle and Storm combat step by step. For
+Approach, Avoid Battle, Withdraw, Besiege vs Bypass, Encamp, Sortie, Sally,
+and the Siege action, see the Siege reference. For action costs and what
+Storm/Sally cost on a Command card, see the Command Actions reference.
+
+================================================================================
+SECTION 1: WHEN COMBAT HAPPENS
+================================================================================
+
+BATTLE (4.4) occurs when a Lord Approaches an Enemy Lord (4.3.4-.5) who
+does NOT Avoid Battle or Withdraw. ALL Lords in the Locale who are NOT in
+a Stronghold must participate.
+  - Per the 4.4 Errata, the participation rule is that Lords NOT inside
+    a Stronghold (Withdrawn into one) must Battle. This includes
+    Bypassing or Besieging Lords already at the Locale (they're outside
+    the Stronghold). Only Lords inside a Stronghold (Withdrawn, or
+    Besieged inside) sit out.
+
+STORM (4.5.2) occurs when an Unbesieged Lord outside a Besieged Stronghold
+uses a Command action to Attack the Stronghold. The Storm rules use Battle
+procedure with modifications.
+
+SALLY (4.5.3) occurs when a Besieged Lord uses a Command action to attack
+the Besiegers. Sally uses Battle procedure with Storm-like Array/
+Reposition.
+
+RELIEF SALLY (4.4.1): When a side Approaches a Locale where it is also
+Besieged, Besieged Lords may join the Attack for NO added Command actions.
+See Section 4 below.
+
+MARKER: Place the Battle/Storm marker at the combat Locale as a reminder.
+
+================================================================================
+SECTION 2: SETUP
+================================================================================
+
+2.1 BATTLE ARRAY (4.4.1)
+------------------------
+
+Players Array Lords involved on the Battle mat OR with their Lord mats on
+the table.
+
+  ORDER OF PLACEMENT:
+    [1] Attacker first, then Defender.
+    [2] Each side may place a Lord in up to 3 Front positions: LEFT,
+        CENTER, RIGHT.
+    [3] OTHER Lords start in RESERVE.
+
+  ATTACKER:
+    - The ACTIVE Lord MUST start at Front Center.
+    - Fill in Front Left and/or Right with other Attacking Lords present
+      (one each).
+    - Remaining Lords go to Reserve.
+
+  DEFENDER:
+    - Must place one Lord directly OPPOSITE each Front Attacking Lord,
+      filling Center first, then Left and/or Right as able.
+    - Other Defending Lords go to Reserve.
+
+  COMUNE: A Comune (1.5.1) Arrays, Repositions, Flanks, and Routs as if a
+  SEPARATE Lord. It may start at Front Center if its Commander is the
+  Active Lord. Note: a Commander and his Comune cannot BOTH start at Front
+  Center; in Battle the Active Lord starts Center but in Storm the
+  Attacker chooses one only - see 2.2 below.
+
+  HIDDEN MATS: If using Hidden Mats Option, reveal mats (only) for combat
+  per 1.5.2.
+
+2.2 STORM ARRAY DIFFERENCES (4.5.2 ARRAY)
+-----------------------------------------
+
+Storm uses Battle rules (4.4.1-.2) EXCEPT:
+
+  - Each side's Front row begins with AT MOST 1 LORD.
+  - Attacker's Front Lord is the ACTIVE Lord (or his Comune, but only
+    one - not both at once).
+  - Other Lords (and Comune if not chosen) start in RESERVE.
+
+  Stronghold Effects in Storm Setup:
+    - Defender receives the Garrison units shown for that Stronghold
+      type on the Strongholds table (see Section 8). Garrison is
+      SEPARATE from any Defending Lord's units.
+    - Defender uses Walls 1-4 (base, plus any Walls+1 marker).
+    - Attacker uses SIEGEWORKS = the number of Siege markers in front
+      of his Lord(s) as his own Walls.
+
+2.3 SALLY ARRAY DIFFERENCES (4.5.3)
+-----------------------------------
+
+Sally uses Battle rules EXCEPT:
+
+  - Each side begins with 1 Lord in Front. Attacker = Sallying Active
+    Lord. Defender = a Besieging Lord.
+  - Other Lords start in RESERVE.
+  - In each Round after the first, Attacker then Defender may add ONE
+    Lord from Reserve to Front, up to Stronghold Size.
+  - If all Front Lords Routed, a Reserve Lord (if any) MUST move to
+    Front.
+  - Defenders (the Besiegers) receive SIEGEWORKS = # Siege markers as
+    their own Walls.
+  - Attackers (the Sallying Besieged) get NO Walls and NO Garrison.
+  - A Comune counts as a separate Lord for Array.
+
+================================================================================
+SECTION 3: EVENTS
+================================================================================
+
+After Array, in order:
+  [1] Attacker may play Held Events that specify "in Battle" or "in
+      Storm" (as applicable).
+  [2] Defender then may play Held Events that specify "in Battle" or
+      "in Storm" (as applicable).
+
+(Events drawn fresh during Battle are not standard - Events here are
+those Held from prior Levy draws, 3.1.3.)
+
+================================================================================
+SECTION 4: RELIEF SALLY (4.4.1)
+================================================================================
+
+A special case: when a side Approaches (4.3.4) a Locale where it is ALSO
+Besieged inside a Stronghold, the Besieged Lords may join the Attack at no
+added Command action cost.
+
+  ARRAY AND REPOSITION:
+    - Sallying Attackers Array and Reposition per Sally rules (4.5.3)
+      but BEHIND the Defenders (the Approaching side's Enemy).
+    - Any Reserve Defenders are Arrayed as if Front Defenders, facing
+      the Sallying Attackers.
+  STRIKES:
+    - Sallying Lords Attack Reserve Defenders or (if none) Front
+      Defenders as if Flanking them all equally closely.
+  SIEGEWORKS BENEFIT applies to Strikes by Sallying Attackers ONLY.
+  LOSS:
+    - If the (combined) Attackers lose, Withdraw Sallying Lords back
+      into the Stronghold AND reduce Siege markers there to ONE
+      (per the Sally Raid rule in 4.5.3).
+
+================================================================================
+SECTION 5: BATTLE ROUND STRUCTURE (4.4.2)
+================================================================================
+
+After Array (+ Events + any Relief Sally setup), Battle proceeds Round by
+Round. Each Round follows this exact sequence:
+
+  (A) CONCEDE THE FIELD?
+  (B) REPOSITION (in Round 2 and later only)
+  (C) STRIKE
+       1. Defending Archery
+       2. Attacking Archery
+       3. Defending Horse Melee
+       4. Attacking Horse Melee
+       5. Defending Foot Melee
+       6. Attacking Foot Melee
+  (D) Check for NEW ROUND or END
+
+Resolve each Strike step FULLY (Hits, Walls roll if any, Protection,
+Rout) before moving to the next step.
+
+================================================================================
+SECTION 6: CONCEDE THE FIELD (4.4.2)
+================================================================================
+
+At the START of each Battle Round, the Attacker then the Defender may
+declare that the Battle will END after this Round, with that side as the
+loser - but with REDUCED LOSSES.
+
+  - Battles last AT LEAST ONE Round (no Concede in Round 1 is meaningful
+    because Concede declarations apply to the CURRENT Round's resolution).
+  - Place the PURSUIT marker between the two sides, pointing toward the
+    Conceding side.
+  - The Conceding side will HALVE its Hits against the Enemy in THIS
+    FINAL Round (round up within each Strike step).
+
+STORM CONCEDE DIFFERENCES (4.5.2):
+  - In Storm, only the ATTACKER (not the Defender) may Concede.
+  - Concede may happen at the start of any Round AFTER the first.
+  - On Concede in Storm, the Storm ends immediately. Attackers lose
+    (see Storm-specific loss handling in Section 11).
+
+SALLY: follows Battle rules for Concede.
+
+================================================================================
+SECTION 7: REPOSITION (4.4.2)
+================================================================================
+
+In each Round AFTER the first, Reposition occurs in this order:
+
+  ADVANCE: Attacker then Defender slides Unrouted Lords in Reserve into
+    any EMPTY Front positions (one each).
+
+  CENTER: If a Front Center position is empty AFTER Advance, the side
+    (Attacker then Defender) MUST select and slide one Lord from Front
+    Left or Right to fill its empty Center position.
+
+STORM REPOSITION (4.5.2):
+  - Each Round AFTER the first, Attacker then Defender MAY add ONE
+    Lord from Reserve to Front - UP TO STRONGHOLD SIZE (Castle = 1
+    total, Town = 2 total, City = 3 total).
+  - If all Front Lords Routed, a Reserve Lord (if any) MUST move to
+    Front.
+
+SALLY REPOSITION (4.5.3): same as Storm.
+
+================================================================================
+SECTION 8: STRIKE SEQUENCE (4.4.2)
+================================================================================
+
+Each Round's Strike step proceeds through six sub-steps in fixed order
+(Battle). At each sub-step, only certain unit types Strike (Foot/Horse,
+Archery/Melee).
+
+  BATTLE INITIATIVE ORDER:
+    1. Defending ARCHERY
+    2. Attacking ARCHERY
+    3. Defending HORSE Melee
+    4. Attacking HORSE Melee
+    5. Defending FOOT Melee
+    6. Attacking FOOT Melee
+
+  STORM INITIATIVE ORDER (4.5.2 STRONGHOLD EFFECTS):
+    1. Defending Archery
+    2. Attacking Archery
+    3. ALL Defending Melee (Horse AND Foot)    <-- key difference
+    4. ALL Attacking Melee (Horse AND Foot)
+
+  Within each step, the Striking side determines order of Lord-by-Lord
+  Strikes. Then any Flanking Lords (see below) choose whether to absorb
+  Strikes before opposed Lords. Resolve Hits, Walls rolls (if any),
+  Protection rolls, and Rout BEFORE moving on - NOT simultaneously.
+
+  EXAMPLE: Attackers take Hits from Defending Archery (Step 1), resolve
+  all Rout, THEN Attacking Archers Strike (Step 2).
+
+================================================================================
+SECTION 9: HITS, FLANKING, AND TARGETING (4.4.2)
+================================================================================
+
+9.1 HITS GENERATION
+-------------------
+
+Hits are NOT rolled - they are automatic based on the Forces Striking.
+Each Striking unit causes 1/2, 1, or 2 Hits depending on its type and the
+Strike type (Archery or Melee). See Forces table (Section 12) below.
+
+  TOTAL HITS for each step: sum all Hits from all Striking Lords (and
+  Flanking Lords against the same target), THEN round up.
+
+  MIXED ARCHERY: When Crossbows and normal Archery combine, round Hits
+  IN FAVOR of Crossbows. EXAMPLE (per Errata): A Garrison of 1 Men-at-
+  Arms (x1/2 Crossbow) + 1 Militia (x1/2 normal Archery) = 2 Archery
+  Hits, of which 1 counts as Crossbows.
+
+9.2 FLANKING
+------------
+
+Flanking happens whenever a Lord at Front has NO Enemy Lord directly
+opposite him. He Flanks the closest Front Enemy Lord (Center may choose
+Left or Right).
+
+  - Total Hits from Flanking + directly opposed Lords against the same
+    target, THEN round up.
+  - A Flanking Lord may, at owner's option, absorb Hits from Strikes
+    directed at other Friendly Lords, PROVIDED he is Flanking all of
+    the Striking Enemy Lords.
+
+9.3 PURSUIT (CONCEDE EFFECT)
+----------------------------
+
+The Conceding side HALVES its total Hits against the Pursuing side.
+Round all fractions UP within each Strike step.
+
+9.4 APPLY HITS TO LORDS
+-----------------------
+
+Hits apply to the Forces of the opposed, Flanked, or Flanking Enemy Lord.
+
+A player with a Flanking Lord CHOOSES whether the Flanking or directly
+opposed Lord absorbs the Hits.
+
+If a Lord Routs and creates a NEW Flanking situation, apply remaining
+Hits accordingly.
+
+9.5 STORM ATTACK TARGETING (4.5.2)
+----------------------------------
+
+Hits against the Storm ATTACKER must select ARMORED units before
+Unarmored units, regardless of who is choosing what.
+
+(This is automatic for the Defender's Hits against the Attacker, and
+also constrains the Attacker if for some reason they direct Hits to
+themselves; in practice it means Attackers' Light Horse and Militia
+shield their Armored units only after Armored absorb hits.)
+
+================================================================================
+SECTION 10: PROTECTION (4.4.2)
+================================================================================
+
+10.1 ROLL WALLS (Storm and Sally only)
+--------------------------------------
+
+If this is a Storm OR a Sally, the side with Walls/Siegeworks rolls
+FIRST, BEFORE assigning Hits to units.
+
+  - Roll dice = total Hits just received in that Strike step.
+  - Each roll within the Walls range (typically 1-4) nullifies one Hit.
+  - For Siegeworks: each roll <= # Siege markers nullifies one Hit.
+  - Hits modified differently (e.g. Crossbows give -2 Armor, +1 to Walls,
+    etc.) roll SEPARATELY.
+
+  EXAMPLE: 3 Siege markers = Siegeworks Walls 1-3. Each Hit gets a
+  Walls roll; rolls of 1-3 cancel.
+
+  EXAMPLE: A "-1" to Walls would nullify ONE Siege marker (4.5.2). So
+  3 Siege markers + "-1" = 1-2 effective.
+
+10.2 ASSIGN HITS TO UNITS
+-------------------------
+
+After Walls rolls, the OWNER chooses which unit absorbs each surviving
+Hit, Hit by Hit.
+
+  EXCEPTIONS:
+    - SELECT TARGET (4.4.2): Crossbow Hits and Sudden Clash Event Hits
+      let the STRIKING side choose which Enemy unit takes each such
+      Hit. After the owner chooses a Lord (e.g. when Flanking), the
+      Striking side Selects Targets; then the owner chooses units for
+      any other (non-Select-Target) Hits.
+    - STORM ATTACK: Armored units must absorb before Unarmored.
+
+  A unit may absorb multiple Hits IN SUCCESSION, shielding fellow units
+  - as long as it succeeds on each Protection roll.
+
+10.3 PROTECTION ROLLS BY HIT
+----------------------------
+
+For each Hit a unit absorbs, roll 1 die based on the unit type:
+
+  ARMOR: Unit with Armor Protection rolls 1 die. If <= Armor range
+    (e.g. 1-3 for Cavalieri), Hit has NO EFFECT - no Rout.
+
+  CROSSBOWS: Crossbow Hits roll vs Armor reduced by -2, MIN 1.
+    Example: Cavalieri (Armor 1-3) hit by Crossbow rolls vs 1-1.
+
+  UNARMORED: Light Horse and Militia roll 1 die. Only a "1" saves them
+    from Rout. (Their "Unarmd 1" entry.)
+
+  LABORERS: Villici never roll Protection - they're REMOVED on any Hit.
+    (Note: removed Villici don't roll for Loss either - they're gone.)
+
+10.4 ROUT
+---------
+
+A non-Villici unit is ROUTED the moment it fails a Protection roll.
+Slide the Routed unit to the "Routed" section of the Lord's mat.
+
+  - Routed units do NOT Strike further.
+  - Routed units do NOT absorb further Hits.
+  - A Lord ROUTS at the moment his LAST Unrouted unit Routs - remove
+    him from the Array. A new Flanking situation may immediately result;
+    apply remaining Hits accordingly.
+
+================================================================================
+SECTION 11: ENDING THE BATTLE / STORM (4.4.3, 4.5.2)
+================================================================================
+
+11.1 WHEN TO END
+----------------
+
+  BATTLE: If neither side Conceded and at least one Lord on each side
+  has yet to Rout, begin a new Round at Concede the Field. Otherwise,
+  the Battle ends.
+
+  STORM: A Storm ends once
+    - The number of Rounds completed = number of Siege markers there, OR
+    - A side has all units there Routed, OR
+    - The Attacker Concedes.
+
+  Unless ALL Defenders Routed, Storm Attackers LOSE.
+
+  SALLY: Ends when a side has all its units there Routed (or a side
+  Concedes per Battle rules).
+
+11.2 RETREAT, WITHDRAWAL, OR REMOVAL (Battle, 4.4.3)
+----------------------------------------------------
+
+The LOSING side's Lords must each (owner chooses for each):
+
+  RETREAT to a single adjacent Locale that has:
+    - No Enemy Lords, AND
+    - No Enemy Strongholds not already Besieged or Bypassed.
+
+  WITHDRAW into a Friendly Stronghold at the Battle Locale (if Sallying
+    or Defending at one). Number of Withdrawing Lords <= Stronghold Size.
+
+  Be REMOVED per 4.4.5.
+
+REQUIREMENTS:
+  - Defenders may NOT Retreat along any part of the Way the Attackers
+    used to Approach.
+  - Marching Attackers must Retreat to the Locale whence they Approached.
+  - Sallying Attackers (in Sally) must Withdraw back into their
+    Stronghold.
+  - Lords may NOT Retreat via Sail.
+
+STORM LOSING (4.5.2):
+  - Defender losing: SACK (see Section 13).
+  - Attacker losing: Attackers neither Retreat nor give Spoils. The
+    Locale REMAINS Besieged. Return Siege markers to the map and go to
+    Aftermath.
+  - Both sides take Losses (Section 12).
+
+SALLY LOSING (4.5.3):
+  - Losing Defenders (Besiegers) Retreat normally; Siege ENDS.
+  - Losing Attackers (Sallying Besieged) Withdraw back into their
+    Stronghold (NOT Retreat).
+  - RAID: If Sallying Attackers lose, REMOVE all but 1 Siege marker at
+    the Locale (Siegeworks damage). Siege continues.
+
+11.3 SPOILS (Battle, 4.4.3)
+---------------------------
+
+Losing Battle Lords may transfer Assets to the winning Lords. The winning
+player distributes received Assets among winning-side Lord mats at the
+Locale.
+
+  LOSING LORDS WHO WERE REMOVED (4.4.5) OR WHO RETREATED WITHOUT HAVING
+    CONCEDED:
+      - Transfer ALL their Assets EXCEPT Ships.
+      - If the Lord has a Mustered Carroccio (3.4.2, 3.5.3): the OTHER
+        side permanently CAPTURES the Carroccio marker (not its Forces)
+        and receives +2 VP.
+
+  LOSING LORDS WHO CONCEDED AND RETREATED:
+      - Transfer all Loot and any Provender BEYOND what they could
+        carry Unladen.
+      - Lose no other Assets, do NOT lose their Carroccio.
+
+  LOSING LORDS WHO WITHDREW into a Stronghold:
+      - Keep ALL Assets.
+
+  SHIPS are not Spoils (they show ownership, not location).
+
+  STORM SACK SPOILS (4.5.2 - see Section 13).
+
+11.4 SERVICE SHIFTS (Battle, 4.4.3)
+-----------------------------------
+
+The LOSING side rolls 1 die for each of its RETREATED Lords:
+  - Roll 1-2: shift Service marker 1 box left
+  - Roll 3-4: shift 2 boxes left
+  - Roll 5-6: shift 3 boxes left
+
+If using Advanced Vassal Service, each of that Lord's Vassals also
+shifts.
+
+EXCEPTION: A Lord who Conceded and Retreated WITH HIS CARROCCIO shifts
+just 1 box left (regardless of die roll).
+
+Losing Lords who WITHDREW into a Stronghold do NOT shift Service.
+
+================================================================================
+SECTION 12: LOSSES (4.4.4)
+================================================================================
+
+After Retreat/Withdraw/Removal, BOTH SIDES determine the fate of Routed
+units.
+
+12.1 ROLL FOR EACH ROUTED UNIT
+------------------------------
+
+Roll 1 die per Routed unit:
+
+  STANDARD: Compare roll to the unit's INHERENT Protection (Armor or
+    Unarmored) from the Forces table, UNMODIFIED by Events or
+    Capabilities.
+      - Roll within range: unit is no longer Routed. Slide above the
+        Routed line.
+      - Roll outside range: unit is LOST. Remove to pool.
+
+  HARSH RECOVERY: For Routed units of Lords who:
+      (a) Retreated WITHOUT having Conceded (Battle), OR
+      (b) Were Attacking in Storm,
+    units fail UNLESS they roll a "1".
+
+  VILLICI: Already removed when Hit - do NOT roll for Loss.
+
+12.2 LORD REMOVAL (4.4.5)
+-------------------------
+
+If a Lord loses ALL his Forces in Battle or Storm:
+  - Remove him per 4.4.5: as if Disbanding Beyond Service (3.3.1),
+    INCLUDING Revolt and Treachery for the Enemy.
+  - Remove a Commander who loses all Forces from his MAIN mat even if
+    his Comune still has some.
+  - Comune removal adds NO Revolt or Treachery penalty.
+
+NOTES:
+  - Later Disband due to Service shifts from this Battle does NOT count
+    as removal by combat (no extra Revolt/Treachery).
+
+12.3 KNIGHTS' QUARTER (4.4.4, 4.5.2)
+------------------------------------
+
+CAVALIERI and RITTER units removed in combat may be CAPTURED.
+
+BATTLE Knights' Quarter:
+  - Any Cavalieri or Ritter that was Routed AND was REMOVED in Battle
+    on a Loss roll of 3-6 goes to the OWNER'S Captured Knights box
+    (4.9.2).
+  - Example: A winning Lord's Routed Cavalieri rolls "3" - they
+    RECOVER (Armor 1-3). They are NOT Captured.
+  - Example: Cavalieri of a Lord who Retreated without Conceding
+    roll "3" - they needed a "1" to recover. They ARE Captured.
+
+STORM Knights' Quarter (per 4.5.2 SACK):
+  - On a SACK, the # of GARRISON Cavalieri for that Stronghold (= its
+    Size) ALL become Captured, PLUS all Cavalieri AND Ritter of any
+    Lord who lost Defending inside.
+  - ATTACKERS in Storm NEVER lose units to Knights' Quarter.
+
+12.4 FORCES TABLE (1.6, 4.4.2)
+------------------------------
+
+HORSE UNITS (wedges)
+  Type          Color    Melee     Archery   Armor       Notes
+  ----------------------------------------------------------------
+  Ritter        Silver   x2        --        1-4         Battle melee
+                                                         x2; Storm
+                                                         melee x1.
+                                                         Knights'
+                                                         Quarter.
+  Cavalieri     Green    x1        --        1-3         Same Storm/
+                                                         Battle melee.
+                                                         Knights'
+                                                         Quarter.
+  Berrovieri    Tan      x1/2      --        1-2         Battle melee
+                                                         x1/2. Storm
+                                                         Attacker x1.
+                                                         Storm Defender
+                                                         x1/2. Double
+                                                         Ravage loot
+                                                         and provender.
+  Light Horse   Brown    x1/2      x1/2      Unarmd 1    Half strike
+                                                         all cases.
+
+FOOT UNITS (bars)
+  Type          Color    Melee     Archery       Armor       Notes
+  ----------------------------------------------------------------
+  Men-at-Arms   Steel    x1        x1/2 (Xbow)   1-2         Crossbow
+                                                             Archery
+                                                             only when
+                                                             Garrison
+                                                             or with
+                                                             Balestre
+                                                             Grosse.
+                                                             Otherwise
+                                                             x1 Melee
+                                                             only.
+  Armigeri      Green    x1/2      x1 (Xbow)     1-2         Crossbow
+                                                             Archery as
+                                                             Garrison
+                                                             or with
+                                                             Balestrieri.
+                                                             Palvasari
+                                                             improves
+                                                             Armor to
+                                                             1-4.
+  Militia       Brown    x1/2      x1/2          Unarmd 1    Normal
+                                                             Archery
+                                                             only when
+                                                             Garrison
+                                                             or with
+                                                             Arcieri /
+                                                             Luceria.
+  Villici       Tan      x1/2      --            None        REMOVED on
+                                                             any Hit;
+                                                             no roll.
+
+NOTES:
+  - "Strike" levels can be modified by Capability cards. E.g. Feditori
+    can give Cavalieri an extra strike in Battle (Army Reserve also
+    affects strikes).
+  - Crossbow Archery has SELECT TARGET (4.4.2) and -2 Armor against
+    its Hits (4.4.2 ROLL BY HIT).
+  - The Storm cap of 6 Melee Hits per Lord (4.5.2) applies regardless
+    of card or unit math.
+
+================================================================================
+SECTION 13: SACK (Storm Defender Loss, 4.5.2)
+================================================================================
+
+When Besieged Defenders LOSE a Storm:
+
+  RUIN THE STRONGHOLD:
+    - Remove ALL Siege markers there.
+    - Remove any ALLEGIANCE markers there.
+    - Remove any WALLS+1 markers there.
+    - Place ONE RUINS marker there in OPPOSITE color from the Locale's
+      ORIGINAL (printed) Allegiance, regardless of Value or who is
+      Sacking it.
+    - Adjust VP.
+
+  AWARD SPOILS:
+    Besieging Lords receive and distribute among their mats:
+      - LOOT count = Stronghold Value (1 / 2 / 3 for Castle/Town/City).
+      - PROVENDER count = Stronghold Value.
+      - COIN count = Stronghold Value.
+      - PLUS ALL non-Ship Assets of the losing Lords inside.
+      - PLUS any Carroccio of the losing Lords inside.
+
+  KNIGHTS' QUARTER (per 4.4.4-.5):
+    - All Garrison Cavalieri (# = Stronghold Size) go to Besieging
+      side's Captured Knights box.
+    - PLUS all Cavalieri and Ritter of any Lord who lost Defending
+      inside.
+
+  REMOVE LORDS:
+    - Each losing Lord removed per 4.4.5 - as if Disbanding Beyond
+      Service (incl. Revolt and Treachery for the winners).
+
+  REVOLT AND TREACHERY FROM SACK (separate from Lord removal):
+    - Winning side MUST roll on its Revolt table # times = Stronghold
+      Value.
+    - Winning side adds Treachery cards # = Stronghold Value.
+
+  AFTERMATH: Proceed with general Aftermath (4.4.6).
+
+================================================================================
+SECTION 14: STRONGHOLDS TABLE (Storm Defense)
+================================================================================
+
+All Strongholds use Walls 1-4 base (improved to 1-5 with Walls+1 marker
+placed by Reinforced Walls Capability).
+
+  CASTLE (Size 1)
+    Walls: 1-4
+    Garrison: 1 Men-at-Arms, 1 Militia, 1 Cavalieri.
+    Surrender dice: 1 die.
+
+  TOWN (Size 2)
+    Walls: 1-4
+    Garrison: 2 Men-at-Arms, 2 Armigeri, 2 Cavalieri.
+    Surrender dice: 2 dice.
+
+  CITY (Size 3)
+    Walls: 1-4
+    Garrison: 3 Men-at-Arms, 3 Armigeri, 3 Cavalieri.
+    Surrender dice: 3 dice.
+
+GARRISON FORCES IN STORM (4.5.2):
+  - Garrison's Foot units have BOTH Melee AND Archery.
+  - Garrison Men-at-Arms: Melee x1, Crossbow Archery x1/2 with Select
+    Target and -2 Enemy Armor.
+  - Garrison Armigeri: Melee x1/2, Crossbow Archery x1 with Select
+    Target and -2 Enemy Armor.
+  - Garrison Cavalieri: Melee x1.
+  - Garrison Militia: x1/2 Melee, x1/2 normal Archery (Castle Garrison
+    has 1 Militia per the Reference info file - confirm from the
+    Strongholds table; the Garrisons-given list above is per the
+    Inferno_Reference_info.rtf and Playbook; the rule text for Castle
+    Garrisons uses Militia, while Town/City use Armigeri).
+  - Garrisons add their Strikes to those of the Defending Lord (if any),
+    rounding up, but do NOT otherwise affect the Lord's Strikes.
+  - Garrisons are SEPARATE from any Defending Lord and IGNORE cards
+    affecting that Lord individually. Example: a Besieged Lord's units
+    don't get Crossbows from the Garrison's status; they get Crossbows
+    only via a Capability card.
+  - The Defender MUST assign ALL Hits suffered to GARRISON units until
+    they are Routed, after which units of the Front Defending Lord
+    (if any) absorb Hits.
+  - Whenever Routed AND at end of Storm, return Garrison units to
+    the pool. (See also Sack Knights' Quarter, 4.5.2.)
+  - The FULL Garrison Defends in EACH Enemy Storm action, regardless
+    of what happened in previous Storm actions. (Garrison "respawns"
+    between separate Storm actions on the same Stronghold.)
+
+SIEGEWORKS (4.5.2):
+  The Besieging side places all Siege markers at the Locale IN FRONT
+  of its Attacking Lord(s). Those Lords during the Storm have Walls
+  with value EQUAL TO the number of Siege markers, against both Archery
+  AND Melee Strikes.
+    - 1 Siege marker = Siegeworks 1-1 (i.e. Walls 1-1).
+    - 2 Siege markers = Siegeworks 1-2.
+    - 3 Siege markers = Siegeworks 1-3.
+    - 4 Siege markers = Siegeworks 1-4 (= equal to base Walls).
+
+================================================================================
+SECTION 15: AFTERMATH (4.4.6)
+================================================================================
+
+After Spoils, Losses, Revolt, and Sack (if any):
+
+  [ ] MOVED/FOUGHT: Mark ALL Attacking and Defending Lords as Fought
+      (if not already marked). For Storm: includes Lords who stayed in
+      Reserve.
+
+  [ ] EVENTS: Discard all Hold Events used in this Battle or Storm.
+
+  [ ] SIEGE: If the combat created or ended a Siege, adjust Siege,
+      Allegiance, Ruins, and/or VP markers.
+
+  [ ] RECOVERY: SKIP any Command actions remaining this card. Go to
+      Feed/Pay/Disband (4.8).
+
+KEY RULE: A Battle or Storm blocks any further Command actions on the
+current Command card.
+
+================================================================================
+SECTION 16: KEY TIMING NOTES & FOOTGUNS
+================================================================================
+
+- ARRAY: The Active Lord (Attacker) MUST start Center in Battle. In
+  Storm, the Attacker has only 1 Front Lord, who must be the Active
+  Lord (or his Comune, choose one).
+
+- COMUNE FLANK: A Comune Arrays and acts as a separate Lord. Its
+  Battle position is the player's choice, but in Battle the Commander
+  (the Active Lord) must be Front Center; the Comune may go Left or
+  Right or in Reserve. In Storm, only ONE of Commander/Comune can be
+  the Front Lord.
+
+- STRIKE ORDER differs Battle vs Storm: Battle alternates Horse then
+  Foot Melee; Storm: ALL Defending Melee, then ALL Attacking Melee
+  (Defender's full Melee before Attacker's full Melee).
+
+- WALLS ROLL only happens in Storm and Sally - not in field Battle.
+
+- SELECT TARGET (Crossbows, Sudden Clash) overrides the owner's choice
+  of which unit absorbs which Hit. Pavise Shielmen (Palvasari) +
+  Balestrieri lets the side Select Target whenever Crossbows fire (per
+  3.4.4 Play Note).
+
+- STORM ATTACKERS must take Hits with Armored units BEFORE Unarmored.
+  This is enforced regardless of whose choice is in play. It particularly
+  affects "shielding" with Villici - you cannot use Villici/Light
+  Horse/Militia to shield Cavalieri in Storm Attack.
+
+- CROSSBOWS reduce Enemy Armor by 2 to a MINIMUM of 1. So Cavalieri
+  (1-3) -> 1-1 against Crossbows.
+
+- PURSUIT halves the Conceding side's Hits. The Conceding side is the
+  LOSER for purposes of Retreat, Spoils, and Service shifts.
+
+- BATTLE ENDS THE CARD. No further actions after Battle, regardless of
+  Command Rating. Same for Storm and Sally.
+
+- LOSS ROLLS are made AFTER the Battle resolution (Retreat/Withdraw/
+  Remove). Routed-but-recovered units stay; Routed-and-Lost units go
+  to the pool. Lords losing all Forces are removed per 4.4.5.
+
+- KNIGHTS' QUARTER in BATTLE is conditional on a 3-6 Loss roll (i.e.
+  the unit fails its recovery AND rolls 3+). Cavalieri of WINNERS and
+  Withdraw-ers roll vs 1-3 normal Armor for recovery - so they only
+  fail (and Capture) on a 4-6 LOSS roll for the WINNING Lord, no wait:
+
+  Let me re-read 4.4.4: "Roll a die for each Routed unit." For the
+  WINNERS and for losers who Withdrew or Conceded+Retreated:
+    "compare each unit's roll to its inherent Armor or Unarmored
+    Protection." So Cavalieri rolls 1-3 to recover.
+  For losers who Retreated WITHOUT Conceding (or Attackers in Storm):
+    "fail unless they roll a '1'." So they need a 1.
+
+  KNIGHTS' QUARTER (per the rule text): "Put any Cavalieri or Ritter
+  Horse unit that was removed in Battle on a roll of 3-6 into the
+  owner's Captured Knights box."
+  - If WINNING Cavalieri Routs in Battle and rolls 3: it recovers (1-3
+    Armor). Not Captured.
+  - If RETREATING-Without-Conceding Cavalieri Routs and rolls 3: fails
+    recovery (needed 1). Roll was 3-6 -> Captured.
+  - If WINNING Cavalieri rolls 4: fails recovery (4 > 3). Roll was 3-6
+    -> Captured.
+  - If RETREATING-WITHOUT-CONCEDING Cavalieri rolls 1: recovers.
+
+  So Knights' Quarter triggers ONLY if (a) recovery fails AND (b) the
+  fail-roll was a 3, 4, 5, or 6. On a roll of 2 by a Cavalieri who
+  needed a 1, the unit fails recovery but is LOST to the pool (not
+  Captured) - because the roll wasn't 3+.
+
+- IN STORM, defending Cavalieri/Ritter ALL go to the captor's Captured
+  box on a Sack (not a 3-6 roll - just all Captured). Attackers
+  NEVER get Captured.
+
+- IF an Enemy Lord is REMOVED in combat, the enemy gets Revolt rolls
+  AND Treachery cards (per 4.4.5 calling back to 3.3.1). Comune removal
+  is exempt.
+
+- A CARROCCIO captured permanently grants +2 VP. If a Lord with
+  Carroccio Concedes and Retreats, he KEEPS the Carroccio. If he is
+  Removed or Retreats Without Conceding, the other side captures it.
+
+- A Lord BEHIND another Friendly Lord ("Reserve") in Battle does NOT
+  Strike but is also not directly Hit unless Flanking results put him
+  in line. He CAN be Hit if all Front Lords Routed and he Repositions.
+
+- The Pursuit marker is a physical reminder. Place it pointing at the
+  Conceder so you remember which side halves Hits this Round.
+
+- ARCHERY HITS go to both sides each Round (Defender first, then
+  Attacker) BEFORE any Melee. A Lord can be Routed by Archery before
+  he ever Strikes.
+
+- SACK's Spoils include 2 Coin (for a Town) on TOP of the Sacked
+  Lord's Assets and Carroccio. The Stronghold's "natural" 2 Loot, 2
+  Provender, 2 Coin (for a Town) are baseline payout.
+
+- After Sack, REMOVED Lords (4.4.5) generate Revolt/Treachery for the
+  Sacking side. The Sack itself ALSO generates Revolt/Treachery (=
+  Value). So a 3-VP City Sack with one Lord inside can yield Revolt
+  rolls / Treachery cards from BOTH triggers.
+
+================================================================================
+                       END OF BATTLE & STORM REFERENCE
+================================================================================

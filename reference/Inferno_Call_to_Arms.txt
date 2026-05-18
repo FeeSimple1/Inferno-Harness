@@ -1,0 +1,696 @@
+================================================================================
+INFERNO - CALL TO ARMS REFERENCE
+================================================================================
+Source: Inferno Rules of Play (Living Rules 2023-04-10), Section 3.5, page 14.
+        Cross-referenced with: Official Errata (10 April 2023), Playbook
+        "Call to Arms" section (pp 8-10), Playbook "Wrath - Declaring War"
+        (p 5), Arts of War card listing (Playbook p 64), Lords Reference,
+        Scenario Reference.
+ 
+When the Rules of Play or Errata conflict with any other source, the Rules of
+Play and Errata take precedence (per user instruction).
+ 
+ 
+================================================================================
+OVERVIEW
+================================================================================
+ 
+Call to Arms is an optional escalated Levy sequence that follows the regular
+Muster segment. Either or both sides may declare; if any side declares, BOTH
+sides follow the procedure once per Levy (Guelphs first, then Ghibellines).
+Conduct at most one Call to Arms by the two sides per Levy.
+ 
+The four (optional) steps for each side in order:
+  [a] 3.5.1 Gather             - Free March of Lords toward Leading City
+  [b] 3.5.2 Commander to Arms  - Disband and/or Muster the Commander
+  [c] 3.5.3 Comune             - Bring out the Leading City's communal army
+  [d] 3.5.4 Allies             - Extra Lordship OR automatic Muster of one Lord
+ 
+Each step is voluntary and may be skipped.
+ 
+SCENARIO EXCLUSIONS:
+  - Scenario A (Dolenti Note):       Skip all Call to Arms (Preamble rule).
+  - Scenario E (Lasciate Ogne Sper.): Skip all Call to Arms (Exhaustion rule).
+  - Other scenarios may have their own restrictions (see SCENARIO RULES below).
+ 
+ 
+================================================================================
+WHEN CALL TO ARMS HAPPENS IN THE SEQUENCE OF PLAY
+================================================================================
+ 
+LEVY PHASE (3.0):
+  3.1 Arts of War   (Capabilities or Events drawn)
+  3.2 Pay
+  3.3 Disband
+  3.4 Muster        (regular Lordship-driven Muster)
+  3.5 Call to Arms  <-- HERE, after both sides finish 3.4 Muster
+  -> proceed to Campaign (4.0)
+ 
+Per Playbook: "After the Ghibellines complete their Muster segment (3.4),
+check whether anyone can trigger Call to Arms, by VP score or cards."
+ 
+ 
+================================================================================
+TRIGGER CONDITIONS - WHO MAY DECLARE
+================================================================================
+ 
+A side may declare Call to Arms if ANY of the following is true at this point
+in the sequence of play:
+ 
+  1. It has the lower victory score by at least four VP (2.2.5, 5.1), OR
+  2. It drew a War Event that Levy (3.1.3), OR
+  3. It plays the Treasurers Event (F23, Guelphs only) and pays 2 Coin.
+ 
+NOTES ON TRIGGERS:
+  - It does not matter who declares or how many times. If ANY Call to Arms
+    occurs that Turn, each side follows the procedure once, Guelphs then
+    Ghibellines.
+ 
+  - War Events trigger eligibility for the drawing side regardless of whether
+    the rest of the War Event text applied (i.e., the conditional shifts on
+    the card need not have happened).
+ 
+  - Other effects of War Events (shifts, etc.) occur EARLIER during 3.1.3
+    Draw Events, independently of Call to Arms.
+ 
+  - The order of declaring matters only when the Ghibellines are eligible and
+    the Guelphs are Holding F23 Treasurers. In that case, the Guelph player
+    may wait until the Ghibellines have decided whether to declare before
+    committing the Treasurers card and 2 Coin.
+ 
+WAR EVENTS BY SIDE (2 per side, 1 of 26 cards each):
+  Guelph:     F25 Val d'Orcia, F26 Montalcino
+  Ghibelline: S25 Maremma, S26 Montepulciano
+ 
+GUELPH-ONLY OPTIONAL TRIGGER:
+  F23 Treasurers (Hold Event):
+    "Play to pay 2 Coin to declare Call to Arms OR to add 1 Treachery."
+    - Two Coin must be removable from any Guelph Lord(s), who may be
+      Besieged.
+    - May be played during the Call to Arms segment, including after the
+      Ghibellines have declined to declare.
+    - Alternatively, the 2 Coin may be paid at any time to add a set-aside
+      Guelph Treachery card to the Guelph Command deck (not a Call to Arms
+      trigger in that case).
+ 
+ 
+================================================================================
+PROCEDURE - GUELPHS THEN GHIBELLINES
+================================================================================
+ 
+PLAYER ORDER: If Call to Arms occurs, Guelphs perform any or all of steps
+3.5.1-3.5.4, then Ghibellines do so. Each step is independently optional.
+ 
+ 
+================================================================================
+STEP 3.5.1 - GATHER (Free March)
+================================================================================
+ 
+EFFECT: Each Unbesieged Lord of the side anywhere on the map may immediately
+        March (4.3) using his Command rating (modified as applicable).
+ 
+PARTICULARS:
+  - Commanders may March with other Lords (4.3.1) as in regular Campaign
+    March.
+  - Lords are NOT marked as Moved. They do NOT Feed (4.8) for this March.
+    (Per Playbook: "The community is supporting the war.")
+  - No Provender or Loot is expended for this Gather March.
+ 
+RESTRICTIONS:
+  - A Gathering March may NOT at any point enter a Locale containing any
+    Unbesieged or Unbypassed Enemy Lord, OR any un-Ruined Enemy Stronghold.
+    (Enemy that is already Bypassed or Besieged does NOT block the March.)
+  - Each Lord who Marches MUST end up closer to his side's Leading City
+    (Firenze for Guelphs, Siena for Ghibellines). The Lord does not have to
+    arrive there, but every Marching Lord must net closer.
+  - Besieged Lords may NOT March (they're stuck per 4.3).
+ 
+PLAYBOOK EXAMPLE NOTES:
+  - A Lord already inside his Leading City cannot March (cannot get closer).
+  - A Lord adjacent to the Leading City where the only entry is blocked by an
+    Enemy presence cannot March (Gather restriction).
+  - Intermediate stops are allowed only if the END Locale is closer to the
+    Leading City than the starting Locale.
+ 
+ 
+================================================================================
+STEP 3.5.2 - COMMANDER TO ARMS
+================================================================================
+ 
+The "Commander" is the Podestà of the Leading City:
+  - Guelph Commander:     Firenze Podestà     (at Firenze)
+  - Ghibelline Commander: Siena Podestà       (at Siena)
+ 
+OPTION A - DISBAND (optional first):
+  If the Commander (with his Comune, if Mustered) is currently on the map,
+  the player may Disband him as if At Service Limit (3.3.2). This:
+    - Returns the Commander's cylinder to the Calendar.
+    - Removes any added Vassal Forces, Assets, and Capability cards from his
+      mat (and his Comune mat if Mustered) - significant cost.
+    - The Comune is removed with the Commander (1.5.1, 1.6).
+    - Triggers Disband effects per 3.3.2 (with Errata: 3.3.2 line 3 deletes
+      "but trigger no Revolt or Treachery"; the Errata-corrected text governs.)
+ 
+OPTION B - MUSTER (optional, follows Disband if used):
+  Muster the Commander INSIDE his Leading City, per the usual rules (3.4.1),
+  EXCEPT his cylinder may be in ANY Calendar box (not only at or left of the
+  current Levy marker).
+ 
+  CONSTRAINTS still in force:
+    - The Leading City must NOT be Enemy aligned (no Muster if Firenze marked
+      Ghibelline, or Siena marked Guelph).
+    - Urban Army exception (3.4.1) applies: since the Leading City is the
+      Commander's Main Seat, he may Muster there even if Besieged.
+    - If Besieged, there must be room inside the Stronghold for his cylinder
+      per 4.3.4 WITHDRAW (City Size limits cylinder count; Firenze and Siena
+      are both Size 3).
+    - The Fealty roll is required per 3.4.1 (no automatic success here -
+      that's the Allies step).
+ 
+PLAY NOTE: The Disband-then-Muster combo is the standard way to bring the
+Commander home to the Leading City when he has wandered. The choice is a
+tradeoff: lose your Commander's Vassals/Assets/Capabilities versus gain a
+clean position inside the Leading City to enable step 3.5.3.
+ 
+ 
+================================================================================
+STEP 3.5.3 - COMUNE
+================================================================================
+ 
+REQUIREMENT: This step is available only if the side's Commander is now on
+the map INSIDE his Leading City. This includes if he is Besieged or Bypassed
+there. (Whether he arrived by March, by Muster in step 3.5.2, or by being
+already there at the start of Call to Arms, doesn't matter.)
+ 
+THIS IS THE ONLY WAY A COMUNE EVER ENTERS PLAY.
+ 
+PROCEDURE (all voluntary; if the side chooses to Muster the Comune):
+  1. If the Comune is not already Mustered, set out its mat with the Assets
+     and Special Vassals it shows. Stack that side's Comune cylinder beneath
+     its Commander cylinder. (If Besieged, the Comune cylinder must fit per
+     4.3.4 WITHDRAW.)
+  2. Muster Special Vassals and units on the Comune mat. If the Comune is in
+     play, it MUST end up with at least:
+       a. Its Carroccio (unless Captured), AND
+       b. One Sestiere (Firenze) or one Terzo (Siena).
+  3. Up to all remaining Unmustered Sestieri/Terzi may Muster. During Call
+     to Arms, Muster Sestieri/Terzi AS DESIRED, WITHOUT ROLLING.
+  4. The side MAY then reassign "This Lord" Capability cards between the
+     Commander mat and the Comune mat, provided neither mat ends up with more
+     than two such cards (3.4.4).
+ 
+KEY DETAILS:
+  - Mustering the Comune is voluntary. You don't have to do it even if your
+    Commander is at the Leading City.
+  - You don't have to Muster ALL Special Vassals, but you must include the
+    Carroccio plus at least one Sestiere/Terzo if you bring the Comune out
+    at all.
+  - The Comune adds a SECOND mat (Forces, Assets, Vassals, cards) and a
+    second cylinder stacked under the Commander.
+  - Outside of Siege and combat (e.g., March, Feed), Commander+Comune act as
+    a single Lord.
+  - In Siege/Withdrawal/Forage counting (4.3.4, 4.5.1, 4.7.1), they count as
+    TWO Lords for Stronghold Size purposes.
+  - In Battle and Storm, they Array, fight, and Rout as TWO SEPARATE Lords
+    (4.4.1-.4, 4.5.2). Event/Capability text referring to "Firenze" or
+    "Siena" affects BOTH mats separately. "This Lord" Capabilities apply
+    only to the mat they're tucked under.
+  - The Comune remains with the Commander until: he Disbands, he is removed
+    by combat, or the Comune loses all its Forces (1.6, 3.3, 4.4.5).
+ 
+LATER MUSTER (outside Call to Arms) - 3.4.2 SESTIERI/TERZI:
+  Once the Comune mat is in play with Ready Sestieri/Terzi remaining, a
+  Commander INSIDE (not Bypassing or Besieging) his Leading City may attempt
+  to Muster them via regular Levy actions. For each Levy action, select one
+  Sestiere/Terzo and roll a die: roll <= the die shown on its Service marker
+  Musters it; higher roll wastes the action. (Inside Call to Arms, no roll
+  is needed.)
+ 
+CARROCCIO SPECIAL NOTES (per 3.4.2 / 3.5.3 / 4.4.3 / 5.1):
+  - Musters ONLY during Call to Arms (cannot be Mustered later, including
+    via the Sestieri/Terzi 3.4.2 Levy action).
+  - Ignores the Advanced Vassal Service rule limits (3.4.2).
+  - If Retreated INTACT (not Lost/Captured) after a Battle, Lords on that
+    side shift Service only 1 box left rather than the usual 2 (per 4.4.3
+    EXCEPTION).
+  - If taken as Spoils (Captured) - the marker, not its Forces - the OTHER
+    side permanently captures it and gains 2 VP (5.1).
+  - Cannot be Bribed (4.7.6 - Special Vassals immune).
+ 
+ 
+================================================================================
+STEP 3.5.4 - ALLIES
+================================================================================
+ 
+CHOOSE ONE (OR DO NEITHER):
+ 
+OPTION 1 - Extra Muster Segment with One Lord:
+  Conduct an extra Muster segment with any ONE Lord of that side who is able
+  to do so per 3.4. He uses Levy actions equal to his Lordship rating, by
+  the usual rules:
+    - He must have begun this segment at a Friendly Locale and Unbesieged
+      (Urban Army Podestà exception still applies: Besieged at Main Seat OK).
+    - He may use Levy actions to: Levy Other Lords (Fealty roll), Levy
+      Vassals, Levy Transport, or Levy Capabilities.
+    - A Commander chosen here may Levy cards to his Comune mat as well.
+ 
+OPTION 2 - Auto-Muster One Lord (NOT the Commander):
+  Muster any ONE Lord OTHER than the Commander automatically:
+    - No Fealty roll required.
+    - No Levy action required.
+    - Otherwise per 3.4.1 (including Urban Army exception for a Podestà at
+      his Main Seat under Siege).
+    - The Lord must still be Ready on the Calendar (cylinder at or left of
+      the Levy marker), and have a Seat that is free, not Enemy-aligned,
+      and not Ruined-and-occupied by Enemy.
+    - Exile Army: A Podestà whose Main Seat is Enemy-aligned still requires
+      a Fealty roll under regular Muster - BUT this option says "without a
+      Fealty roll", which auto-succeeds. (The auto-Muster bypasses both the
+      roll and the Levy action; the Lord must still find a free Seat.)
+ 
+NOTE: A newly-Mustered Lord arriving in step 3.5.4 may NOT immediately Levy
+anything else this Levy (per 3.4 REQUIREMENTS: a Lord just arriving on the
+map cannot take Levy actions in the same Muster segment that brought him).
+ 
+ 
+================================================================================
+COMUNE MAT DETAILS
+================================================================================
+ 
+================================================================================
+FIRENZE COMUNE (Guelph)
+================================================================================
+Attaches to:    Firenze Podestà (Commander of the Guelphs)
+Entry:          Only via Call to Arms (3.5.3)
+Removal:        With the Commander, or when Forces are gone (1.6)
+Required core:  Carroccio + at least one Sestiere if Mustered
+ 
+Assets shown on the Comune mat: Coin x2, Cart x4
+ 
+Special Vassals (Muster at Firenze only; NO Vassal Seats per 3.4.2 EXCEPTION):
+ 
+  CARROCCIO
+    Forces:        1 Cavalieri, 1 Villici
+    VP if captured: 2 VP to Ghibellines (4.4.3, 5.1)
+    Notes:         Musters only in Call to Arms. Retreat intact mitigates
+                   Service shift (4.4.3 EXCEPTION). Cannot be Bribed.
+ 
+  Sixth of Porta San Piero
+    Service Rating: 2  | Muster die (outside Call to Arms): 3
+    Forces:         2 Cavalieri, 1 Villici
+ 
+  Sixth of Porta del Duomo
+    Service Rating: 2  | Muster die (outside Call to Arms): 3
+    Forces:         1 Cavalieri, 1 Armigieri, 1 Villici
+ 
+  Sixth of San Brancazio
+    Service Rating: 2  | Muster die (outside Call to Arms): 3
+    Forces:         1 Cavalieri, 1 Armigieri, 1 Villici
+ 
+  Sixth of Borgo SS. Apostoli
+    Service Rating: 2  | Muster die (outside Call to Arms): 3
+    Forces:         1 Cavalieri, 1 Armigieri, 1 Villici
+ 
+  Sixth of San Pier Scheraggio
+    Service Rating: 2  | Muster die (outside Call to Arms): 3
+    Forces:         1 Cavalieri, 1 Armigieri, 1 Villici
+ 
+  Sixth of Oltrarno
+    Service Rating: 2  | Muster die (outside Call to Arms): 3
+    Forces:         1 Cavalieri, 1 Armigieri, 1 Villici
+ 
+Maximum Comune mat Forces (all Sestieri + Carroccio Mustered):
+  6 Cavalieri, 5 Armigieri, 6 Villici (sum from all seven Special Vassals)
+ 
+ 
+================================================================================
+SIENA COMUNE (Ghibelline)
+================================================================================
+Attaches to:    Siena Podestà (Commander of the Ghibellines)
+Entry:          Only via Call to Arms (3.5.3)
+Removal:        With the Commander, or when Forces are gone (1.6)
+Required core:  Carroccio + at least one Terzo if Mustered
+ 
+Assets shown on the Comune mat: Coin x2, Cart x4
+ 
+Special Vassals (Muster at Siena only; NO Vassal Seats per 3.4.2 EXCEPTION):
+ 
+  CARROCCIO
+    Forces:        1 Cavalieri, 1 Villici
+    VP if captured: 2 VP to Guelphs (4.4.3, 5.1)
+    Notes:         Musters only in Call to Arms. Retreat intact mitigates
+                   Service shift (4.4.3 EXCEPTION). Cannot be Bribed.
+ 
+  Terzo di Camollia
+    Service Rating: 2  | Muster die (outside Call to Arms): 4
+    Forces:         1 Cavalieri, 1 Armigieri, 1 Villici
+ 
+  Terzo di San Martino
+    Service Rating: 2  | Muster die (outside Call to Arms): 4
+    Forces:         1 Cavalieri, 1 Armigieri, 1 Villici
+ 
+  Terzo di Città
+    Service Rating: 2  | Muster die (outside Call to Arms): 5
+    Forces:         1 Cavalieri, 1 Armigieri, 1 Villici
+ 
+Maximum Comune mat Forces (all Terzi + Carroccio Mustered):
+  4 Cavalieri, 3 Armigieri, 4 Villici (sum from all four Special Vassals)
+ 
+ 
+================================================================================
+ARTS OF WAR - WAR EVENTS (TRIGGERS)
+================================================================================
+ 
+================================================================================
+F25. VAL D'ORCIA - War (Guelph)
+================================================================================
+Trigger text:  If a Castle marked Guelph, shift Colle cylinder or Service 3
+               Calendar boxes. Guelphs may declare Call to Arms.
+ 
+Implementation (at moment of drawing in 3.1.3):
+  - If any ORIGINALLY GHIBELLINE Castle (not Town or City) has Guelph 1VP
+    markers on it, shift Colle's cylinder LEFT or his Service marker RIGHT
+    by 3 boxes (player's choice; if Colle is on the Calendar, shift cylinder
+    left; if Mustered, shift Service right).
+  - The Capability on this card is NOT available this Levy.
+  - After Muster (3.4), regardless of whether the conditional shift applied,
+    Guelphs may declare Call to Arms (3.5) at the Call to Arms segment.
+ 
+ 
+================================================================================
+F26. MONTALCINO - War (Guelph)
+================================================================================
+Trigger text:  If a Town marked Guelph, shift Firenze, Arezzo, AND Orvieto
+               cylinder or Service 1 box each. Guelphs may declare Call to
+               Arms.
+ 
+Implementation (at moment of drawing in 3.1.3):
+  - If any ORIGINALLY GHIBELLINE Town (not Castle or City) has Guelph 1VP
+    markers on it, shift EACH of Firenze, Arezzo, and Orvieto by 1 box -
+    cylinder left if on the Calendar, or Service right if Mustered (per Lord).
+  - The Capability on this card is NOT available this Levy.
+  - After Muster, regardless of whether the conditional shift applied,
+    Guelphs may declare Call to Arms (3.5).
+ 
+ 
+================================================================================
+S25. MAREMMA - War (Ghibelline)
+================================================================================
+Trigger text:  If Grosseto or adjacent Castle Guelph, shift 3 Ghibelline
+               cylinders or Service 1 box each. Ghibellines may declare Call
+               to Arms.
+ 
+Implementation (at moment of drawing in 3.1.3):
+  - "Grosseto or adjacent Castle Guelph" = any of Grosseto, Castiglione
+    della Pescaia, Montemassi, or Montepescali having Guelph 1VP markers.
+  - If condition met, shift 3 Ghibelline Lords (player's choice of which 3)
+    by 1 box each - cylinder left if on the Calendar, or Service right if
+    Mustered.
+  - The Capability on this card is NOT available this Levy.
+  - After Muster, regardless of whether the conditional shift applied,
+    Ghibellines may declare Call to Arms (3.5).
+ 
+ 
+================================================================================
+S26. MONTEPULCIANO - War (Ghibelline)
+================================================================================
+Trigger text:  If a Town marked Guelph, shift Provenzano and Siena cylinder
+               or Service 1 box each. Ghibellines may declare Call to Arms.
+ 
+Implementation (at moment of drawing in 3.1.3):
+  - If any ORIGINALLY GHIBELLINE Town (not Castle or City) has Guelph 1VP
+    markers on it, shift EACH of Provenzano and Siena by 1 box - cylinder
+    left if on the Calendar, or Service right if Mustered (per Lord).
+  - The Capability on this card is NOT available this Levy.
+  - After Muster, regardless of whether the conditional shift applied,
+    Ghibellines may declare Call to Arms (3.5).
+ 
+ 
+================================================================================
+F23. TREASURERS (Guelph) - Optional Trigger
+================================================================================
+Trigger text:  Hold: Play to pay 2 Coin to declare Call to Arms OR to add 1
+               Treachery.
+ 
+Implementation:
+  - REQUIRES: Guelphs hold this Event (drawn but kept face-down) and can
+    remove 2 Coin total from any Guelph Lord(s), who may be Besieged.
+  - OPTION A: Play during the Call to Arms segment to trigger Call to Arms
+    for the Guelphs (including AFTER the Ghibellines have declined to
+    declare, which lets Guelphs see Ghibelline decision first).
+  - OPTION B: Play at any time to pay the 2 Coin and add a set-aside Guelph
+    Treachery card to the Guelph Command deck. (This option does NOT trigger
+    Call to Arms.)
+ 
+ 
+================================================================================
+RELATED CAPABILITIES THAT INTERACT WITH CALL TO ARMS
+================================================================================
+ 
+F22. TAU COMPANY (Guelph Capability)
+  Effect: Firenze and Lucca have Lordship +1 and may Muster Altopascio for
+          0 actions.
+  Call to Arms relevance: The +1 Lordship applies to BOTH the regular Muster
+  (3.4) AND the Allies step of Call to Arms (3.5.4 Option 1), every Muster
+  and Call to Arms while Tau Company is in effect.
+  Errata: The sentence beginning "A Comune mat..." is DELETED from the
+          Tips (per Page 46 errata).
+ 
+S15. WAR LOANS (Ghibelline Event)
+  Effect: Shift Siena, Provenzano, Giordano, OR Astimberg cylinder or Service
+          2 boxes, OR this Levy give one of them Lordship +2.
+  Call to Arms relevance: The +2 Lordship option applies to BOTH the regular
+  Muster (3.4) AND the Allies step of Call to Arms (3.5.4 Option 1) this
+  Levy.
+ 
+S10. A BETTER PAID DEATH (Ghibelline Event)
+  Effect: Shift 2 non-Podestà Ghibelline Lords by 1 box each, OR this Levy
+          give 1 of them Lordship +2.
+  Call to Arms relevance: As S15 - the +2 Lordship option applies to both
+  regular Muster and the Allies step (3.5.4 Option 1) this Levy. No Podestà
+  may receive the Lordship boost.
+ 
+F21. DISTRINGITORES (Guelph Capability) and similar Battle-time Capabilities:
+  Mentioned in the Playbook "Wrath" section as useful when preparing for
+  field Battle, which Call to Arms often precedes.
+ 
+KEY VASSAL/SPECIAL VASSAL INTERACTIONS:
+  - Carroccio (both sides): Muster ONLY via Call to Arms step 3.5.3.
+    Worth 2 VP to opponent if Captured. Mitigates Service loss if Retreated
+    intact (4.4.3 EXCEPTION).
+  - Sestieri/Terzi: Auto-Muster (no roll) only via Call to Arms step 3.5.3.
+    Outside Call to Arms, they may be Mustered one at a time via Levy
+    actions with a die roll (3.4.2 SESTIERI/TERZI).
+  - Altopascio (Tau Company set-aside): Not a Call to Arms mechanism, but
+    Tau Company's Lordship +1 carries through to the Allies step.
+ 
+ 
+================================================================================
+SCENARIO-SPECIFIC CALL TO ARMS RULES
+================================================================================
+ 
+A. DOLENTI NOTE - Early 1259 (Introductory)
+   Preamble special rule: Skip all Call to Arms (3.5). The 3.5 rule section
+   is entirely ignored.
+ 
+B. IN FAR VENDETTA - 1259 to 1260 (Medium)
+   No scenario-specific Call to Arms rule. Standard 3.5 applies.
+ 
+C. SANTAFIOR OSCURA - Early 1260 (Short, Limited Call to Arms)
+   Maremma War special rule: Ghibellines (only) conduct Call to Arms in the
+   first Levy; skip all OTHER Call to Arms (3.5). Other constraints:
+     - Ghibelline Lords may not cross the dashed line (1.3.1) until the
+       Guelphs place a Siege or Ravage marker (4.3.5, 4.7.2).
+     - Grosseto with two Siege markers and no Lord inside Surrenders at
+       once (4.5.1).
+ 
+D. ARBIA COLORATA IN ROSSO - Late 1260 (Short, Both Sides Call to Arms)
+   Escalation special rule: In the first Levy, EITHER side may trigger Call
+   to Arms as if it had drawn a WAR Event (3.5). After the first Levy,
+   standard 3.5 trigger rules apply.
+ 
+E. LASCIATE OGNE SPERANZA - 1261 (Short)
+   Exhaustion special rule: Skip all Call to Arms (3.5). The 3.5 rule
+   section is entirely ignored.
+ 
+F. DI SANGUE T'EMPIO - 1259 to 1261 (Full-length)
+   No scenario-specific Call to Arms rule. Standard 3.5 applies. Other
+   special rules (Night March, Exhaustion-as-game-length-roll) do not
+   affect Call to Arms.
+ 
+ 
+================================================================================
+STRATEGY NOTES (Per Playbook "Wrath - Declaring War and the Call to Arms")
+================================================================================
+ 
+Both players are likely to face the opportunity to declare Call to Arms at
+some point. Declaring gives:
+  - Automatic Muster of your Leading City's Podestà (Commander)
+  - Mustering the Comune (Carroccio + Sestieri/Terzi as desired)
+  - Free March of any of your Lords toward your Leading City
+  - An additional Muster segment with one Lord (or auto-Muster a non-
+    Commander Lord)
+HOWEVER: Your opponent gets to do the same. Choose timing when the opponent
+is LEAST able to make good use of the steps.
+ 
+DEFENSIVE DECLARATION:
+  - Useful when a large Enemy army is bearing down and your Commander is
+    still Unmustered.
+  - The Enemy is less likely to want to use the Call to Arms steps, so you
+    use them more effectively.
+ 
+OFFENSIVE DECLARATION:
+  - Useful when you can March your Commander and Comune to an Enemy Town or
+    City to conquer it before help arrives.
+ 
+DESPERATE / BEHIND-IN-VICTORY DECLARATION:
+  - When 4+ VP behind, you can declare regardless. You may use Commander
+    and Comune fairly recklessly, since the catch-up potential is high.
+ 
+LEADING-CITY ROOM CONSTRAINT:
+  - Firenze (Size 3) under Siege: needs room for Commander + Comune
+    cylinders. With the standard mats, three cylinders fit (Size 3); if
+    others are already there, plan accordingly.
+  - Same for Siena (Size 3).
+ 
+CAPABILITIES TO COORDINATE WITH:
+  - F22 Tau Company / S15 War Loans / S10 A Better Paid Death give Lordship
+    bonuses that boost the Allies step (3.5.4 Option 1).
+  - F23 Treasurers gives Guelphs the unique optional trigger via 2 Coin.
+ 
+ 
+================================================================================
+EXAMPLE - GUELPH CALL TO ARMS (Paraphrased from Playbook pp 9-10)
+================================================================================
+ 
+Setup state (continuing the Muster example):
+  - Guelph Lord Guido Guerra: Besieged inside the Guelph Leading City area
+    (cannot March)
+  - Guelph Lord Arezzo Podestà: at Figline (adjacent to Firenze)
+  - Guelph Lord Lucca Podestà: at Altopascio (just Mustered)
+  - Guelph Commander (Firenze Podestà): Unmustered on the Calendar
+  - Ghibelline Lords are Besieging Firenze
+ 
+GUELPH CALL TO ARMS (proceeds first):
+ 
+Step 3.5.1 Gather:
+  - Guido Guerra: Cannot March (Besieged, AND already in the Leading City).
+  - Arezzo Podestà: Cannot enter Firenze (Ghibelline Lords there); no other
+    move would end closer to Firenze.
+  - Lucca Podestà: Marches Altopascio -> San Miniato -> Empoli. (Cannot
+    stop at San Miniato alone because that's not closer to Firenze along
+    this path; Empoli IS closer.)
+ 
+Step 3.5.2 Commander to Arms:
+  - No Disband (Commander still on Calendar).
+  - Muster Firenze Podestà AT Firenze, even though Firenze is Besieged
+    (Urban Army exception applies at his Main Seat). Place cylinder at
+    Firenze and Service marker on the Calendar 3 boxes ahead per his
+    Service rating.
+ 
+Step 3.5.3 Comune:
+  - Commander is now at Firenze, with room (just barely - third cylinder
+    inside the Size-3 City). The player Musters the Firenze Comune.
+  - Place Comune cylinder under the Firenze Commander cylinder.
+  - Set up the Firenze Comune mat with its Carroccio plus at least one
+    Sestiere (required minimum).
+  - Auto-Muster the remaining 5 Sestieri as desired (no rolling during
+    Call to Arms).
+ 
+Step 3.5.4 Allies:
+  - Firenze (now as an Urban Army), Arezzo (at Figline, Friendly), or
+    Lucca (at Empoli) could use Lordship to Levy. Guido Guerra cannot
+    (Besieged, NOT a Podestà at Main Seat - actually Guido is not a
+    Podestà at all, so no Urban Army exception).
+  - The player picks one of those Lords (or auto-Musters a single Lord
+    other than the Commander).
+ 
+GHIBELLINE CALL TO ARMS (then proceeds second):
+  - The Ghibelline player goes through 3.5.1-3.5.4 in turn, possibly
+    Marching Lords south from the Siege of Firenze toward Siena,
+    possibly Disbanding/Mustering Siena's Commander at Siena, etc.
+ 
+ 
+================================================================================
+COMMON QUESTIONS & EDGE CASES
+================================================================================
+ 
+Q: Can the Comune Muster outside Call to Arms?
+A: No - the Comune ENTERS PLAY only via Call to Arms (3.5.3). However, once
+   in play, additional Sestieri/Terzi may Muster later via regular Levy
+   actions if the Commander is inside (not Besieging/Bypassing) his Leading
+   City, with a die roll each (3.4.2 SESTIERI/TERZI).
+ 
+Q: Can the Carroccio Muster outside Call to Arms?
+A: No - the Carroccio Musters ONLY in Call to Arms (3.5.3).
+ 
+Q: If my Commander Disbands in step 3.5.2, do I lose his "This Lord"
+   Capabilities and Comune mat contents?
+A: Yes - per standard Disband rules. Vassal Forces return to the pool,
+   Capabilities are discarded, the Comune is removed with him. This is
+   often the cost of re-positioning via 3.5.2.
+ 
+Q: Can a Gather March end at a Ruined Enemy Stronghold?
+A: Yes - the restriction is on un-Ruined Enemy Strongholds. A Ruined
+   Stronghold's Allegiance still matters for Friendly/Enemy purposes but
+   the restriction's wording excludes Ruined ones (the Lord may March
+   through/into a Ruined Locale unless an Unbesieged/Unbypassed Enemy Lord
+   is also there).
+ 
+Q: Can the Allies Auto-Muster (Option 2) bring out a Commander?
+A: No - per 3.5.4: "Muster any one Lord other than the Commander
+   automatically". The Commander has his own dedicated step (3.5.2).
+ 
+Q: Can a side declare Call to Arms via score AND another side also play
+   F23 Treasurers?
+A: Yes, but it doesn't matter how many declarations occur. Each side does
+   the procedure once total (Guelphs first). The "first declare; then both
+   sides proceed once each" structure stands.
+ 
+Q: What if both sides drew a War Event the same Levy?
+A: Either or both may declare; each side still proceeds through 3.5.1-3.5.4
+   exactly once that Levy (Guelphs first, then Ghibellines). Note that
+   shifts from the War Events themselves happen earlier during 3.1.3, not
+   at this point.
+ 
+Q: Can a Gathering Lord Bypass an Enemy along the way?
+A: No - the restriction reads "may not at any point enter a Locale with
+   any Unbesieged or Unbypassed Enemy Lord or un-Ruined Enemy Stronghold."
+   Bypass requires being IN that Locale at end of action; the Gather March
+   cannot enter that Locale at all unless the Enemy is ALREADY Bypassed or
+   Besieged.
+ 
+Q: Is the Comune a separate Lord for Capability Discard purposes?
+A: No - per 4.0 CAPABILITY DISCARD: discard excess Capabilities compared to
+   on-map Lords NOT including Comuni. The Commander and Comune together
+   count as one Lord for that purpose.
+ 
+ 
+================================================================================
+QUICK CHECKLIST - CALL TO ARMS SEGMENT
+================================================================================
+ 
+  [ ] After both sides' Muster (3.4) is complete.
+  [ ] Check trigger eligibility for each side:
+        [ ] Score 4+ VP behind?
+        [ ] Drew a War Event this Levy? (F25, F26, S25, S26)
+        [ ] (Guelphs) Holding F23 Treasurers with 2 Coin available?
+  [ ] If any side declares, BOTH sides proceed once - Guelphs first.
+ 
+  GUELPH STEPS (if a Call to Arms occurs):
+    [ ] 3.5.1 Gather    - Free Marches toward Firenze (no Feed, no Moved)
+    [ ] 3.5.2 Commander - Optional Disband; optional Muster at Firenze
+                          (any Calendar box; Urban Army OK if Besieged)
+    [ ] 3.5.3 Comune    - If Commander inside Firenze, optionally Muster the
+                          Comune (Carroccio + 1+ Sestiere minimum; rest
+                          auto-Muster; reassign This Lord cards if desired)
+    [ ] 3.5.4 Allies    - One Lord uses full Lordship (extra Muster), OR
+                          auto-Muster one non-Commander Lord
+ 
+  GHIBELLINE STEPS: Same four steps, Siena instead of Firenze, Terzi
+                    instead of Sestieri.
+ 
+ 
+================================================================================
+END OF CALL TO ARMS REFERENCE
+================================================================================

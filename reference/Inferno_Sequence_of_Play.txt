@@ -1,0 +1,465 @@
+================================================================================
+INFERNO - SEQUENCE OF PLAY REFERENCE (Turn Flow Checklist)
+================================================================================
+Source: Inferno Rules of Play (Living Rules 2023-04-10), primarily Sections
+        3.0 (Levy), 4.0 (Campaign), 4.8 (Feed/Pay/Disband), 4.9 (End Campaign),
+        5.0 (Victory). Cross-referenced with Playbook and Official Errata
+        (10 April 2023).
+
+When the Rules of Play or Errata conflict with any other source, the Rules of
+Play and Errata take precedence (per user instruction).
+
+================================================================================
+GAME STRUCTURE OVERVIEW
+================================================================================
+
+Each scenario is a series of 60-Day TURNS. Each Turn has two phases:
+
+  LEVY (3.0)      - Prepare armies. Resolved in order, both sides.
+  CAMPAIGN (4.0)  - Activate Lords by alternating Command cards until
+                    both Plan stacks are exhausted.
+
+After Campaign, perform End Campaign steps (4.9). If not the final Turn,
+advance the Campaign marker to the next 60-Days' Levy and repeat.
+
+Player order: Guelphs first in each step, Ghibellines second, unless noted
+(2.2.4). Exceptions: alternating Command card play (4.2), and many Battle/
+Siege/Storm sub-steps that depend on who is Active/Attacking/etc.
+
+================================================================================
+LEVY PHASE (3.0) - STEP-BY-STEP CHECKLIST
+================================================================================
+
+================================================================================
+STEP 3.1 - ARTS OF WAR
+================================================================================
+
+  [ ] 3.1.1 SHUFFLE each side's unused Arts of War cards into an Event
+            draw deck. Exclude Held Events and Capabilities in play.
+
+  IF this is the scenario's FIRST Levy:
+    [ ] 3.1.2 DRAW CAPABILITIES - Guelphs then Ghibellines each draw 2
+              random Arts of War cards. Deploy each as a Capability
+              (lower half).
+              - Side-wide Capability: tuck at side's map edge.
+              - "This Lord" Capability: tuck at a Mustered Lord's mat
+                (max 2 per mat).
+              - Discard any "This Lord" Capability that cannot be
+                assigned to a Mustered Lord.
+
+  IF this is the SECOND or any later Levy:
+    [ ] 3.1.3 DRAW EVENTS - Guelphs then Ghibellines each draw 2 cards
+              and implement the Event (upper half) in draw order.
+              - "Hold" Events: keep hidden for later use at holder's
+                discretion. Tuck under a Lord's mat top edge if specified.
+              - "This Levy" / "This Campaign" Events: keep out until end
+                of current Levy / Campaign.
+              - Other Events resolve immediately and return to deck.
+              - "War" Events: enable that side to declare Call to Arms
+                later this Levy (3.5).
+              - GREED (3.1.4): players may not discard cards except as
+                rules permit.
+
+================================================================================
+STEP 3.2 - PAY
+================================================================================
+
+  Guelphs then Ghibellines. Each side may have its Lords expend Coin
+  and/or Loot to shift Service markers right on the Calendar.
+
+  [ ] 3.2.1 PAY WITH COIN
+        - 1 Coin = 1 Service box shift (right) for the paying Lord OR
+          another Lord at the same Locale.
+        - PODESTA EXCEPTION: 2 Coin per box shift for a Podesta.
+
+  [ ] 3.2.2 PAY WITH LOOT
+        - Lord must be at a Friendly Locale FREE OF SIEGE (may be
+          Bypassed).
+        - 1 Loot = 1 Coin equivalent. 2 Loot/Coin per box for Podesta.
+
+  NOTE: Coin and Loot are removed only to actually shift Service markers
+  at this step.
+
+================================================================================
+STEP 3.3 - DISBAND
+================================================================================
+
+  Guelphs then Ghibellines.
+
+  [ ] 3.3.1 BEYOND SERVICE LIMIT
+        Lords whose Service marker is LEFT of the current Levy or
+        Campaign box are removed.
+        - Regular Lord: cylinder removed permanently.
+        - Podesta: cylinder placed 3 boxes ahead of current Turn (= his
+          Service Rating), may Muster again.
+        - Set aside Service markers, mats, Forces (return to pool),
+          Assets, Vassal markers, Comune if any.
+        - Return "This Lord" Capabilities to that side's Arts of War deck.
+        - REVOLT & TREACHERY: Enemy side rolls on Revolt table and
+          adds Treachery cards (once for regular Lord, 3x for Podesta;
+          equal to Service Rating). Comune Disband adds no Revolt/
+          Treachery.
+
+  [ ] 3.3.2 AT SERVICE LIMIT (per ERRATA)
+        Lords whose Service marker is in the SAME box as the Levy or
+        Campaign marker Disband. They may Muster again later.
+        - Place cylinder on Calendar a number of boxes right of the
+          current box equal to Service Rating (if Levy), or right of
+          the NEXT box (if Campaign, 4.8.2).
+        - Set aside Comune cylinder and mat if any.
+        - Return Forces and Assets to pools; discard cards at mat.
+        - Set aside mat(s), Service marker, remaining Vassal markers.
+        - This does NOT trigger Revolt or Treachery (Errata removed
+          the "but trigger no Revolt or Treachery" line; the Beyond
+          Service Limit Revolt/Treachery rule covers that case).
+
+  NOTE: A Lord who Disbands because his last unit was lost outside
+  combat (1.6) also Disbands.
+
+================================================================================
+STEP 3.4 - MUSTER
+================================================================================
+
+  Guelphs then Ghibellines. Each on-map Lord, in turn, may take Levy
+  actions up to his Lordship rating. Complete one Lord before the next.
+
+  REQUIREMENTS to use Lordship:
+    - Lord must have begun this Muster segment at a Friendly Locale
+      AND be Unbesieged (may be Bypassed).
+    - URBAN ARMY exception: a Podesta may use Lordship from his Main
+      Seat even if Besieged there.
+
+  EACH LEVY ACTION (= 1 Lordship point) does ONE of:
+
+    [ ] 3.4.1 LEVY OTHER LORDS - Roll Fealty for another Lord:
+          - The target Lord must be Ready (cylinder at or left of Levy
+            marker) and have a Seat that is Friendly, Unbesieged, and
+            (if Ruined) not occupied by Enemy Lords (may be Bypassed or
+            Ravaged).
+          - Roll 1 die: <= Fealty Rating = success.
+          - EXCEPTIONS:
+              EXILE ARMY: If a Podesta's Main Seat is Enemy aligned, it
+                costs 2 actions (not 1) to roll for him.
+              URBAN ARMY: Podesta may Muster at his Main Seat even if
+                Besieged (subject to Stronghold Size limit).
+              EMERGENCY ARMY: If any Enemy Lord is at a Podesta's Main
+                Seat, treat him as Ready regardless of Calendar box.
+          - On success: place cylinder at a free Seat, place mat with
+            starting Forces/Assets/Vassal markers, place Service marker
+            on Calendar (Service Rating boxes right of current).
+          - Newly Mustered Lords may NOT themselves take Levy actions
+            this segment.
+
+    [ ] 3.4.2 LEVY VASSALS - Muster a Vassal of this Lord:
+          - Vassal's Service marker on mat must be face-up (Ready).
+          - Vassal's Seat must be Friendly (may be Besieged, Bypassed,
+            Ruined, or Ravaged).
+          - Slide Service marker into Forces area; add Vassal's Forces
+            from the pool.
+          - SPECIAL VASSALS EXCEPTION: Carroccio, Sestieri, Terzi have
+            NO Vassal Seats. They Muster only at the Leading City via
+            Call to Arms (3.5.3). Sestieri/Terzi can be Mustered outside
+            Call to Arms ONLY if the Comune mat is already in play with
+            those markers Ready AND the Commander is inside (not
+            Bypassing/Besieging) his Leading City. Roll die <= number
+            shown on Service marker.
+          - ALTOPASCIO: starts set aside; the Tau Company Capability
+            enables Firenze or Lucca to Muster it for 0 actions (its
+            Altopascio Vassal Seat must be Friendly).
+          - TAGLIA Capability: lets certain Lords Muster one of each
+            other's Unmustered Vassals to their own mats.
+
+    [ ] 3.4.3 LEVY TRANSPORT - 1 action adds 1 Cart to mat. Podesta of
+              Pisa (only) may add 1 Ship instead.
+
+    [ ] 3.4.4 LEVY CAPABILITY - 1 action obtains 1 Capability card
+              (lower half of an Arts of War card) for the side or for
+              this Lord:
+              - Card's Coats of Arms show eligible Lords ("Any", "ALL",
+                "Not", or specific Coats).
+              - "This Lord" Capabilities go at the bottom edge of that
+                Lord's mat (max 2 per mat; never two with the same
+                title). A Commander may Levy "This Lord" cards to his
+                Comune mat (each mat has its own 2-card limit).
+              - Other Capabilities tuck at the side's map edge.
+              - Levying a Capability blocks that card's Event from
+                ever occurring.
+
+================================================================================
+STEP 3.5 - CALL TO ARMS (optional, conditional)
+================================================================================
+
+  EXCLUDED in Scenario A (Dolenti Note - Preamble rule) and Scenario E
+  (Lasciate Ogne Speranza - Exhaustion rule).
+
+  Either side may declare if AT THIS POINT IN PLAY:
+    (1) That side's VP score is at least 4 below the other, OR
+    (2) That side drew a War Event this Levy (3.1.3), OR
+    (3) The Guelphs play Treasurers (F23) and pay 2 Coin.
+
+  If ANY side declares, BOTH sides follow the procedure once (Guelphs
+  then Ghibellines). At most one Call to Arms per Levy. Each step is
+  optional and may be skipped.
+
+  ORDER WITHIN EACH SIDE:
+
+    [ ] 3.5.1 GATHER - Free March
+          - Each Unbesieged Lord MAY March using his Command rating
+            (modified as applicable). Commanders may March in a group.
+          - May NOT enter any Locale with an Unbesieged/Unbypassed Enemy
+            Lord or un-Ruined Enemy Stronghold.
+          - Each Lord that does March must end CLOSER to his Leading
+            City (Firenze for Guelphs, Siena for Ghibellines).
+          - Do NOT mark Moved. Lords do NOT Feed.
+
+    [ ] 3.5.2 COMMANDER TO ARMS
+          - If desired, Disband the Commander as if At Service Limit
+            (with his Comune if on map).
+          - Then, if desired and able per 3.4.1, Muster the Commander
+            inside his Leading City from ANY Calendar box (Ready or not).
+
+    [ ] 3.5.3 COMUNE - if Commander is inside his Leading City (even
+              Besieged or Bypassed):
+          - Set out the Comune mat with its starting Assets and Special
+            Vassals (if not already in play).
+          - Stack the Comune cylinder beneath the Commander cylinder
+            (Besieged: must be room - Stronghold Size limit).
+          - Muster Special Vassals to the Comune mat. If the Comune is
+            put into play this step, it MUST end up with at least its
+            Carroccio (unless Captured) plus one Sestiere or Terzo.
+          - All remaining Unmustered Sestieri/Terzi may Muster
+            automatically (no roll needed - this is the only auto path).
+          - The side may then reassign "This Lord" cards between
+            Commander and Comune mats (neither ending with more than 2).
+
+    [ ] 3.5.4 ALLIES - EITHER (not both):
+          - Conduct an extra Muster segment with ONE of that side's
+            Lords (= his Lordship in Levy actions, per 3.4), OR
+          - Muster any one non-Commander Lord automatically (no Fealty
+            roll, no Levy action; otherwise per 3.4.1 incl. Urban Army).
+
+================================================================================
+CAMPAIGN PHASE (4.0) - STEP-BY-STEP CHECKLIST
+================================================================================
+
+================================================================================
+STEP A - CAPABILITY DISCARD (pre-Plan)
+================================================================================
+
+  Guelphs then Ghibellines. Each side MUST select and discard any
+  side-wide Capability cards exceeding their number of Mustered Lords
+  (NOT counting "This Lord" Capabilities).
+    - Comuni do NOT count as on-map Lords for this purpose.
+
+================================================================================
+STEP B - PLAN (4.1)
+================================================================================
+
+  Both sides simultaneously build face-down Plan stacks of Command
+  cards. Number of cards by Season:
+    Spring  = 7
+    Summer  = 6
+    Autumn  = 7
+    Winter  = 4
+
+  [ ] 4.1.1 SELECTING CARDS
+        - May use any Command action cards (numeraled) and Pass cards.
+        - Treachery cards may be used ONLY if previously added to deck
+          via Revolt triggers or Events.
+        - Pass cards fill the Plan when a side has too few on-map Lords.
+
+  [ ] 4.1.2 ARRANGING STACKS
+        - Stack 4-7 selected cards in chosen order, face down.
+        - Top card is the first to flip.
+        - Plan order may NOT be rearranged once built.
+        - Players may inspect their OWN Plan and the OTHER side's
+          already-played cards.
+
+  [ ] 4.1.3 LIEUTENANTS (optional, only during Planning)
+        - Place a Lord's cylinder on top of one other Friendly cylinder
+          at the same Locale. Upper = Lieutenant, lower = Lower Lord.
+        - Lasts the entire Campaign unless one is removed.
+        - One Lower Lord max per Lieutenant. The Lower Lord may not be
+          a Lieutenant.
+        - Neither Commander nor Comune may be a Lieutenant or Lower Lord.
+        - Move together in March, Avoid, Retreat, etc.
+        - If one Disbands, the survivor becomes a normal Lord.
+        - Revealing a Lower Lord's Command card = Pass.
+        - May NOT Withdraw into a Castle (Size 1) or enter an Outpost.
+
+================================================================================
+STEP C - ACTIVATION (4.2)
+================================================================================
+
+  Guelphs then Ghibellines alternate flipping the top card of their
+  stack. Continue until BOTH stacks are exhausted.
+
+  Each card flip:
+
+  [ ] REVEAL the top Command card. It is either:
+
+      (1) A COMMAND ACTIONS CARD (with a numeral) - 4.2.1
+          The named Lord (if on the map) takes up to that many actions
+          from the Command Menu (4.2.2), in any order:
+              March, Siege, Storm, Sally, Supply, Forage, Ravage,
+              Tax, Pass; Pisa may also Sail.
+
+          ACTION RESTRICTIONS:
+            - Besieged Lords (4.3.5) may only Sally, Pass, or
+              perhaps Forage (or use Reinforced Walls).
+            - Siege, Sail, and Tax each use the ENTIRE card (one action
+              effectively spends them all).
+            - Starting a Siege (Besiege/Encamp) ends the card's actions
+              after resolving Feed/Pay/Disband.
+            - Any Battle or Storm ends that card's actions.
+            - A Lord may use multiple actions on the same Command type
+              (e.g. 3 actions = 3 Forages).
+
+      (2) A TREACHERY CARD (4.2.3)
+          The Lord named takes NO normal Command actions, but may
+          attempt Revolt (4.7.5) or Bribe (4.7.6), or Pass.
+
+      (3) A PASS CARD, a Lower Lord's card, or a card of a Lord not on
+          the map (4.2.4) - nothing happens. Play passes.
+
+  [ ] AT END OF CARD - FEED / PAY / DISBAND (4.8)
+      Both sides resolve:
+        4.8.1 FEED - For each Lord on either side marked Moved/Fought:
+              - 1 Provender or Loot per 1-6 units on mat
+              - 2 Provender/Loot per 7-12 units
+              - 3 Provender/Loot per 13+ units
+              - SHARING: Lords must Feed own Forces first, then Share
+                Provender/Loot at the same Locale.
+              - UNFED: Service marker shifts 1 box LEFT (Service AND
+                Vassal markers if using Advanced Vassal Service).
+              - GREED: may not remove Assets beyond this requirement.
+        4.8.2 PAY - Guelphs then Ghibellines may Pay (per Levy 3.2).
+        4.8.2 DISBAND - All Lords on both sides check Service limit
+              and Disband as required (per 3.3.1-.2). Errata: Beyond-
+              Service-Limit Revolt/Treachery DOES apply. Podesta cylinder
+              goes to NEXT Calendar box +Service Rating boxes.
+        4.8.3 Remove Moved/Fought markers from all Lords.
+
+  [ ] CONTINUE: the OTHER side flips its next card.
+
+================================================================================
+STEP D - END CAMPAIGN (4.9)
+================================================================================
+
+  After both Plan stacks are exhausted, resolve in order:
+
+  [ ] 4.9.1 GROW (only on certain Turns)
+        At the end of each late-Spring (April-May) and Autumn
+        (October-November) Turn - Calendar boxes 2, 5, 8, 11, 14:
+          - Guelph then Ghibelline player each MUST select and reduce
+            the ENEMY'S Ravage markers on the map to 1/2 their total,
+            rounded UP.
+          - Adjust VP accordingly.
+
+  [ ] 4.9.2 RANSOM / LANGUISH
+        Guelphs then Ghibellines may pay Coin to recover Captured
+        Knights from their Captured Knights box.
+          - Cost: 1 Coin total per 6 units captured, rounded UP. Must
+            pay the FULL amount (partial Ransom not allowed).
+          - Coin goes to the OTHER side, who distributes among its Lords.
+          - The paying side selects HALF (rounded UP) of those units
+            and distributes to its on-map Lords. Remainder returns to
+            the pool.
+          - LANGUISH (if no Ransom or unable): the OTHER side rolls on
+            its Revolt table OR adds 1 Treachery, one of either per 6
+            captured (rounded UP). Revolt rolls in lieu of Treachery
+            are mandatory.
+          - Lords involved may be Bypassed or Besieged.
+
+  [ ] 4.9.3 GAME END CHECK
+        If this was the scenario's last 60-Day Turn, the game ends -
+        side with more VP wins (5.3); tie = draw. Otherwise, proceed.
+
+  [ ] 4.9.4 REPAIR (Errata)
+        Remove ONE Siege marker from each TOWN and CITY that has 3 or
+        4 Siege markers. (Errata: replaced "Stronghold" with "Town and
+        City" - Castles do NOT get this Repair.)
+
+  [ ] 4.9.5 WASTE
+        Guelphs then Ghibellines must select and discard one Asset OR
+        one "This Lord" Capability card from each of their Lords who
+        has MORE THAN ONE of any type of Asset or more than one such
+        card. Example: 2 Carts + 1 Loot + 1 card = must discard one
+        (Cart, Loot, or card - owner's choice).
+
+  [ ] 4.9.6 RESET
+        - Set aside all Treachery cards used in either side's Plan
+          this Campaign (whether or not used to trigger Revolt/Bribe).
+        - Unstack any Lieutenants and Lower Lords.
+        - Discard all "This Campaign" Events.
+        - Guelphs then Ghibellines may discard any Arts of War cards
+          back into their decks (1.9.1).
+        - Advance the Campaign marker to the next 60 Days box and flip
+          it to Levy.
+
+================================================================================
+VICTORY (5.0)
+================================================================================
+
+A side wins immediately if at any point during Campaign (4.0) the OTHER
+side has NO Mustered Lords on the map (5.2 Campaign Victory - regardless
+of VP).
+
+Otherwise victory is determined at Game End (5.3) - whoever has more VP
+wins, tied = draw.
+
+VP SOURCES (5.1, tracked on Calendar with round Victory markers):
+  + 1 VP    per friendly Allegiance marker on the map
+  + 1/2 VP  per friendly Ruins marker on the map
+  + 1/2 VP  per friendly Ravaged marker on the map
+  + 2 VP    per Captured (enemy) Carroccio held
+
+Adjust VP markers IMMEDIATELY when placing or removing the underlying
+markers (2.2.5).
+
+================================================================================
+KEY TIMING NOTES & FOOTGUNS
+================================================================================
+
+- Capability Discard (start of Campaign) is EASY to forget. Excess
+  side-wide Capabilities must go.
+
+- Newly Mustered Lords in 3.4 cannot themselves take Levy actions that
+  same segment. They CAN, however, act in Call to Arms 3.5.4 Allies.
+
+- Service shift in Disband Beyond Service Limit (3.3.1) triggers Revolt
+  AND Treachery for the enemy - 1x for regular, 3x for Podesta. The
+  Errata removed the previous wording that suppressed this.
+
+- Disband At Service Limit during Campaign (4.8.2) puts the Lord on the
+  NEXT Calendar box + Service Rating (not the current box). Errata clarifies.
+
+- GROW removes the ENEMY'S Ravage markers, NOT your own. (You choose
+  WHICH of theirs to remove - take advantage.)
+
+- Ransom is all-or-nothing per side. You cannot partially Ransom.
+
+- Languish gives the captor a CHOICE between Revolt roll OR Treachery
+  card per 6 unransomed prisoners (rounded up). Revolt rolls "in lieu of
+  adding Treachery are mandatory" - meaning if you choose Revolt, you
+  must roll (not skip).
+
+- Repair (4.9.4 Errata) does NOT remove Siege markers from Castles.
+
+- Reset sets aside ALL Treachery cards in the Plan this Campaign,
+  whether used or unused. They must be re-acquired (via new Revolt
+  triggers) to be available again.
+
+- Call to Arms can only be declared at the moment between Muster (3.4)
+  and Campaign (4.0). If neither side declares then, no CtA this Turn.
+
+- War Event triggers Call-to-Arms eligibility ONLY for the side that
+  drew it that Levy. Treasurers (F23) lets the Guelphs declare even
+  without a War Event or VP lag.
+
+- The Plan card count is set by the Season the CURRENT Turn is in,
+  per the Calendar box color.
+
+================================================================================
+                         END OF SEQUENCE REFERENCE
+================================================================================

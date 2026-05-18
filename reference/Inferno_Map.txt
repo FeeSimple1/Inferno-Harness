@@ -1,0 +1,612 @@
+================================================================================
+INFERNO - MAP REFERENCE DOCUMENT (with Seat Annotations)
+Tuscany, circa 1260
+================================================================================
+ 
+ANNOTATION KEY
+--------------
+For each Locale that is a Seat, two annotation types are added:
+  - Lord Seat:   Lord(s) for whom this Locale is a Seat (1.5.1, 3.4.1)
+  - Vassal Seat: Vassal(s) whose Vassal Seat is at this Locale (1.5.4, 3.4.2)
+                 Format: Vassal Name (parent Lord)
+  - Special:     Notes about Comune Special Vassals (Sestieri, Terzi, Carroccio)
+                 which Muster at the Leading City but have NO Vassal Seats per
+                 rule 3.4.2 EXCEPTION.
+ 
+================================================================================
+LOCALES (60 total: 57 Strongholds + 3 Outposts)
+================================================================================
+ 
+CITIES (5)
+----------
+Lucca           [Guelph]      Podestà Main Seat
+  Lord Seat:    Lucca Podestà
+  Vassal Seat:  Tommaso & Anfrione degli Obizzi (of Lucca Podestà)
+ 
+Firenze         [Guelph]      Podestà Main Seat - LEADING CITY (Guelph)  Port
+  Lord Seat:    Firenze Podestà (Commander)
+  Vassal Seat:  Cerchi Family (of Firenze Podestà)
+                Adimari Family (of Firenze Podestà)
+  Special:      Firenze Comune Carroccio and all 6 Sestieri Muster here (no
+                Vassal Seats per 3.4.2)
+ 
+Pisa            [Ghibelline]  Podestà Main Seat                           Port
+  Lord Seat:    Pisa Podestà
+  Vassal Seat:  Pisa Commune (of Pisa Podestà)
+ 
+Siena           [Ghibelline]  Podestà Main Seat - LEADING CITY (Ghibelline)
+  Lord Seat:    Walther von Astimberg
+                Count Giordano di Agliano
+                Siena Podestà (Commander)
+                Provenzano Salvani
+  Vassal Seat:  Berchtold von Arras (of Walther von Astimberg)
+                Heinrich von Astimberg (of Walther von Astimberg)
+                Hohenstaufen - Royal Naples (of Count Giordano di Agliano)
+                Buonincontro Guastelloni (of Siena Podestà)
+                Farinata degli Uberti (of Provenzano Salvani)
+                Guido Novello Guidi (of Provenzano Salvani)
+  Special:      Siena Comune Carroccio and all 3 Terzi Muster here (no Vassal
+                Seats per 3.4.2)
+ 
+Arezzo          [Guelph]      Podestà Main Seat
+  Lord Seat:    Arezzo Podestà
+  Vassal Seat:  Bishop Donatello Tarlati (of Arezzo Podestà)
+ 
+ 
+TOWNS (16)
+----------
+Altopascio      [Guelph]
+  Lord Seat:    Lucca Podestà
+  Vassal Seat:  Altopascio (Tau Company set-aside Special Vassal; Firenze
+                Podestà OR Lucca Podestà may Muster when F22 Tau Company
+                Capability is in play)
+ 
+San Miniato     [Guelph]      Port
+  Vassal Seat:  San Miniato Comune (of Colle Podestà)
+ 
+Prato           [Guelph]
+  Lord Seat:    Firenze Podestà (Commander)
+  Vassal Seat:  Prato Comune (of Firenze Podestà)
+ 
+Montevarchi     [Guelph]
+  Lord Seat:    Arezzo Podestà
+  Vassal Seat:  Montevarchi Comune (of Arezzo Podestà)
+ 
+San Gimignano   [Guelph]
+  Lord Seat:    Colle Podestà
+  Vassal Seat:  San Gimignano Comune (of Colle Podestà)
+ 
+Volterra        [Ghibelline]
+  (no Lord or Vassal Seats)
+ 
+Colle           [Guelph]      Podestà Main Seat
+  Lord Seat:    Colle Podestà
+  Vassal Seat:  Antonio Incontri / Volterra Exiles (of Colle Podestà)
+                Aldobrandino Rosso / Count of Pitigliano (of Colle Podestà)
+ 
+Poggio Bonizio  [Guelph]
+  Lord Seat:    Firenze Podestà (Commander)
+ 
+Cortona         [Guelph]
+  (no Lord or Vassal Seats)
+ 
+Asinalunga      [Ghibelline]
+  Lord Seat:    Siena Podestà (Commander)
+  Vassal Seat:  Cacciaconti / Lords of Asinalunga (of Siena Podestà)
+ 
+Montalcino      [Ghibelline]
+  (no Lord or Vassal Seats)
+ 
+Montepulciano   [Ghibelline]
+  (no Lord or Vassal Seats)
+ 
+Chiusi          [Guelph]
+  Lord Seat:    Orvieto Capitaneus
+ 
+Grosseto        [Ghibelline]
+  Lord Seat:    Aldobrandino Aldobrandeschi (Santa Fiora)
+  Vassal Seat:  Grosseto Commune (of Santa Fiora)
+ 
+Santa Fiora     [Ghibelline]
+  Lord Seat:    Aldobrandino Aldobrandeschi (Santa Fiora)
+  Vassal Seat:  Uguccione Casali / Cortona's Exiled (of Santa Fiora)
+ 
+Massa Marittima [Ghibelline]
+  Lord Seat:    Count Giordano di Agliano
+  Vassal Seat:  Massa Marittima Commune (of Count Giordano di Agliano)
+ 
+ 
+CASTLES (36)
+------------
+Vecliano                   [Guelph]
+  (no Lord or Vassal Seats)
+ 
+Vicopisano                 [Ghibelline]
+  (no Lord or Vassal Seats)
+ 
+Montecatini                [Guelph]
+  (no Lord or Vassal Seats)
+ 
+Pontedera                  [Ghibelline]   Port
+  Lord Seat:    Pisa Podestà
+  Vassal Seat:  Gherardo della Gherardesca (of Pisa Podestà)
+ 
+Empoli                     [Guelph]       Port
+  (no Lord or Vassal Seats)
+ 
+Montelupo                  [Guelph]       Port
+  (no Lord or Vassal Seats)
+ 
+San Casciano               [Guelph]
+  (no Lord or Vassal Seats)
+ 
+Figline                    [Guelph]
+  (no Lord or Vassal Seats)
+ 
+Ponte a Sieve              [Guelph]
+  (no Lord or Vassal Seats)
+ 
+Battifolle                 [Guelph]
+  (no Lord or Vassal Seats)
+ 
+Poppi                      [Guelph]
+  Lord Seat:    Guido Guerra Guidi
+ 
+Bibbiena                   [Guelph]
+  (no Lord or Vassal Seats)
+ 
+Anghiari                   [Guelph]
+  (no Lord or Vassal Seats)
+ 
+Castiglione                [Guelph]
+  (no Lord or Vassal Seats)
+ 
+San Giovanni               [Guelph]
+  (no Lord or Vassal Seats)
+ 
+Barberino                  [Guelph]
+  (no Lord or Vassal Seats)
+ 
+Montespertoli              [Guelph]
+  (no Lord or Vassal Seats)
+ 
+Monte San Savino           [Guelph]
+  (no Lord or Vassal Seats)
+ 
+Castelnuovo Berardenga     [Guelph]
+  (no Lord or Vassal Seats)
+ 
+Pecciole                   [Ghibelline]
+  (no Lord or Vassal Seats)
+ 
+Borgo Livorno              [Ghibelline]   Port
+  (no Lord or Vassal Seats)
+ 
+Rosignano                  [Ghibelline]
+  (no Lord or Vassal Seats)
+ 
+Rocca Sillana              [Ghibelline]
+  (no Lord or Vassal Seats)
+ 
+Monteriggioni              [Ghibelline]
+  (no Lord or Vassal Seats)
+ 
+Campiglia                  [Ghibelline]
+  (no Lord or Vassal Seats)
+ 
+Monterotondo               [Ghibelline]
+  (no Lord or Vassal Seats)
+ 
+Radicondoli                [Ghibelline]
+  (no Lord or Vassal Seats)
+ 
+Montemassi                 [Ghibelline]
+  (no Lord or Vassal Seats)
+ 
+Castiglione della Pescaia  [Ghibelline]   Port
+  Lord Seat:    Pisa Podestà
+ 
+Montepescali               [Ghibelline]
+  (no Lord or Vassal Seats)
+ 
+San Quirico                [Ghibelline]
+  Lord Seat:    Provenzano Salvani
+  Vassal Seat:  Guglielmino Ubertini / Exiled Bishop of Arezzo (of Provenzano
+                Salvani)
+ 
+Radicofani                 [Ghibelline]
+  (no Lord or Vassal Seats)
+ 
+Casole                     [Ghibelline]
+  Lord Seat:    Walther von Astimberg
+ 
+Monticiano                 [Ghibelline]
+  (no Lord or Vassal Seats)
+ 
+Asciano                    [Ghibelline]
+  (no Lord or Vassal Seats)
+ 
+Chianciano                 [Ghibelline]
+  (no Lord or Vassal Seats)
+ 
+ 
+OUTPOSTS (3) - Guelph entry points; only Lords with that Outpost Seat may enter
+-------------------------------------------------------------------------------
+Lombardia-Bologna West     [Guelph]
+  Lord Seat:    Guido Guerra Guidi
+  Vassal Seat:  Pistoia Comune (of Guido Guerra)
+                Lombardia / Guelph League (of Guido Guerra) [also seats E]
+                Bologna Comune (of Guido Guerra) [also seats E]
+ 
+Lombardia-Bologna East     [Guelph]
+  Lord Seat:    Guido Guerra Guidi
+  Vassal Seat:  Lombardia / Guelph League (of Guido Guerra) [also seats W]
+                Bologna Comune (of Guido Guerra) [also seats W]
+ 
+Orvieto                    [Guelph]
+  Lord Seat:    Orvieto Capitaneus
+  Vassal Seat:  Sinibaldo Rubini di Orvieto (of Orvieto Capitaneus)
+                Orvietani & Perugini Reserve (of Orvieto Capitaneus)
+ 
+ 
+================================================================================
+PORTS (8) - Anchor symbol; affect Supply (4.6) and Sail (4.7.3)
+================================================================================
+Firenze, Pisa, San Miniato, Pontedera, Empoli, Montelupo,
+Borgo Livorno, Castiglione della Pescaia
+ 
+The Arno River runs west-to-east: Pisa - Pontedera - San Miniato - Empoli -
+Montelupo - Firenze (all Ports).
+ 
+================================================================================
+PODESTÀ MAIN SEATS (6)
+================================================================================
+Guelph (4):     Firenze, Lucca, Arezzo, Colle
+Ghibelline (2): Siena, Pisa
+ 
+================================================================================
+TERRITORIAL DIVISION (Green Dashed Line, Rules 1.3.1)
+================================================================================
+The dashed line divides originally Guelph Locales (NE) from originally
+Ghibelline Locales (SW). Affects Ravage targeting, Friendly/Enemy status,
+Muster, Withdrawal, Pay with Loot. In Scenario C only, Ghibellines may not
+cross the line until Guelphs place a Siege or Ravage marker.
+ 
+NORTH OF LINE - GUELPH (32 Locales)
+-----------------------------------
+Outposts: Lombardia-Bologna West, Lombardia-Bologna East, Orvieto
+Cities:   Lucca, Firenze, Arezzo
+Towns:    Altopascio, San Miniato, Prato, Montevarchi, San Gimignano,
+          Colle, Poggio Bonizio, Cortona, Chiusi
+Castles:  Vecliano, Montecatini, Empoli, Montelupo, San Casciano, Figline,
+          Ponte a Sieve, Battifolle, Poppi, Bibbiena, Anghiari, Castiglione,
+          San Giovanni, Barberino, Montespertoli, Monte San Savino,
+          Castelnuovo Berardenga
+ 
+SOUTH OF LINE - GHIBELLINE (28 Locales)
+---------------------------------------
+Cities:   Pisa, Siena
+Towns:    Volterra, Asinalunga, Montepulciano, Montalcino, Santa Fiora,
+          Grosseto, Massa Marittima
+Castles:  Vicopisano, Pontedera, Pecciole, Borgo Livorno, Rosignano,
+          Rocca Sillana, Casole, Monteriggioni, Chianciano, Radicofani,
+          San Quirico, Monticiano, Asciano, Radicondoli, Montepescali,
+          Montemassi, Castiglione della Pescaia, Campiglia, Monterotondo
+ 
+================================================================================
+WAYS - ROADS (gray)
+================================================================================
+Roads speed March: first March of a Command card costs 0 actions Unladen
+along Road (4.3.3).
+ 
+NORTHWEST CLUSTER
+  Vecliano -- Lucca
+  Vecliano -- Pisa
+  Lucca -- San Miniato
+ 
+FIRENZE-AREZZO SPINE (all Road)
+  Firenze -- Figline
+  Figline -- San Giovanni
+  San Giovanni -- Montevarchi
+  Montevarchi -- Arezzo
+ 
+CONTI GUIDI / EAST OUTPOST CORRIDOR
+  Arezzo -- Bibbiena
+  Bibbiena -- Poppi
+  Poppi -- Battifolle
+  Battifolle -- Lombardia-Bologna East
+ 
+ARETINE / SOUTHEAST
+  Arezzo -- Castiglione
+  Castiglione -- Cortona
+  Cortona -- Chiusi
+ 
+CENTRAL / SIENA
+  Radicofani -- San Quirico
+  San Quirico -- Siena
+  Siena -- Monteriggioni
+  Monteriggioni -- Colle
+ 
+WESTERN HILL ROAD
+  San Miniato -- San Gimignano
+  San Gimignano -- Colle
+ 
+COASTAL ROAD
+  Pisa -- Rosignano
+  Rosignano -- Campiglia
+  Campiglia -- Massa Marittima
+  Massa Marittima -- Montemassi
+  Montemassi -- Grosseto
+ 
+================================================================================
+WAYS - TRACKS (brown)
+================================================================================
+Tracks slow March; mixed Road+Track paths count as Track (1.3.1).
+ 
+TRACKS VIA CROSSROADS (Track that meets a Road creates Track adjacencies
+to both endpoints of that Road segment; the Road itself stays Road)
+ 
+  Vicopisano track meets Pisa--Vecliano road:
+    Vicopisano -- Pisa
+    Vicopisano -- Vecliano
+ 
+  Borgo Livorno -- Pecciole track crosses Pisa--Rosignano road:
+    Borgo Livorno -- Pecciole
+    Borgo Livorno -- Pisa
+    Borgo Livorno -- Rosignano
+    Pecciole -- Pisa
+    Pecciole -- Rosignano
+ 
+  Montalcino -- Asciano track crosses Siena--San Quirico road:
+    Montalcino -- Asciano
+    Montalcino -- Siena
+    Montalcino -- San Quirico
+    Asciano -- Siena
+    Asciano -- San Quirico
+ 
+  Poggio Bonizio track ends at Colle--Monteriggioni road:
+    Poggio Bonizio -- Colle
+    Poggio Bonizio -- Monteriggioni
+ 
+  Monte San Savino track meets Arezzo--Castiglione road:
+    Monte San Savino -- Arezzo
+    Monte San Savino -- Castiglione
+ 
+  Altopascio track meets Lucca--San Miniato road:
+    Altopascio -- Lucca
+    Altopascio -- San Miniato
+ 
+  Orvieto track meets Cortona--Chiusi road:
+    Orvieto -- Cortona
+    Orvieto -- Chiusi
+ 
+DIRECT TRACKS (Locale to Locale)
+ 
+  NORTHWEST
+  Lucca -- Vicopisano
+  Altopascio -- Montecatini
+  Montecatini -- Prato
+ 
+  ARNO CHAIN (Track-only between Ports)
+  Pisa -- Pontedera
+  Pontedera -- San Miniato
+  San Miniato -- Empoli
+  Empoli -- Montelupo
+  Montelupo -- Firenze
+  Empoli -- Montespertoli
+  Montelupo -- Montespertoli
+  Pontedera -- Pecciole
+ 
+  FIRENZE AREA
+  Prato -- Firenze
+  Firenze -- Ponte a Sieve
+  Ponte a Sieve -- Lombardia-Bologna West
+  Firenze -- San Casciano
+  San Casciano -- Barberino
+  Barberino -- Poggio Bonizio
+  Montespertoli -- Poggio Bonizio
+ 
+  WEST COAST / VALDELSA
+  Rosignano -- Volterra
+  Volterra -- Colle
+  Volterra -- Rocca Sillana
+  Colle -- Casole
+  Rocca Sillana -- Monterotondo
+ 
+  MAREMMA
+  Monterotondo -- Massa Marittima
+  Massa Marittima -- Castiglione della Pescaia
+  Castiglione della Pescaia -- Grosseto
+  Grosseto -- Montepescali
+  Montepescali -- Santa Fiora
+  Santa Fiora -- Radicofani
+ 
+  SIENESE HINTERLAND
+  Montemassi -- Radicondoli
+  Radicondoli -- Casole
+  Casole -- Monticiano
+  Monticiano -- Siena
+  Monticiano -- Montalcino
+  Monticiano -- Montepescali
+ 
+  AREZZO / TIBER VALLEY
+  Arezzo -- Anghiari
+  Castiglione -- Anghiari
+ 
+  CHIANTI / SOUTHERN ARETINE
+  Montevarchi -- Castelnuovo Berardenga
+  Castelnuovo Berardenga -- Monte San Savino
+  Monte San Savino -- Asciano
+  Monte San Savino -- Asinalunga
+  Asciano -- Montepulciano
+  Asinalunga -- Cortona
+  Asinalunga -- Montepulciano
+ 
+  VAL DI CHIANA SOUTH
+  Montepulciano -- Chianciano
+  Chianciano -- Chiusi
+ 
+================================================================================
+ADJACENCY LIST BY LOCALE (R = Road, T = Track)
+================================================================================
+ 
+Altopascio:                Lucca (T), San Miniato (T), Montecatini (T)
+Anghiari:                  Arezzo (T), Castiglione (T)
+Arezzo:                    Montevarchi (R), Bibbiena (R), Castiglione (R),
+                           Anghiari (T), Monte San Savino (T)
+Asciano:                   Montalcino (T), Siena (T), San Quirico (T),
+                           Monte San Savino (T), Montepulciano (T)
+Asinalunga:                Cortona (T), Monte San Savino (T),
+                           Montepulciano (T)
+Barberino:                 San Casciano (T), Poggio Bonizio (T)
+Battifolle:                Poppi (R), Lombardia-Bologna East (R)
+Bibbiena:                  Arezzo (R), Poppi (R)
+Borgo Livorno:             Pecciole (T), Pisa (T), Rosignano (T)
+Campiglia:                 Rosignano (R), Massa Marittima (R)
+Casole:                    Colle (T), Radicondoli (T), Monticiano (T)
+Castelnuovo Berardenga:    Montevarchi (T), Monte San Savino (T)
+Castiglione:               Arezzo (R), Cortona (R), Anghiari (T),
+                           Monte San Savino (T)
+Castiglione della Pescaia: Massa Marittima (T), Grosseto (T)
+Chianciano:                Montepulciano (T), Chiusi (T)
+Chiusi:                    Cortona (R), Chianciano (T), Orvieto (T)
+Colle:                     Monteriggioni (R), San Gimignano (R),
+                           Poggio Bonizio (T), Volterra (T), Casole (T)
+Cortona:                   Castiglione (R), Chiusi (R), Asinalunga (T),
+                           Orvieto (T)
+Empoli:                    San Miniato (T), Montelupo (T),
+                           Montespertoli (T)
+Figline:                   Firenze (R), San Giovanni (R)
+Firenze:                   Figline (R), Montelupo (T), Prato (T),
+                           Ponte a Sieve (T), San Casciano (T)
+Grosseto:                  Montemassi (R), Castiglione della Pescaia (T),
+                           Montepescali (T)
+Lombardia-Bologna East:    Battifolle (R)
+Lombardia-Bologna West:    Ponte a Sieve (T)
+Lucca:                     Vecliano (R), San Miniato (R), Altopascio (T),
+                           Vicopisano (T)
+Massa Marittima:           Campiglia (R), Montemassi (R), Monterotondo (T),
+                           Castiglione della Pescaia (T)
+Monte San Savino:          Arezzo (T), Castiglione (T),
+                           Castelnuovo Berardenga (T), Asciano (T),
+                           Asinalunga (T)
+Montecatini:               Altopascio (T), Prato (T)
+Montelupo:                 Firenze (T), Empoli (T), Montespertoli (T)
+Montemassi:                Massa Marittima (R), Grosseto (R),
+                           Radicondoli (T)
+Montepescali:              Grosseto (T), Santa Fiora (T), Monticiano (T)
+Montepulciano:             Asciano (T), Asinalunga (T), Chianciano (T)
+Monteriggioni:             Siena (R), Colle (R), Poggio Bonizio (T)
+Monterotondo:              Rocca Sillana (T), Massa Marittima (T)
+Montespertoli:             Empoli (T), Montelupo (T), Poggio Bonizio (T)
+Montevarchi:               San Giovanni (R), Arezzo (R),
+                           Castelnuovo Berardenga (T)
+Monticiano:                Casole (T), Siena (T), Montalcino (T),
+                           Montepescali (T)
+Montalcino:                Asciano (T), Siena (T), San Quirico (T),
+                           Monticiano (T)
+Orvieto:                   Cortona (T), Chiusi (T)
+Pecciole:                  Borgo Livorno (T), Pisa (T), Rosignano (T),
+                           Pontedera (T)
+Pisa:                      Vecliano (R), Rosignano (R), Vicopisano (T),
+                           Borgo Livorno (T), Pecciole (T), Pontedera (T)
+Poggio Bonizio:            Colle (T), Monteriggioni (T), Barberino (T),
+                           Montespertoli (T)
+Pontedera:                 Pisa (T), San Miniato (T), Pecciole (T)
+Ponte a Sieve:             Firenze (T), Lombardia-Bologna West (T)
+Poppi:                     Bibbiena (R), Battifolle (R)
+Prato:                     Montecatini (T), Firenze (T)
+Radicofani:                San Quirico (R), Santa Fiora (T)
+Radicondoli:               Montemassi (T), Casole (T)
+Rocca Sillana:             Volterra (T), Monterotondo (T)
+Rosignano:                 Pisa (R), Campiglia (R), Borgo Livorno (T),
+                           Pecciole (T), Volterra (T)
+San Casciano:              Firenze (T), Barberino (T)
+San Gimignano:             San Miniato (R), Colle (R)
+San Giovanni:              Figline (R), Montevarchi (R)
+San Miniato:               Lucca (R), San Gimignano (R), Altopascio (T),
+                           Pontedera (T), Empoli (T)
+San Quirico:               Radicofani (R), Siena (R), Montalcino (T),
+                           Asciano (T)
+Santa Fiora:               Montepescali (T), Radicofani (T)
+Siena:                     San Quirico (R), Monteriggioni (R),
+                           Montalcino (T), Asciano (T), Monticiano (T)
+Vecliano:                  Lucca (R), Pisa (R), Vicopisano (T)
+Vicopisano:                Lucca (T), Pisa (T), Vecliano (T)
+Volterra:                  Rosignano (T), Colle (T), Rocca Sillana (T)
+ 
+================================================================================
+NOTES & OBSERVATIONS
+================================================================================
+ 
+CROSSROADS RULE (1.3.1): A path between two adjacent Locales that uses some
+Road and some Track counts as Track. So when a Track joins a Road segment
+mid-way, the original Road endpoints stay Road-connected to each other, but
+new Track adjacencies are created from the Track Locale to both Road endpoints.
+ 
+FAST CORRIDORS (all Road):
+- Firenze - Figline - San Giovanni - Montevarchi - Arezzo (Guelph spine)
+- Arezzo - Bibbiena - Poppi - Battifolle - L-B East (Guelph reinforcement)
+- Pisa - Rosignano - Campiglia - Massa Marittima - Montemassi - Grosseto
+  (Ghibelline coastal)
+- Radicofani - San Quirico - Siena - Monteriggioni - Colle (north-south
+  central, crosses the dashed line)
+ 
+CHOKEPOINTS:
+- Poggio Bonizio: only Track connections; sits on the Firenze-Siena friction
+  axis. The Playbook example shows the Ghibelline army pausing here.
+- Monte San Savino: 5-way junction in border zone; scenarios place Ravaged
+  and Ruins here.
+- The Arno Ports: Pisa-Pontedera-San Miniato-Empoli-Montelupo-Firenze; all
+  Track between Ports despite the river, but Ports allow Pisa's Sail (4.7.3)
+  and serve Supply Routes that ignore Ruins (4.6.1).
+ 
+OUTPOST CONNECTIONS:
+- Lombardia-Bologna West: Ponte a Sieve (T) only
+- Lombardia-Bologna East: Battifolle (R) only - the fastest reinforcement
+  route into Tuscany
+- Orvieto: Cortona (T), Chiusi (T)
+ 
+LEADING CITIES (Firenze and Siena) are NOT directly Road-linked. Movement
+between them must transit Track, typically via Poggio Bonizio, San Gimignano,
+or Colle - matching the historical friction of 1260 campaigns.
+ 
+================================================================================
+SEAT DENSITY OBSERVATIONS
+================================================================================
+ 
+MOST LORD SEATS AT ONE LOCALE:
+- Siena: 4 Lords seat here (Astimberg, Giordano, Siena Podestà, Provenzano)
+ 
+MOST VASSAL SEATS AT ONE LOCALE:
+- Siena: 6 Vassals seat here (Berchtold von Arras, Heinrich von Astimberg,
+  Hohenstaufen-Royal Naples, Buonincontro Guastelloni, Farinata degli Uberti,
+  Guido Novello Guidi). Plus Carroccio + 3 Terzi Muster here as Special
+  Vassals.
+ 
+LOCALES THAT ARE BOTH LORD SEAT AND VASSAL SEAT TO MULTIPLE PARTIES:
+- Lucca, Firenze, Pisa, Siena, Arezzo (5 Cities; all Podestà Main Seats)
+- Altopascio (Lucca's Lord Seat + Tau Company set-aside Vassal)
+- Prato, Montevarchi, San Gimignano, Asinalunga, Grosseto, Santa Fiora,
+  Massa Marittima (Towns that are Lord Seats with one Vassal seated there)
+- Pontedera, San Quirico (Castles that are Lord Seats with one Vassal there)
+- Lombardia-Bologna East/West, Orvieto (all 3 Outposts)
+ 
+LOCALES WITH ONLY VASSAL SEATS (no Lord seats them here):
+- San Miniato (Town): San Miniato Comune (of Colle) - notable as the seat
+  is at a Town that is geographically isolated from Colle's Lord Seats
+ 
+LORD SEATS SEPARATED FROM VASSAL SEATS:
+- Pisa Podestà: Seats at Pisa, Pontedera, Castiglione della Pescaia. Vassals
+  seated at Pisa and Pontedera (Castiglione della Pescaia has none).
+- Colle Podestà: Seats at Colle and San Gimignano. Vassals at Colle (x2),
+  San Gimignano (x1), and at Town of San Miniato (1 vassal at non-Lord-Seat).
+- Orvieto Capitaneus: Seats at Orvieto Outpost and Chiusi. Both vassals
+  seated at Orvieto Outpost (none at Chiusi).
+- Guido Guerra: Seats at Poppi, L-B East, L-B West. Vassals at L-B Outposts
+  only (none at Poppi).
+ 
+LOCALES NEVER USED AS A SEAT BY ANYONE:
+Volterra, Cortona, Montalcino, Montepulciano (Towns)
+Plus 30 of the 36 Castles (all except Pontedera, Poppi, Castiglione della
+Pescaia, San Quirico, and Casole).

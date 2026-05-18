@@ -1,0 +1,526 @@
+================================================================================
+INFERNO - SIEGE REFERENCE (Approach, Bypass, Siege, Sally)
+================================================================================
+Source: Inferno Rules of Play (Living Rules 2023-04-10), primarily Sections
+        4.3.4 (Approach), 4.3.5-.6 (Besiege/Bypass/Encamp/Depart/Sortie),
+        4.5 (Siege/Storm/Sally), and cross-references to 1.3.1 (Strongholds),
+        1.4 (Revolt and Treachery), 4.9.4 (Repair). Errata applied.
+
+When the Rules of Play or Errata conflict with any other source, the Rules of
+Play and Errata take precedence (per user instruction).
+
+This reference covers the SIEGE SUBSYSTEM at the strategic level: how Lords
+arrive at Strongholds, choose between Besieging and Bypassing, escalate to
+Storm, conduct or face Sally, and how Strongholds change hands or rebel as
+a result. For combat resolution inside a Battle, Storm, or Sally, see the
+Battle & Storm Combat reference. For action costs on a Command card, see
+the Command Actions reference.
+
+================================================================================
+SECTION 1: STRONGHOLDS - QUICK REFERENCE (1.3.1)
+================================================================================
+
+  TYPE     SIZE/VALUE  ALLEGIANCE MARKERS  LORDS MAX  LIEUTENANT/WITHDRAW
+  --------------------------------------------------------------------------
+  Castle   1           1 marker            1          NO Lt/Lower pair
+                                                       inside; max 1 Lord
+                                                       Withdraws
+  Town     2           2 markers           2          Lt/Lower pair OK
+  City     3           3 markers           3          Lt/Lower pair OK
+
+OUTPOSTS (1.3.1): Map-edge purple-arrow Locales. Only the owning Lord
+may enter. Never Revolt. Never get Ruined. Can be RAVAGED adjacent (with
+La Cavallata).
+
+VP MARKERS at Locales:
+  - Allegiance (1 VP each)  - placed by Revolt, Surrender, Sack-removal
+                              of Enemy Allegiance.
+  - Ruins (1/2 VP)          - placed by Sack (Storm victory), opposite
+                              color from PRINTED Allegiance.
+  - Ravaged (1/2 VP)        - placed by Ravage action, opposite color
+                              from PRINTED Allegiance.
+  - Captured Carroccio (2 VP) - on board if captured.
+
+NOTES:
+  - Ruins and Allegiance markers NEVER occupy the same Locale.
+  - Costruttori Capability repairs Ruins.
+  - Reinforced Walls Capability places a side's Walls+1 marker on a
+    Seat Stronghold, improving Walls in Storm until Sacked.
+
+================================================================================
+SECTION 2: MARCH ARRIVAL - APPROACH (4.3.4)
+================================================================================
+
+When a Marching Lord enters the Locale of an Unbesieged, Unbypassed Enemy
+Lord, check immediately for Avoid Battle, Withdrawal, Battle, and Siege.
+
+  STEP 1 - AVOID BATTLE (Inactive Lords' option):
+    Some or all Inactive Lords may move to one or more adjacent
+    Locales. RESTRICTIONS:
+      - May NOT Avoid across any part of the Way the Active Enemy Lord
+        used to Approach.
+      - May NOT Avoid into a Locale with another Unbesieged Enemy Lord.
+      - Mark Lords Avoiding into an Unbesieged Enemy Stronghold as
+        BYPASSING it.
+      - Lords may only Avoid Battle UNLADEN.
+      - Lords may discard Loot/Provender to become Unladen and thereby
+        Avoid. DISCARDED Assets go to the Approaching Lords as Spoils
+        (distributed by Active player).
+    Mark Avoiding Lords as Moved/Fought.
+
+    Notes:
+      - Cannot Avoid via Sail.
+      - The Ambush Event (F1) can prevent ONE Enemy Lord from Avoiding.
+
+  STEP 2 - WITHDRAW (Inactive Lords' option):
+    The Inactive side may Withdraw some or all Lords into a Friendly
+    Stronghold there (NOT Ruins).
+      - Max Lords moving in <= Stronghold Size (1, 2, or 3).
+      - Withdrawal alone does NOT mark Moved/Fought.
+
+  STEP 3 - BATTLE:
+    If any Enemy Lords there did NOT Avoid AND did NOT Withdraw, BATTLE
+    resolves immediately. Marching side is the Attacker (4.4 - see
+    Battle & Storm Combat reference).
+
+  After Battle (or if all Enemy Lords Avoided/Withdrew), the Active
+  Lord(s) may be outside an Enemy Stronghold - go to Besiege or Bypass
+  (4.3.5).
+
+================================================================================
+SECTION 3: BESIEGE or BYPASS (4.3.5)
+================================================================================
+
+Whenever a side has Lord(s) in a Locale OUTSIDE an Enemy Stronghold
+(NOT Ruins) that is NOT yet Bypassed or Besieged - AND if any Enemy
+Lords are there, they have all Withdrawn inside - the outside Lord(s)
+MUST immediately choose ONE:
+
+  BESIEGE - Place 1 Siege marker on the Stronghold/Lord(s) there.
+            SKIP any remaining actions on this card. Go to Feed/Pay/
+            Disband (4.8).
+
+  BYPASS  - Place a Bypass marker on the side's Lord(s) outside the
+            Stronghold. CONTINUE any actions on this card without
+            leaving that Locale. The Bypass marker stays until removed.
+
+KEY: All Lords outside one Enemy Stronghold are EITHER all Besieging
+OR all Bypassing, never mixed.
+
+ARRIVING LATER (per Errata, 4.3.5 paragraph 2):
+  Lords arriving outside an already Besieged or Bypassed Enemy
+  Stronghold join in the existing Siege or Bypass, OR may March on.
+
+REMOVAL OF SIEGE/BYPASS MARKERS:
+  Whenever a Besieged or Bypassed Stronghold becomes free of Enemy
+  Lords in the Locale, REMOVE all Siege or Bypass markers there.
+
+NOTES:
+  - Ruins and Friendly Strongholds do NOT impede March; Lords NEVER
+    Besiege or Bypass them.
+  - Bypass enables remaining card actions (Supply, Forage, Ravage, etc.)
+    in the Stronghold's Locale.
+  - Bypass also allows Retreat to or Supply past an Enemy Stronghold.
+
+================================================================================
+SECTION 4: BYPASS-STATE COMMAND ACTIONS (4.3.6)
+================================================================================
+
+A Lord (or group) BEGINNING a Command card at a Bypass marker - either
+Bypassing or Bypassed - has special March options:
+
+  DEPART (4.3.6):
+    March to an adjacent Locale NORMALLY (per 4.3.3 costs).
+    - Mark Moved.
+    - If no Lord remains at the Bypassed Enemy Stronghold, remove any
+      Bypass markers.
+
+  ENCAMP (4.3.5):
+    Use ONE March action (regardless of Laden status) to:
+    - Replace ALL Bypass markers at the Bypassed Stronghold with ONE
+      Siege marker.
+    - SKIP any remaining actions on this card.
+    - Go to Feed/Pay/Disband (4.8).
+    - Mark the Encamping Lord(s) Moved/Fought (but NOT other Lords
+      there of either side).
+
+  SORTIE (4.3.5 SORTIE):
+    Use ONE March action (regardless of Laden status) for a Lord or
+    group INSIDE a Bypassed FRIENDLY Stronghold to APPROACH (4.3.4)
+    the Bypassing Enemy outside, INSTEAD of moving adjacent.
+    - If the Sortieing side loses Battle, Withdraw or Retreat normally.
+    - Only a Commander or Lieutenant can Sortie a GROUP (otherwise
+      single Lord only).
+    - The Bypassing Enemy is now Approached - Battle ensues unless
+      they Avoid or Withdraw (which most can't given their Bypassing
+      state in the open).
+
+PLAY NOTE: With enough actions, a Lord can Bypass a Stronghold, then
+Forage or Ravage, then Encamp on the SAME Command card.
+
+================================================================================
+SECTION 5: SIEGE ACTION (4.5.1)
+================================================================================
+
+A Besieging Lord may use his ENTIRE Command card to advance the Siege.
+
+PROCEDURE:
+
+  STEP 1 - SURRENDER ROLL (only if no Besieged Lords inside)
+  -----------------------------------------------------------
+  If the Siege Locale has NO Besieged Enemy Lords inside (only its
+  Garrison defends it), the Besieging side may roll for Surrender
+  BEFORE adding any Siege marker.
+
+  Roll dice = Stronghold's Value (1 for Castle, 2 for Town, 3 for City).
+
+  If EACH die <= (Siege markers + Ravage markers at the Locale):
+    The Stronghold SURRENDERS.
+
+  Max possible total = 4 Siege markers + 1 Ravage marker = 5.
+
+    OUTCOME:
+      - Set Stronghold to Besieger's Allegiance: place Allegiance
+        markers = Value (or remove existing Enemy Allegiance markers
+        already there).
+      - Adjust Victory (5.1).
+      - REMOVE all Siege markers at the Locale.
+      - TERMS: Award NO Spoils. No Sack.
+
+    REVOLT AND TREACHERY (after Surrender):
+      - Besieging side rolls on its Revolt table # times = Stronghold
+        Value (1.4.2).
+      - Besieging side adds Treachery cards # = Stronghold Value
+        (1.4.3).
+
+  NOTE: A Ravage marker at the Siege Locale ADDS 1 to the Surrender
+  die-roll range REGARDLESS of whose Ravage marker it is. (So one of
+  your own Ravage markers there also helps.)
+
+  STEP 2 - SIEGEWORKS (if no Surrender)
+  --------------------------------------
+  If the Stronghold did not Surrender (either dice failed, or there
+  was a Besieged Lord inside, or the Besieger declined to roll):
+
+  IF the Besieging side has AT LEAST as many Lords at the Locale as
+  the Stronghold's Size (1/2/3), ADD ONE Siege marker.
+
+  MAXIMUM 4 Siege markers at any one Locale.
+
+  IF the Besieging side has FEWER Lords than Stronghold Size, do
+  NOT add a Siege marker. (But the Siege action still consumes the
+  card and Feeds Lords.)
+
+  STEP 3 - MOVED/FOUGHT
+  ---------------------
+  Mark ALL Lords of BOTH sides at the Locale as Fought.
+
+NOTES:
+  - Cannot Surrender if there are Besieged Enemy Lords inside (they
+    are the defenders).
+  - "Starving out" a Besieged Lord: Each Siege action Feeds both
+    sides' Lords there. If the Besieged army runs out of Provender/
+    Loot, their Service shifts left. If shifted Beyond Service, they
+    Disband - then the next Siege action can attempt Surrender.
+
+================================================================================
+SECTION 6: STORM ACTION (4.5.2)
+================================================================================
+
+A Lord OUTSIDE a Besieged Stronghold may use ONE Command action to
+launch an Attack. The Storm uses Battle rules with modifications.
+
+  See the Battle & Storm Combat reference for full procedure.
+
+  KEY STRATEGIC FACTORS:
+    - Storm lasts at most # Rounds = # Siege markers there.
+    - Defender uses Walls 1-4 (base) + any Walls+1 marker.
+    - Attacker uses Siegeworks = # Siege markers as their own Walls.
+    - Larger Strongholds have larger Garrisons (1/2/3 of each unit
+      type at Castle/Town/City).
+    - Only the Attacker may Concede (after Round 1).
+    - Each Lord caps at 6 Melee Hits per Round.
+
+  STORM ENDS THE CARD: Like any Battle, Storm blocks any further
+  Command actions on the current card.
+
+================================================================================
+SECTION 7: SALLY ACTION (4.5.3)
+================================================================================
+
+A Besieged Lord may use ONE Command action to Attack the Besiegers
+in a Battle.
+
+  See the Battle & Storm Combat reference for full Sally combat.
+
+  KEY STRATEGIC FACTORS:
+    - 1 Lord per side at Front initially; 1 may advance per Round
+      (cap = Stronghold Size).
+    - Defenders (Besiegers, now defending against Sally) receive
+      SIEGEWORKS = # Siege markers as Walls.
+    - Attackers (Sallying Besieged) get NO Walls and NO Garrison.
+    - Losing Defenders Retreat normally; Siege ENDS.
+    - Losing Attackers Withdraw back into the Stronghold (NOT
+      Retreat). RAID effect: REMOVE all but 1 Siege marker at the
+      Locale (Siegeworks damage). Siege continues.
+
+================================================================================
+SECTION 8: RELIEF SALLY (4.4.1)
+================================================================================
+
+When a side Approaches (4.3.4) a Locale where it is ALSO Besieged
+inside a Stronghold, its Besieged Lords may join the Approaching
+attack for NO added Command actions.
+
+  See the Battle & Storm Combat reference for full Relief Sally
+  combat (Section 4 of that reference).
+
+  KEY STRATEGIC POINTS:
+    - Sallying Attackers Array behind the Defenders.
+    - Reserve Defenders are Arrayed as if Front Defenders facing the
+      Sallying Attackers.
+    - Sallying Lords Flank all Striking Enemy Lords equally closely.
+    - Siegeworks benefits apply to Strikes by Sallying Attackers ONLY.
+    - If combined Attackers lose, Sallying Lords Withdraw back into
+      the Stronghold AND Siege markers there are reduced to ONE.
+
+================================================================================
+SECTION 9: REVOLT & TREACHERY FROM SIEGE OUTCOMES
+================================================================================
+
+The Siege subsystem feeds the Revolt system (1.4) in multiple ways:
+
+  SURRENDER (4.5.1):
+    - Roll on Revolt table # = Stronghold Value.
+    - Add Treachery cards # = Stronghold Value.
+
+  SACK (4.5.2):
+    - For each Lord REMOVED in Sack (4.4.5):
+        - Roll on Revolt table 1x (regular Lord) or 3x (Podesta).
+        - Add Treachery 1 card (regular) or 3 cards (Podesta).
+    - For the Sack itself:
+        - Roll on Revolt table # = Stronghold Value.
+        - Add Treachery cards # = Stronghold Value.
+
+  LORD DISBAND/REMOVAL BY COMBAT during a Siege Battle/Storm/Sally:
+    - Per 3.3.1 / 4.4.5, the Enemy rolls Revolt (1x reg, 3x Podesta)
+      and adds Treachery (1 card reg, 3 Podesta). Comune removal:
+      no Revolt/Treachery.
+
+  EXILES (1.4.4): Any Allegiance shift on the map shifts the losing
+  side's cylinders or Service markers on the Calendar by 1 box per
+  Allegiance marker placed/removed.
+
+  REVOLT ELIGIBILITY (1.4.1): An Enemy Stronghold with NO Enemy Lords
+  THERE OR ADJACENT can Revolt. Ruins and Outposts never Revolt.
+
+================================================================================
+SECTION 10: SIEGE EROSION - REPAIR (4.9.4 per ERRATA)
+================================================================================
+
+At the end of EACH Campaign, REMOVE one Siege marker from each TOWN
+and CITY that has 3 or 4 Siege markers.
+
+  - Errata changed "Stronghold" to "Town and City."
+  - CASTLES do NOT erode their Siege markers via Repair.
+  - Towns/Cities with 1 or 2 Siege markers do NOT erode.
+
+This is in the End Campaign sequence:
+  4.9.1 Grow
+  4.9.2 Ransom/Languish
+  4.9.3 Game End check
+  4.9.4 Repair          <-- HERE
+  4.9.5 Waste
+  4.9.6 Reset
+
+PLAY NOTE: Maintain pressure with at least one Lord at the Siege so
+the Siege does not lift between Campaigns; if at 3-4 Siege markers,
+plan for the erosion.
+
+================================================================================
+SECTION 11: SACK VS SURRENDER (Strategic Tradeoffs)
+================================================================================
+
+                        SURRENDER (Terms)      SACK (Storm victory)
+  -----------------------------------------------------------------
+  Trigger              Siege action, no       Defender loses Storm
+                       Enemy Lord inside,
+                       dice <= Siege +
+                       Ravage markers
+  Stronghold State     Allegiance flipped     RUINED (until Costruttori)
+                       to Besieger's side
+  VP Impact            +1 VP per Allegiance   +1/2 VP from Ruins
+                       marker (= Value)       (vs. -1 VP per removed
+                                              Enemy Allegiance marker)
+  Spoils               NONE (Terms)           Loot + Provender + Coin
+                                              all = Stronghold Value;
+                                              PLUS all non-Ship Assets
+                                              of inside Lords; PLUS
+                                              any Carroccio.
+  Inside Lords         Released (safe         Removed per 4.4.5 (with
+                       parole - keep all      full Revolt/Treachery
+                       Assets)                effects). Cavalieri/Ritter
+                                              Captured.
+  Garrison             Returned to pool       Cavalieri Captured;
+                                              others to pool.
+  Revolt/Treachery     # = Value (once each)  # = Value (once each)
+                                              PLUS per-Lord-removed
+  Stronghold Future    Yours to garrison      Ruined until repaired
+                       and lose to Revolt     (Costruttori)
+                       again
+
+KEY TAKEAWAYS:
+  - Surrender CONVERTS the Stronghold (+VP via Allegiance).
+  - Sack DESTROYS the Stronghold (smaller VP, but big Asset payout).
+  - Sacking a rebel Town in your OWN territory places a Ruins marker
+    in the OPPOSITE color of PRINTED Allegiance (i.e. ENEMY color).
+    This means you LOSE 1/2 VP from that Ruins marker, even though
+    you removed Enemy Allegiance markers. Net VP can be NEGATIVE.
+    Surrender is better in such cases.
+
+================================================================================
+SECTION 12: BESIEGE EXAMPLE WALKTHROUGH (Conceptual)
+================================================================================
+
+Lord A marches to an Enemy Castle (Size 1) at Locale X with no
+defenders inside.
+
+  TURN 1, Lord A's card:
+    1. March (1 action) into X.
+    2. Approach (4.3.4): no Enemy Lord = no Avoid/Withdraw/Battle.
+    3. Besiege or Bypass (4.3.5):
+       - Besiege: place 1 Siege marker. Card ENDS. Feed.
+       - Bypass: place Bypass marker. Continue actions.
+
+  TURN 1, later Lord A's card (assume Besieged):
+    1. Siege action (whole card):
+       - Surrender roll (no Lord inside): 1 die <= 1 Siege marker = 1.
+         If roll is 1 -> Castle Surrenders! Place 1 Guelph/Ghibelline
+         Allegiance marker. Roll Revolt 1x and add 1 Treachery.
+       - If Surrender fails (roll 2-6): IF Lord A is alone (1 Lord =
+         Castle Size 1, qualifies for Siegeworks), add a 2nd Siege
+         marker.
+       - Feed both sides' Lords there.
+
+  TURN 1, Lord A's third card (assume 2 Siege markers, no Surrender):
+    1. Siege action again:
+       - Surrender roll: 1 die <= 2. Roll 1 or 2 -> Surrender.
+       - Otherwise add 3rd Siege marker.
+
+  TURN 1, Lord A's fourth card (4 Siege markers maxed):
+    1. Siege action:
+       - Surrender roll: 1 die <= 4. Roll 1-4 -> Surrender (67% odds).
+       - Otherwise: nothing happens this card (already at max Siege).
+       OR
+    1. Storm:
+       - 1 action launches Storm.
+       - Walls 1-4 vs Siegeworks 1-4. Up to 4 Rounds.
+       - Garrison = 1 Men-at-Arms + 1 Militia + 1 Cavalieri.
+       - On Defender total Rout: SACK. 1 Loot + 1 Provender + 1 Coin
+         to Lord A; Ruins marker placed; 1 Revolt roll + 1 Treachery.
+
+Add Ravage of the same Locale (2 actions for Town/City, 1 for Castle)
+to boost the Surrender odds by +1 to the die range.
+
+================================================================================
+SECTION 13: KEY TIMING NOTES & FOOTGUNS
+================================================================================
+
+- BESIEGE-OR-BYPASS choice is MANDATORY: a side cannot just sit in
+  an Enemy Stronghold's Locale doing nothing. Lords either Besiege
+  (and end card) or Bypass (and may continue).
+
+- BESIEGE ends the card immediately. So plan multi-action cards
+  (March 2 + Forage 1) BEFORE Besieging, or Bypass instead.
+
+- BYPASS preserves card actions. Subsequent Lords arriving outside
+  the same Stronghold join the Bypass (4.3.5 Errata p17).
+
+- ENCAMP converts a Bypass to a Siege in mid-Campaign. Useful when
+  you decide late that you want to lock down a Stronghold.
+
+- DEPART vs ENCAMP: Both happen from a Bypass state, but Depart
+  moves away and removes Bypass; Encamp stays and converts to Siege.
+
+- SORTIE is the WAY to break a Bypass without waiting for the next
+  Levy. A Lord inside a Bypassed Friendly Stronghold uses 1 March
+  action to Approach (and thus initiate Battle with) the Bypassing
+  Enemy outside. The Bypassing Enemy CANNOT Avoid (they're already
+  in the open at this Locale). They can Withdraw (back into ... wait,
+  they have no Stronghold there - they're outside an Enemy Stronghold,
+  so they cannot Withdraw). So they Battle or are removed.
+
+- The SURRENDER ROLL is the BESIEGER'S option - they may decline
+  it. (Useful if they're stacking Siege markers and don't want to
+  risk a low-Value early Surrender; though usually any Surrender is
+  good.)
+
+- BESIEGED LORDS BLOCK SURRENDER. You must remove them (via Storm
+  Sack, starvation Disband, etc.) before a Surrender roll is possible.
+
+- The "SIEGEWORKS" condition (# Lords there >= Size) means a SINGLE
+  Lord cannot add Siege markers to a Town (Size 2) or City (Size 3).
+  You need 2 Lords at a Town to add markers, 3 at a City. You CAN
+  still Siege-action with fewer (it just doesn't add a marker; it
+  Feeds both sides).
+
+- MAX 4 SIEGE MARKERS at any one Locale.
+
+- REPAIR (4.9.4) erodes Siege markers at Towns/Cities with 3-4 markers
+  - NOT at Castles, NOT at 1-2-marker Towns/Cities. This sets a
+  "natural cap" of effort needed to maintain a serious Siege.
+
+- RAVAGE for SURRENDER: a Ravage marker (any color) at the Siege
+  Locale adds +1 to the Surrender die range. A 2-action Town Ravage
+  effectively buys +1 to your 2-die Surrender roll on subsequent
+  Sieges. Per ERRATA: this is regardless of WHOSE Ravage marker.
+
+- WALLS+1 from Reinforced Walls Capability is permanent until Sack
+  removes it (4.5.2). Storm of a Walls+1 Stronghold gives Defender
+  base 1-5 Walls in Walls rolls.
+
+- RUINS reset on a Sack. Place 1 Ruins marker in opposite color of
+  PRINTED Allegiance. Existing Allegiance markers, Siege markers,
+  and Walls+1 markers are REMOVED.
+
+- RUINS PRESERVE SEATS. A Ruined Stronghold still has its Lord/Vassal
+  Seats for purposes of Muster (3.4-3.5). But a Ruined Seat cannot
+  be a Supply Source.
+
+- A RUINED Stronghold CANNOT be Besieged, Stormed, or Withdrawn into.
+  Lords may freely March through. Costruttori Capability rebuilds.
+
+- OUTPOSTS: only the owning Lord may enter. Cannot Revolt. Cannot be
+  Ruined. CAN be RAVAGED adjacent (only with La Cavallata).
+
+- SACK + REMOVED LORDS = double-dip on Revolt/Treachery. Each removed
+  Lord gives Revolt rolls and Treachery cards per 4.4.5 (1x regular,
+  3x Podesta). The Sack itself ALSO gives Revolt/Treachery = Value.
+  A City Sack with a Podesta inside = 3 (Sack) + 3 (Lord removal) =
+  6 Revolt rolls and 6 Treachery cards selected.
+
+- COMMANDER+COMUNE INSIDE: counts as 1 Lord cylinder for Withdrawal
+  purposes but 2 for Array (4.4.1) and Storm Front limits. Comune
+  removal in combat does NOT trigger Revolt/Treachery (4.4.5 / 1.5.1).
+
+- SIEGE markers placed BY the Besieger - their color matches the
+  Besieger's side (purple for Guelphs, gold for Ghibellines).
+  Distinguish from RAVAGE markers (also colored, but opposite of
+  printed Allegiance).
+
+- ON SAIL TO BESIEGE: Pisa's Sail (4.7.3) to an Unbesieged Enemy
+  Stronghold places a Siege marker on arrival. Cannot Sail to
+  Approach Enemy Lords (no Battle by Sail).
+
+- RELIEF SALLY is a powerful 0-action trick: if you Approach with a
+  field army AND have Lords trapped inside the Stronghold, those
+  Besieged Lords get to join the field Battle (Flanking from the
+  rear). Siegeworks help only the Sallying side.
+
+- LOSING ATTACKERS in Storm don't Retreat. They stay outside,
+  Besieged Locale unchanged. They just take Losses (with the harsh
+  "1-only" recovery for Routed units).
+
+================================================================================
+                          END OF SIEGE REFERENCE
+================================================================================

@@ -1,0 +1,680 @@
+================================================================================
+                       INFERNO - Guelphs and Ghibellines
+              Levy & Campaign Series Vol. III - Rules Reference
+================================================================================
+ 
+Compiled by Alessandro Vitale
+Proofread by Rick Schryer and Andrea Sabbatini
+ 
+================================================================================
+PART 1: SEQUENCE OF PLAY & LEVY
+================================================================================
+ 
+GAME ROUND STRUCTURE
+--------------------
+Each 60-Day Turn has two phases:
+  1. LEVY     - Prepare armies (3.0)
+  2. CAMPAIGN - Command lords on the map (4.0)
+ 
+Guelphs (purple) go first in each step unless noted. Alternate Command card
+play: one Guelph, one Ghibelline, etc.
+ 
+Seasons & Plan Size
+  Season   Cards in Plan
+  Spring        7
+  Summer        6
+  Autumn        7
+  Winter        4
+ 
+ 
+LEVY PHASE (3.0)
+================
+ 
+3.1 Arts of War
+---------------
+  1. Draw Capabilities (1st Levy only): Each side draws 2 random Arts of
+     War as Capabilities (bottom half)
+  2. Draw Events (2nd+ Levy): Each side draws & resolves 2 Events (top
+     half)
+ 
+Levying a Capability blocks its Event. Hold Events kept secret until played.
+ 
+3.2 Pay
+-------
+Coin: Remove Coin from any Lord's mat to shift that Lord's (or another Lord
+at same Locale) Service marker 1 box right on Calendar.
+Loot: Lord must be at Friendly Locale free of Siege (may be Bypassed).
+Remove Loot as Coin (1 Loot = 1 Coin, or 2 Loot/Coin for Podesta).
+Podesta Lords cost 2 Coin (or Loot) per box shift.
+ 
+3.3 Disband
+-----------
+Beyond Service Limit: Lords whose Service marker is left of the current
+Turn box are removed.
+  - Regular Lord: Removed permanently
+  - Podesta: Cylinder placed 3 boxes ahead (= Service Rating); may Muster
+    again later
+ 
+Revolt & Treachery: When a Lord Disbands (or is removed by combat),
+enemy rolls on Revolt table (once for regular, 3x for Podesta) and adds
+Treachery cards (1 for regular, 3 for Podesta).
+ 
+3.4 Muster
+----------
+Lords on the map take Levy actions up to their Lordship rating. Each
+action spends 1 point. Complete one Lord before the next.
+ 
+Requirements: Lord must be at Friendly Locale, Unbesieged (Podesta
+exception: Urban Army at Main Seat even if Besieged).
+ 
+Urban Army: A Podesta can use Lordship from Main Seat even if Besieged
+there and can be Mustered at Main Seat even if Besieged.
+ 
+Emergency Army: If any Enemy Lords are at a Podesta's Main Seat, treat
+that Podesta as Ready to be Mustered (wherever his cylinder is on the
+Calendar).
+ 
+Levy Actions (each costs 1 Lordship):
+  - Levy Other Lords (3.4.1): Roll Fealty to Muster another Lord at his
+    Seat
+  - Levy Vassals (3.4.2): Muster a Vassal (face-up Service marker,
+    Friendly Vassal Seat)
+  - Levy Transport (3.4.3): Add 1 Cart (or 1 Ship for Pisa Podesta)
+  - Levy Capabilities (3.4.4): Take 1 Capability card from unused Arts of
+    War
+ 
+Fealty Roll (Mustering a Lord)
+Lord must be Ready, in a Turn box at/left of Levy marker, have a free Seat
+(Friendly, not Enemy-occupied, not Ruins). Seat may be Bypassed or
+Ravaged.
+ 
+Roll 1 die <= Fealty Rating = Success. Place Lord at Seat, set up mat
+with starting Forces & Assets, place Service marker ahead by Service Rating
+boxes.
+ 
+Exile Army: If Podesta's Main Seat has Enemy Allegiance, costs 2 Levy
+actions to try.
+ 
+3.5 Call to Arms
+----------------
+Conditions (any one): Lower score by 4+ VP, drew a War Event, or plays
+Treasurers Event + 2 Coin.
+ 
+Steps:
+  1. Gather (3.5.1): Each Unbesieged Lord may March (Command rating)
+     toward Leading City
+  2. Commander to Arms (3.5.2): May Disband then re-Muster
+     Commander at Leading City
+  3. Comune (3.5.3): If Commander is inside Leading City, may
+     Muster/augment Comune mat with Carroccio + Sestieri/Terzi
+  4. Allies (3.5.4): Extra Muster segment with any one Lord, OR
+     auto-Muster any non-Commander Lord
+ 
+Lord Ratings Summary
+  Rating      Symbol           Effect
+  Fealty      Die pips         Roll to Muster (3.4.1)
+  Service     Box numeral      Calendar boxes on Muster/Disband
+  Lordship    Shield numeral   Levy actions per turn (3.4)
+  Command     Card numeral     Actions per Command card (4.2.1)
+ 
+ 
+================================================================================
+PART 2: CAMPAIGN PHASE - Plan, Command, March, and Approach
+================================================================================
+ 
+4.1 PLAN
+--------
+Each side builds a Plan stack of Command cards (seasonal total).
+  - Select from Command deck (3 action cards per Lord + 4 Pass cards +
+    Treachery cards)
+  - Stack in any order, face down. Top card = first Activation
+  - May include Treachery cards obtained via events/combat
+  - Add Pass cards as needed to fill seasonal total
+ 
+4.1.3 Lieutenants
+During Plan only: stack a Lord cylinder on top of another at the same
+Locale. Upper Lord is Lieutenant; Lower Lord is led. They move and act
+together for the entire Campaign.
+ 
+Neither Commander nor Comune may be Lieutenant or Lower Lord. A
+Lieutenant + Lower Lord may not Withdraw into a Castle (Size 1).
+ 
+4.2 COMMAND
+-----------
+Alternate flipping top Command cards: Guelph, Ghibelline, Guelph...
+  - Action card: Lord gets actions = Command Rating
+  - Treachery card (4.2.3): No actions; may attempt Revolt (4.7.5) or
+    Bribe (4.7.6) or Pass
+  - Pass card (4.2.4): No actions, play passes to other side
+ 
+4.2.2 Command Menu (Actions)
+  Action    Cost                       Notes
+  March     1 (or 2 if Laden)          Move to adjacent Locale (4.3)
+  Siege     Entire card                Advance Siege at enemy Stronghold (4.5.1)
+  Storm     1 action (ends card)       Attack a Besieged Stronghold (4.5.2)
+  Sally     1 action (ends card)       Besieged Lord attacks Besiegers (4.5.3)
+  Supply    1 action                   Add Provender from Seats/Routes (4.6)
+  Forage    1 action                   Seek food from current Locale (4.7.1)
+  Ravage    1 (or 2 at City/Town)      Place Ravaged marker at enemy Locale (4.7.2)
+  Sail      Entire card                Pisa only; move by sea (4.7.3)
+  Tax       Entire card                Podesta gains 1 Coin (or 2) (4.7.4)
+  Pass      1 action                   Do nothing (4.7.7)
+ 
+Besieged Lords may only Sally, possibly Forage, use Reinforced Walls, or
+Pass. Battle/Storm ends the card's remaining actions.
+ 
+4.3 MARCH
+---------
+An Unbesieged Lord spends 1 Command action (2 if Laden) to March to an
+adjacent Locale via a connecting Way. Place Moved/Fought marker.
+ 
+Ways: Gray Roads (faster) and brown Tracks (slower). Unladen 1st March
+along Road = 0 actions. Laden March along Track costs 2 actions.
+ 
+Laden Status (4.3.2)
+  - A Lord with any Loot is always Laden
+  - A Lord with more Provender than Carts is Laden (moves max 2x along
+    Track, Unladen along Road)
+  - Lords with >2 Provender per Cart may not move
+ 
+Unladen: 1st March of a Command card along Road = 0 actions.
+ 
+4.3.4 Approach (Entering Enemy Locale)
+When a Marching Lord enters a Locale of an Unbesieged, Unbypassed
+enemy Lord, check immediately:
+  1. Avoid Battle: Inactive Lords may move away (Unladen only, not
+     across Approach Way, not to Locale with Unbesieged enemy). Lords
+     Avoiding to an Unbesieged Enemy Stronghold mark as Bypassing it.
+  2. Withdraw: Inactive side may Withdraw into a Friendly Stronghold at
+     that Locale (up to Size)
+  3. Battle: If enemy Lords remain (not in Stronghold), fight immediately
+     (4.4)
+  4. Besiege or Bypass: If Lord(s) outside an Enemy Stronghold (4.3.5)
+ 
+4.3.5 Besiege or Bypass
+  - Besiege: Place Siege marker; skip remaining actions, go to
+    Feed/Pay/Disband
+  - Bypass: Place Bypass marker; continue actions on this Command card
+    except further March (Lord stays at Locale)
+ 
+Bypass allows more actions but skips sieging. Encamp (4.3.6) converts
+Bypass to Siege for 1 March action.
+ 
+4.3.6 March from Bypass
+  - Depart: Lord at Bypass may March away normally.
+  - Encamp: Bypassing Lord may spend 1 March action to replace Bypass
+    with Siege marker; skip remaining actions.
+  - Sortie: Besieged Friendly Lord inside a Bypassed Stronghold may
+    spend 1 March action to Approach the Bypassing enemy (may trigger
+    Battle). Only a Commander or Lieutenant can Sortie a group.
+ 
+4.8 FEED / PAY / DISBAND
+------------------------
+After each Command card, both sides Feed Moved/Fought Lords, then may
+Pay, then check Disband.
+ 
+  Units    Provender/Loot Required
+  1-6      1
+  7-12     2
+  13+      3 (max)
+ 
+Underfed: Shift Service marker 1 box left for each Lord that was not fully
+Fed.
+ 
+Sharing: Lords at same Locale must share to Feed unfed Friendly Forces
+first.
+ 
+ 
+================================================================================
+PART 3: BATTLE RULES
+================================================================================
+ 
+Field Battle Procedure (4.4)
+ 
+4.4.1 BATTLE ARRAY
+------------------
+Players Array Lords on the Battle mat or mats:
+  - Attackers position first, then Defenders
+  - Each side: up to 3 Front positions (Left, Center, Right) + Reserve
+  - Active Lord must start at Front Center
+  - Attackers fill Front L/R with one other Lord each, if available;
+    remainder in Reserve
+  - Defender places one Lord directly opposite each Front Attacker, center
+    first, then L/R as able
+  - Comune (if Commander is Active) may start at Front Center as a
+    separate Lord
+ 
+4.4.2 BATTLE ROUNDS
+-------------------
+Each Round proceeds through these steps:
+  1. Concede the Field? Attacker then Defender may declare Concede
+     (final round, halved Hits)
+  2. Reposition: Advance Un-Routed Reserve Lords into empty Front; fill
+     empty Center from L/R
+  3. Strike: Each step in order: Def. Archery -> Att. Archery -> Def.
+     Horse -> Att. Horse -> Def. Foot -> Att. Foot
+  4. Hits & Protection: Assign Hits, roll Protection/Armor
+  5. Rout: Units failing Protection are Routed
+ 
+Strike & Flanking
+Strike: Front Lords Strike the Lord directly opposite. If none opposite,
+the Lord is Flanking: it Flanks the closest Front enemy Lord (L or R of
+center; owner chooses).
+ 
+Flanking Hits: Total Hits from Flanking + directly opposed Lords, round
+up. A Flanking Lord at owner's option may absorb Hits from Strikes at
+other Friendly Lords (if Flanking all Striking enemies).
+ 
+Initiative: Within each Strike step, Striking Lords choose order of Strike,
+Lord by Lord. Flanking Lords choose to absorb before opposed Lords
+resolve.
+ 
+Total Hits per Unit
+  Unit Type                         Piece           Melee Hits   Archery Hits
+  Ritter (German Knights)           Silver wedge    2            -
+  Cavalieri (Italian Knights)       Green wedge     1            -
+  Berrovieri (Constables)           Tan wedge       1/2          -
+  Light Horse                       Brown wedge     1/2          1/2
+  Men-at-Arms                       Steel bar       1            1/2
+  Armigeri (Trained Militia)        Green bar       1/2          1/2 (Crossbow)
+  Militia                           Brown bar       1/2          1/2
+  Villici (Laborers)                Tan bar         1/2          -
+ 
+Total all Hits for that step including Flanking. Round up. Mixed Archery
+with Crossbows: round Hits as Crossbow. No dice - Hits are automatic from
+Forces.
+ 
+Assign Hits to Units
+Hits apply to Forces of the opposed, Flanked, or Flanking Enemy Lord.
+Owner chooses which unit takes each Hit.
+ 
+Exceptions:
+  - Select Target: Crossbows (and Sudden Clash event) let the Striking
+    side choose which enemy unit takes each Hit
+  - Storm Attack: Hits must go to Armored before Unarmored units
+ 
+Protection (Saving Rolls)
+Each Hit either Routs a unit or is saved by a Protection roll:
+ 
+  Type                 Roll Range    Notes
+  Walls                1-4 (base)    Stronghold defense; cancel one Hit per success
+  Armor                varies        Ritter 1-4, Cavalieri 1-3, Men-at-Arms 1-2,
+                                     Berrovieri 1-2
+  Crossbow vs Armor    Armor -2      Min Armor "1"
+  Unarmored            1             Light Horse & Militia avoid Rout on 1 only
+  Villici              -             No Protection; removed immediately on Hit
+  Siegeworks (Storm)   1-[#Siege]    Attacker's Walls in Storm vs. Archery + Melee
+ 
+A unit may absorb multiple Hits in succession (roll Protection for each).
+ 
+Rout
+A unit that fails Protection is Routed - slide below the line on the Lord's
+mat. Routed units no longer Strike or absorb Hits.
+ 
+A Lord whose last Unrouted unit Routs is Routed out: remove from Array.
+Adjust Flanking immediately.
+ 
+4.4.3 Ending the Battle
+-----------------------
+A side that Conceded or has no Unrouted Lords loses the Battle.
+ 
+Losing side: All Lords must Retreat to adjacent Locale (no enemy, not
+Besieged/Bypassed), Withdraw into Stronghold, or be Removed. Retreat
+may join Friendly Lords already Bypassing an Enemy Stronghold.
+ 
+Marching Attackers must Retreat to the Locale they Approached from.
+Sallying Attackers Withdraw back into Stronghold. Defenders may not
+Retreat along the Approach Way.
+ 
+4.4.4 Losses (Routed Forces)
+----------------------------
+Roll 1 die per Routed unit vs. Protection (Armor or Unarmored range)
+  - Retreated without Conceding / Attacking in Storm: Fail unless roll "1"
+  - Within range = unit recovers. Outside range = unit Lost (returned to
+    pool)
+  - Knights' Quarter: Cavalieri/Ritter removed in Battle (roll 3-6) go to
+    Captured Knights box
+ 
+Spoils (4.4.3)
+  - Losing Lords who were Removed or Retreated without Conceding
+    transfer all Assets (except Ships). If has Carroccio: other side
+    captures it (+2 VP).
+  - Lords who Conceded & Retreated transfer only excess Loot and
+    Provender beyond Laden limit.
+  - Lords who Withdrew keep all Assets.
+ 
+ 
+================================================================================
+PART 4: SIEGE, STORM, & SALLY - Stronghold Operations (4.5)
+================================================================================
+ 
+4.5.1 SIEGE
+-----------
+Any Besieging Lord may use his entire Command card to advance the
+Siege:
+ 
+Surrender
+If no Besieged Lords inside: Roll for Surrender.
+  - Roll dice = Stronghold's Value (1, 2, or 3)
+  - Each die <= Siege markers + Ravage markers = Accepted
+  - If all dice accepted: Stronghold is seized
+ 
+On Surrender:
+  - Set Allegiance (place markers = Value); adjust VP
+  - Remove all Siege markers
+  - No Spoils awarded
+  - Revolt & Treachery: Roll Revolt table = Value times; add Treachery
+    cards = Value
+ 
+A Ravage marker adds +1 to the Surrender die-roll range (regardless of
+Ravage color).
+ 
+Siegeworks
+If no Surrender (or Besieged Lords present): add 1 Siege marker (max 4)
+if Besieging Lords >= Stronghold's Size.
+ 
+Siege markers erode: at end of each Campaign, remove 1 Siege marker
+from each Town/City with 3-4 Siege markers (Repair, 4.9.4).
+ 
+4.5.2 STORM (Sack)
+------------------
+Any Lord outside a Besieged Stronghold may use 1 Command action to
+Storm it. Proceed as Battle (4.4) with these exceptions:
+ 
+Storm Array
+  - Attacker: Active Lord (or Comune) in Front; others start in Reserve
+  - Defender: Besieged Lords in Front behind Garrison; others in Reserve
+  - Each side may Reposition 1 Lord from Reserve to Front per round
+    (up to Size)
+ 
+Stronghold Effects in Storm
+  - Garrison: Free Foot units per Strongholds table (Melee + Archery).
+    Men-at-Arms = x1/2 Hits, Armigeri = x1 Crossbowmen that Select
+    Targets with -2 to Armor.
+  - Garrison Melee Strikes add to Defending Lords' Strikes (round up)
+  - All Defending units Melee Strike before Attacking units (unlike Battle)
+  - Siegeworks = Attacker's Walls (value = # of Siege markers against
+    Archery + Melee)
+  - Attacking Lord must absorb Hits with Armored units first
+  - Berrovieri on Attack: Melee x1 (not x1/2)
+  - Each Lord of each side adds at most 6 Melee Hits (Archery unlimited)
+ 
+Ending the Storm
+Storm ends when # of Rounds completed = # of Siege markers, or if one
+side all Routed, or Attacker Concedes.
+  - Attackers lose: Return Siege markers to map. Locale remains Besieged.
+  - Defenders lose (Sack): Ruin the Stronghold (see below)
+  - Routed Defending units always roll Protection. Routed Attacking units
+    that fail to roll "1" are removed.
+ 
+Sack (Defenders Lose Storm)
+Ruin the Stronghold:
+  - Remove all Siege, Allegiance, Walls+1 markers
+  - Place Ruins marker (opposite color from printed Allegiance); 1/2 VP
+  - Spoils: Loot, Provender, Coin each = Stronghold Value, plus all
+    non-Ship Assets & Carroccio of losing Lords inside
+  - Knights' Quarter: Garrison Cavalieri (= Size) + all losing
+    Cavalieri/Ritter -> Captured Knights
+  - Remove each losing Lord per 4.4.5 (Revolt + Treachery)
+  - Revolt: Roll = Value times; add Treachery = Value
+ 
+4.5.3 SALLY
+-----------
+A Besieged Lord may spend 1 Command action to attack Besiegers.
+Follow Battle rules (4.4) with exceptions:
+  - Array: Besieged = Attacker (Active Lord or Comune in Front),
+    Besieger = Defender
+  - Reposition mimics Storm (1 Lord per round up to Size)
+  - Siegeworks: Defenders (Besiegers) receive Siegeworks as Walls in
+    Storm
+  - Attackers do NOT receive Walls or Garrison
+  - No advance after combat for Besieged
+  - Losing Defenders Retreat normally. Losing Attackers (Besieged)
+    Withdraw back into Stronghold.
+  - Raid: If Sallying Attackers lose, remove all but 1 Siege marker.
+ 
+Relief Sally (4.4.1)
+When a side Approaches a Locale that is also Besieged, Besieged Lords
+may join the Battle as a Relief Sally:
+  - Array Sallying Attackers per Sally (behind Defenders, facing Sallying
+    front)
+  - Siegeworks benefit only Strikes by Sallying Attackers
+  - If Attackers lose, Sallying Lords Withdraw back into Stronghold;
+    reduce Siege markers to 1
+ 
+ 
+================================================================================
+PART 5: SUPPLY, OTHER COMMANDS, END CAMPAIGN, AND VICTORY
+================================================================================
+ 
+4.6 SUPPLY
+----------
+An Unbesieged Lord may spend 1 Command action to add Provender from
+his Seats via Routes.
+ 
+Sources & Routes (4.6.1)
+Source: Lord's own Seat(s) (not Vassal Seats), Outpost Seats, or Port
+(with Ships). Source must be an Unruined Stronghold or Outpost, not
+Besieged or Bypassed by enemy.
+ 
+Route: Unbroken path of Locales & Ways from Lord to Source. Route
+blocked by Locales with Enemy Stronghold/Lord - unless Besieged or
+Bypassed. Ruins/Ravaged do not block.
+ 
+Transport: Need 1 Cart per Provender per Way crossed along each Route.
+ 
+A Ruined Seat cannot be a Source. But a Ruined Locale does not block
+Routes.
+ 
+4.6.2 Add Provender
+  - Up to 1 per Size of each Stronghold Seat used (not Ruins)
+  - +1 per Outpost Seat
+  - +1 per Ship on Pisa's mat (not in Winter) if Source is a Port
+  - Max 16 Provender per Lord
+ 
+4.7 OTHER COMMANDS
+==================
+ 
+4.7.1 Forage
+------------
+1 Command action. Locale must not be Ravaged; Lord not Besieged by >=
+Stronghold's Size enemy Lords.
+  - Friendly Stronghold (not Ruins): Auto +1 Provender
+  - Elsewhere (including Ruins): Season matters - Summer: +1 auto;
+    Spring/Autumn: roll 1-3 = +1, 4-6 = nothing; Winter: no Forage
+    outside Friendly Strongholds
+ 
+4.7.2 Ravage
+------------
+1 action at Castle; 2 actions at City/Town. Place Ravaged (1/2 VP)
+marker in opposite color from original Allegiance. Locale must be
+currently Enemy, not yet Ravaged.
+ 
+Loot gained: +1 Provender; at City/Town also +1 Loot. With Berrovieri
+(or Gualdana + Horse): 2 Provender if Castle; 2 of each if City/Town.
+ 
+Ravage markers removed at Grow step (4.9.1): halve enemy Ravage
+markers at end of each Spring and Autumn Turn.
+ 
+4.7.3 Sail (Pisa Only)
+----------------------
+Podesta of Pisa uses entire card to move by sea to any Port free of
+Unbesieged enemy Lords. Not in Winter. Needs Ships (1 per Horse, 1 per
+Provender, 2 per Loot). May act as Lieutenant.
+ 
+4.7.4 Tax
+---------
+Unbesieged Lord at any Seat (including Outpost Seat, but NOT Vassal Seat)
+uses entire card to gain 1 Coin (or 2 Coin if Podesta).
+ 
+4.7.5 Treachery - Revolt
+------------------------
+On a Treachery card, Unbesieged Lord may attempt Revolt of a currently
+Enemy Stronghold (not Ruins/Outpost) at or adjacent, with no enemy Lord
+there or adjacent.
+ 
+Procedure: Commit 1-4 Coin. Roll dice = Stronghold Value. If ALL dice <=
+Coin committed = Revolt (pay Coin). If any die > Coin = no Revolt (keep
+Coin).
+ 
+4.7.6 Treachery - Bribe
+-----------------------
+On Treachery card, Unbesieged Lord with >=1 Coin may try to Bribe an
+enemy Vassal as a Turncoat.
+ 
+Target: Regular Vassal (not Special) that is Mustered at same/adjacent
+Locale or Unmustered at same/adjacent Vassal Seat.
+ 
+Roll 1 die: If > Vassal's Service Rating = success (pay 1 Coin, take
+Vassal's marker + Forces). If <= = fail (keep Coin).
+ 
+4.9 END CAMPAIGN
+================
+  1. Grow (4.9.1): At end of each Spring/Autumn Turn, reduce enemy
+     Ravage markers to 1/2 (round up); adjust VP
+  2. Ransom (4.9.2): Pay Coin (1 per 6 units, rounded up) to recover
+     Captured Knights. Languish if declined.
+  3. Game End (4.9.3): If final Turn, side with more VP wins
+  4. Repair (4.9.4): Remove 1 Siege from each Town/City with 3+ Siege
+     markers
+  5. Waste (4.9.5): Each Lord discards 1 excess Asset or "This Lord"
+     Capability
+  6. Reset (4.9.6): Set aside Plan Treachery cards, unstack Lieutenants,
+     discard "This Campaign" Events, advance Campaign marker
+ 
+5.0 VICTORY
+===========
+  Source                                VP
+  Each Allegiance marker on map         1 VP
+  Each Ruins marker on map              1/2 VP
+  Each Ravaged marker on map            1/2 VP
+  Captured enemy Carroccio              2 VP
+ 
+Campaign Victory (5.2): If a side has no Mustered Lords on map at any
+point, the other side wins immediately.
+ 
+End of Scenario (5.3): At Game End step of last Turn, side with more VP
+wins. Tie = draw.
+ 
+KEY TERMS
+---------
+  Locale       Map space                Seat        Lord's home Locale
+  Way          Road or Track link       Podesta     City-state mayor Lord
+  Stronghold   City/Town/Castle         Comune      Commander's 2nd mat
+  Allegiance   Friendly/Enemy control   Carroccio   Comune Special Vassal
+  VP           Victory Points           FV / Size   Stronghold Value (1-3)
+ 
+ 
+================================================================================
+PART 6: REVOLT, STRONGHOLDS & FORCES REFERENCE
+================================================================================
+ 
+REVOLT & TREACHERY (1.4)
+========================
+ 
+Revolt Triggers
+---------------
+Roll on Revolt table when:
+  - A Lord is Disbanded Beyond Service or Removed by combat (once
+    for regular; 3x for Podesta)
+  - A Stronghold Surrenders or is Sacked (= Value times)
+  - Languish of Captured Knights (if Ransom declined)
+  - Certain Events specify Revolt rolls
+  - Treachery card used for Revolt action (4.7.5)
+ 
+1.4.1 Revolt Eligibility
+Only an Enemy Stronghold with no Enemy Lords there or adjacent can
+Revolt. Ruins and Outposts never Revolt.
+ 
+1.4.2 Revolt Table Procedure
+Roll 1 purple die + 1 gold die, cross-reference on Revolt table:
+  - Rebellion: If result names a Locale that is eligible, and a Lord
+    cylinder or Allegiance marker of the rolling side is within 1 Locale
+    -> Revolt (1.4.4)
+  - Submission: If "X" result, select a Stronghold with Enemy Allegiance
+    eligible + adjacent to rolling side's Lord -> Revolt
+ 
+1.4.4 Switching Allegiance by Revolt
+Revolt adds Allegiance markers = Stronghold Value of the opposite printed
+Allegiance (or removes all current markers).
+ 
+Exiles: After any Allegiance switch, the losing side slides its Lord Service
+markers 1 box right or cylinders 1 box left per Allegiance marker placed
+or removed.
+ 
+1.4.3 Treachery Cards
+Each Lord has 1 Treachery Command card (starts set aside). Treachery
+cards are added to a side's Command deck by:
+  - Revolt triggers (Disband, combat removal, Surrender, Sack, Languish)
+  - Certain Events
+ 
+On Campaign, Treachery cards enable Revolt (4.7.5) or Bribe (4.7.6)
+instead of normal Command actions. Used Treachery cards are set aside
+again at Reset (4.9.6).
+ 
+STRONGHOLDS (1.3.1)
+===================
+  Type     Size/Value   Notes
+  City     3            Largest; hosts many Lords; 3 Allegiance markers
+  Town     2            Mid-size; 2 Allegiance markers
+  Castle   1            Smallest; 1 Allegiance marker; no Lieutenant
+                        pair inside
+ 
+Outposts: Map-edge Locales, only owning Lord may enter. Never Revolt or
+get Ruined.
+ 
+VP MARKERS ON MAP
+=================
+  Marker                         VP        Placed By
+  Guelph/Ghibelline Allegiance   1 VP each Revolt, Surrender, Sack
+  Ruins                          1/2 VP    Sack (Storm)
+  Ravaged                        1/2 VP    Ravage action
+  Captured Carroccio             2 VP      Battle/Storm Spoils
+ 
+Ruins and Allegiance markers never occupy the same Locale. Costruttori
+Capability repairs Ruins.
+ 
+FORCES QUICK REFERENCE
+======================
+ 
+Horse Units (Wedges)
+  Type          Color    Melee   Archery   Armor    Notes
+  Ritter        Silver   x2      -         1-4      Knights' Quarter on 3-6
+  Cavalieri     Green    x1      -         1-3      Knights' Quarter on 3-6
+  Berrovieri    Tan      x1/2    -         1-2      Storm: x1 Melee, double
+                                                    Ravage loot
+  Light Horse   Brown    x1/2    x1/2      Unarmd 1 -
+ 
+Foot Units (Bars)
+  Type          Color    Melee   Archery       Armor     Notes
+  Men-at-Arms   Steel    x1      x1/2          1-2       -
+  Armigeri      Green    x1/2    x1/2 (Xbow)   1-2       Crossbow: Select
+                                                         Target, -2 Armor
+  Militia       Brown    x1/2    x1/2          Unarmd 1  -
+  Villici       Tan      x1/2    -             None      Removed on any Hit
+ 
+ASSETS REFERENCE
+================
+  Asset       Max   Use
+  Cart        16    Transport Provender on March & Supply Routes
+  Ship        16    Pisa: Sail, Supply via Port (not Winter)
+  Provender   16    Feed Forces; Supply, Forage, Ravage gain it
+  Coin        16    Pay Service, Tax, Revolt, Bribe, Ransom
+  Loot        16    Pay as Coin (at Friendly Locale); makes Laden;
+                    Ravage gain
+ 
+Greed: Lords may only discard Assets to March Laden/Unladen, Avoid
+Battle, Retreat, or as required by rules/cards.
+ 
+SEASON EFFECTS
+==============
+  Season   Cards   Forage             Other
+  Spring   7       Roll 1-3           Grow (remove 1/2 Ravaged);
+                                      Ships Supply
+  Summer   6       Auto +1            Ships Supply
+  Autumn   7       Roll 1-3           Grow; Ships Supply
+  Winter   4       Stronghold only    No Sail, no Ship Supply
+ 
+================================================================================
+                              END OF REFERENCE
+================================================================================
