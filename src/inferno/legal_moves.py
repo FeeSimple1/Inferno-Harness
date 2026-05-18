@@ -300,6 +300,29 @@ def _enum_plan(state, side) -> list[dict[str, Any]]:
             "description": f"Declare Plan complete ({target_size} cards for {sd.SEASON_BY_BOX.get(state['meta']['turn'])!r}).",
             "rule_citation": "4.1.2",
         })
+    # SMOKE-Inferno-017: Lieutenants (4.1.3) — pair eligible Lords at same Locale.
+    try:
+        own_mustered = _own_lords(state, side, status="mustered")
+        by_loc = {}
+        for lid_l, l_ in own_mustered.items():
+            if l_.get("commander") or l_.get("comune_of"):
+                continue
+            if l_.get("flags", {}).get("has_lower_lord") or l_.get("flags", {}).get("lower_lord_of"):
+                continue
+            by_loc.setdefault(l_.get("location"), []).append(lid_l)
+        for loc_name, lords in by_loc.items():
+            if len(lords) < 2:
+                continue
+            for i, lt in enumerate(lords):
+                for ll in lords[i+1:]:
+                    moves.append({
+                        "action": "plan_attach_lieutenant", "side": side,
+                        "args": {"lieutenant": lt, "lower_lord": ll},
+                        "description": f"Stack {ll} under {lt} at {loc_name} (Lieutenant/Lower Lord).",
+                        "rule_citation": "4.1.3",
+                    })
+    except (KeyError, AttributeError, TypeError):
+        pass
     return moves
 
 
@@ -478,6 +501,25 @@ def _enum_command_phase(state, side) -> list[dict[str, Any]]:
                 "action": "cmd_sally", "side": side, "args": {"lord_id": lid},
                 "description": f"{lid} Sallies from {lord['location']}.",
                 "rule_citation": "4.5.3",
+            })
+    except (KeyError, AttributeError, TypeError):
+        pass
+
+    # SMOKE-Inferno-016: Bypass-state moves (4.3.6) — Depart/Encamp; Sortie if inside.
+    try:
+        if lord.get("flags", {}).get("bypassing") and actions_remaining >= 1:
+            # Encamp is always available with 1 action
+            moves.append({
+                "action": "cmd_encamp", "side": side, "args": {"lord_id": lid},
+                "description": f"{lid} Encamps at {lord['flags']['bypassing']} (1 action; ends card).",
+                "rule_citation": "4.3.6",
+            })
+            # Depart: enumerated via cmd_march above (with bypassing flag)
+        if lord.get("flags", {}).get("in_stronghold") and loc and loc.get("bypass") and actions_remaining >= 1:
+            moves.append({
+                "action": "cmd_sortie", "side": side, "args": {"lord_id": lid},
+                "description": f"{lid} Sorties from {lord['location']}.",
+                "rule_citation": "4.3.6",
             })
     except (KeyError, AttributeError, TypeError):
         pass

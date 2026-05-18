@@ -885,6 +885,9 @@ def _h_command_reveal(state, side, args, rng) -> dict[str, Any]:
         lord = state["lords"].get(lord_id)
         if lord is None or lord["status"] != "mustered":
             return _finish_card(state, side, reason="lord_off_map", citation="4.2.4")
+        # 4.2.4: revealing a Lower Lord's card = Pass (Lieutenant carries).
+        if _is_lower_lord(state, lord_id):
+            return _finish_card(state, side, reason="lower_lord_pass", citation="4.2.4")
         # Set up action budget = Command rating
         rating = lord.get("ratings", {}).get("C", 0)
         state["current_lord_id"] = lord_id
@@ -1617,11 +1620,8 @@ def _finalize_approach(state, locale_name, approaching_lord, defender_side) -> d
         state, attackers, defenders, active_id=approaching_lord,
         locale_name=locale_name,
     )
-    # Apply removal: Lords whose Forces all gone -> remove per 4.4.5.
-    for removed_lid in result["removed_lords"]:
-        _disband_beyond_service_limit(state, removed_lid)
-    # Restore active player to the marching side and end the card (any
-    # Battle ends current Command card per 4.4.6).
+    # Process post-Battle outcomes per 4.4.3 - 4.4.5.
+    _apply_post_battle(state, result, attackers, defenders)
     atk_side = state["meta"].pop("approach_attacker_side", attacker_side)
     state["meta"]["active_player"] = atk_side
     state["current_card"] = None
@@ -1635,6 +1635,75 @@ def _finalize_approach(state, locale_name, approaching_lord, defender_side) -> d
         "rolls": result.get("rolls", []),
         "rule_citation": "4.4",
     }
+
+
+def _apply_post_battle(state, result, attackers: list[str], defenders: list[str]) -> None:
+    """4.4.3 - 4.4.5 post-Battle bookkeeping: Spoils + Service shifts +
+    Loss rolls (with Knights' Quarter) + Lord removal.
+
+    Conceded side gets the favourable Spoils + Service treatment.
+    """
+    from .battle import (
+        loss_roll_for_routed,
+        service_shift_for_retreated,
+        transfer_spoils,
+    )
+    from .rng import HarnessRNG
+    rng = HarnessRNG(state["meta"]["rng_seed"],
+                     advance=state["meta"].get("rng_advance", 0))
+    rolls_before = rng.advance_count
+
+    winner = result["winner"]   # 'attacker' / 'defender'
+    loser = result["loser"]
+    conceded = result.get("conceded") == loser
+    losers_ids = attackers if loser == "attacker" else defenders
+    winners_ids = defenders if loser == "attacker" else attackers
+    # Filter winners to surviving Mustered Lords
+    winners_alive = [w for w in winners_ids
+                     if w in state["lords"] and state["lords"][w]["status"] == "mustered"]
+
+    for lid in losers_ids:
+        if lid not in state["lords"]:
+            continue
+        # Determine fate: removed (zero forces) / retreated / withdrew
+        lord = state["lords"][lid]
+        if sum(lord.get("forces", {}).values()) == 0 or lid in result.get("removed_lords", []):
+            # Removed per 4.4.5
+            transfer_spoils(state, lid, winners_alive,
+                            retreated=False, conceded=conceded, withdrew=False)
+            _disband_beyond_service_limit(state, lid)
+        elif lord.get("flags", {}).get("in_stronghold"):
+            # Withdrew into Stronghold: keep Assets, no Service shift.
+            transfer_spoils(state, lid, winners_alive,
+                            retreated=False, conceded=False, withdrew=True)
+        else:
+            # Retreated.
+            transfer_spoils(state, lid, winners_alive,
+                            retreated=True, conceded=conceded, withdrew=False)
+            # Service shift
+            has_carroccio = any(v.get("name") == "Carroccio" and v.get("on_mat")
+                                for v in lord.get("vassals", []))
+            service_shift_for_retreated(
+                state, lid,
+                conceded_with_carroccio=(conceded and has_carroccio),
+                rng_caller=rng.roll,
+            )
+    # Loss rolls for ALL participants (winners + losers) with their Routed piles
+    for lid in attackers + defenders:
+        if lid not in state["lords"]:
+            continue
+        if not state["lords"][lid].get("routed_units"):
+            continue
+        # Harsh Recovery: side that Retreated without Conceding.
+        retreated_no_concede = (
+            lid in losers_ids
+            and not state["lords"][lid].get("flags", {}).get("in_stronghold")
+            and not conceded
+        )
+        loss_roll_for_routed(state, lid,
+                             harsh_recovery=retreated_no_concede,
+                             rng_caller=rng.roll)
+    state["meta"]["rng_advance"] = state["meta"].get("rng_advance", 0) + (rng.advance_count - rolls_before)
 
 
 # Register new handlers
@@ -1975,4 +2044,171 @@ _HANDLERS.update({
     "cmd_sally":                 _h_cmd_sally,
     "cmd_treachery_revolt":      _h_cmd_treachery_revolt,
     "cmd_treachery_bribe":       _h_cmd_treachery_bribe,
+})
+
+
+# =====================================================================
+# Phase 3d: Bypass-state March (4.3.6) + Lieutenants (4.1.3) + 1.6 helper
+# =====================================================================
+def _check_disband_on_zero_forces(state, lord_id: str) -> bool:
+    """1.6: a Lord who loses his last unit outside combat Disbands.
+    Returns True if Disbanded."""
+    lord = state["lords"].get(lord_id)
+    if not lord:
+        return False
+    if lord["status"] != "mustered":
+        return False
+    if sum((lord.get("forces") or {}).values()) > 0:
+        return False
+    _disband_beyond_service_limit(state, lord_id)
+    return True
+
+
+def _h_cmd_depart(state, side, args, rng) -> dict[str, Any]:
+    """4.3.6 DEPART: a Lord at a Bypass marker Marches to adjacent normally."""
+    lid = _require_active_lord(state, side, args.get("lord_id"))
+    lord = state["lords"][lid]
+    bypassing_loc = lord.get("flags", {}).get("bypassing")
+    if not bypassing_loc or lord.get("location") != bypassing_loc:
+        raise IllegalAction("NOT_AT_BYPASS", f"{lid} not at Bypass marker.", "4.3.6")
+    # Delegate to standard March
+    march_result = _h_cmd_march(state, side, args, rng)
+    # If no Lord remains at the Bypassed Stronghold, remove Bypass markers (4.3.5)
+    bypass_loc = state["locales"][bypassing_loc]
+    remaining_bypassers = [
+        oid for oid in bypass_loc.get("lords_present", [])
+        if state["lords"][oid].get("flags", {}).get("bypassing") == bypassing_loc
+    ]
+    if not remaining_bypassers:
+        bypass_loc["bypass"] = []
+    lord["flags"].pop("bypassing", None)
+    return march_result
+
+
+def _h_cmd_encamp(state, side, args, rng) -> dict[str, Any]:
+    """4.3.6 ENCAMP: 1 action regardless of Laden; replace Bypass with 1 Siege; end card."""
+    lid = _require_active_lord(state, side, args.get("lord_id"))
+    lord = state["lords"][lid]
+    bypassing_loc = lord.get("flags", {}).get("bypassing")
+    if not bypassing_loc or lord.get("location") != bypassing_loc:
+        raise IllegalAction("NOT_AT_BYPASS", f"{lid} not at Bypass marker.", "4.3.6")
+    if (state.get("actions_remaining") or 0) < 1:
+        raise IllegalAction("INSUFFICIENT_ACTIONS", "Encamp costs 1 action.", "4.3.6")
+    loc = state["locales"][bypassing_loc]
+    loc["bypass"] = []
+    loc.setdefault("siege", []).append({"side": side, "color": "gold" if side == "guelph" else "purple", "count": 1})
+    # Clear bypassing flag on this Lord
+    lord["flags"].pop("bypassing", None)
+    lord.setdefault("flags", {})["moved_fought"] = True
+    state["actions_remaining"] = 0
+    state["card_action_consumed_by_entire_card"] = True
+    return _finish_card_with({"encamped": bypassing_loc}, state, side,
+                              reason="encamp_ends_card", citation="4.3.6")
+
+
+def _h_cmd_sortie(state, side, args, rng) -> dict[str, Any]:
+    """4.3.6 SORTIE: 1 action regardless of Laden for Lord inside a
+    Bypassed Friendly Stronghold to Approach the Bypassing Enemy outside.
+
+    Phase 3d: single-Lord Sortie; group Sortie (Commander/Lieutenant)
+    deferred.
+    """
+    lid = _require_active_lord(state, side, args.get("lord_id"))
+    lord = state["lords"][lid]
+    if not lord.get("flags", {}).get("in_stronghold"):
+        raise IllegalAction("NOT_INSIDE", f"{lid} not inside Stronghold.", "4.3.6")
+    locale_name = lord.get("location")
+    loc = state["locales"][locale_name]
+    if not loc.get("bypass"):
+        raise IllegalAction("NOT_BYPASSED", f"{locale_name} not Bypassed.", "4.3.6")
+    enemy_side = "ghibelline" if side == "guelph" else "guelph"
+    enemy_bypassers = [
+        oid for oid in loc.get("lords_present", [])
+        if state["lords"][oid]["side"] == enemy_side
+        and state["lords"][oid].get("flags", {}).get("bypassing") == locale_name
+    ]
+    if not enemy_bypassers:
+        raise IllegalAction("NO_BYPASSERS", f"No Bypassing Enemy at {locale_name}.", "4.3.6")
+    # Sortie out of Stronghold, then Approach.
+    lord["flags"].pop("in_stronghold", None)
+    # Trigger Approach pending decisions for each Enemy Bypasser
+    pendings = []
+    for eid in enemy_bypassers:
+        pendings.append({
+            "type": "approach_response",
+            "side": enemy_side,
+            "options": ["stand"],  # Bypassing Lords typically can't Avoid/Withdraw
+            "info": {"lord_id": eid, "approaching_lord": lid,
+                     "locale": locale_name, "approached_via": "sortie"},
+        })
+    state.setdefault("pending", []).extend(pendings)
+    state["meta"]["approach_attacker_side"] = side
+    state["meta"]["active_player"] = enemy_side
+    state["actions_remaining"] -= 1
+    return {
+        "state_changes": {"sortie_from": locale_name, "approach_triggered": True,
+                          "pending_responses": [p["info"]["lord_id"] for p in pendings]},
+        "rule_citation": "4.3.6",
+    }
+
+
+def _h_plan_attach_lieutenant(state, side, args, rng) -> dict[str, Any]:
+    """4.1.3 During Plan step: stack one Lord's cylinder on another
+    Friendly Lord at the same Locale. Upper = Lieutenant, lower = Lower
+    Lord. Persists during Campaign.
+
+    Constraints (4.1.3):
+      - Same Locale.
+      - Both Mustered.
+      - Neither is Commander or Comune.
+      - One Lower Lord max per Lieutenant; Lower Lord may not be a
+        Lieutenant.
+
+    args:
+      lieutenant: Lord ID
+      lower_lord: Lord ID
+    """
+    from .flow import current_campaign_step
+    if current_campaign_step(state) != "plan":
+        raise IllegalAction("WRONG_STEP", "attach_lieutenant only during plan step.", "4.1.3")
+    lt = args.get("lieutenant")
+    ll = args.get("lower_lord")
+    lt_lord = state["lords"].get(lt)
+    ll_lord = state["lords"].get(ll)
+    if lt_lord is None or ll_lord is None:
+        raise IllegalAction("UNKNOWN_LORD", "lieutenant or lower_lord not found.", "4.1.3")
+    if lt_lord["side"] != side or ll_lord["side"] != side:
+        raise IllegalAction("WRONG_SIDE", "Both Lords must be own-side.", "4.1.3")
+    if lt_lord["status"] != "mustered" or ll_lord["status"] != "mustered":
+        raise IllegalAction("NOT_MUSTERED", "Both Lords must be Mustered.", "4.1.3")
+    if lt_lord.get("location") != ll_lord.get("location"):
+        raise IllegalAction("DIFFERENT_LOCALES", "Both Lords must be at same Locale.", "4.1.3")
+    if lt_lord.get("commander") or lt_lord.get("comune_of") or ll_lord.get("commander") or ll_lord.get("comune_of"):
+        raise IllegalAction("COMMANDER_NOT_ELIGIBLE", "Commander/Comune cannot be Lieutenant/Lower Lord.", "4.1.3")
+    # No nesting
+    if lt_lord.get("flags", {}).get("lower_lord_of") or ll_lord.get("flags", {}).get("lieutenant_for"):
+        raise IllegalAction("ALREADY_STACKED", "One Lord already in a Lieutenant relationship.", "4.1.3")
+    if ll_lord.get("flags", {}).get("has_lower_lord"):
+        raise IllegalAction("ALREADY_HAS_LOWER", f"{ll} already has a Lower Lord.", "4.1.3")
+    lt_lord.setdefault("flags", {})["has_lower_lord"] = ll
+    ll_lord.setdefault("flags", {})["lower_lord_of"] = lt
+    return {
+        "state_changes": {"lieutenant": lt, "lower_lord": ll},
+        "rule_citation": "4.1.3",
+    }
+
+
+# Lower-Lord card reveal handling (4.2.4): revealing a Lower Lord's
+# command card = Pass. The dispatcher routes via _h_command_reveal;
+# we add the check there.
+def _is_lower_lord(state, lord_id: str) -> bool:
+    return bool(state["lords"].get(lord_id, {}).get("flags", {}).get("lower_lord_of"))
+
+
+# Register Phase 3d handlers
+_HANDLERS.update({
+    "cmd_depart":            _h_cmd_depart,
+    "cmd_encamp":            _h_cmd_encamp,
+    "cmd_sortie":            _h_cmd_sortie,
+    "plan_attach_lieutenant": _h_plan_attach_lieutenant,
 })

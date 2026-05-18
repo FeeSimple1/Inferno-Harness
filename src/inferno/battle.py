@@ -249,13 +249,13 @@ BATTLE_STRIKE_ORDER = [
 ]
 
 
-def _flanking_relationships(positions: dict) -> dict[str, list[tuple[str, str]]]:
+def _flanking_relationships(positions: dict, bdc: "BattleDecisionContext | None" = None
+                            ) -> dict[str, list[tuple[str, str]]]:
     """Compute Flanking relationships per 9.2.
 
-    Returns {"attacker": [(my_slot, target_slot), ...], "defender": [...]}
-    A side's Lord at Front with NO Enemy Lord directly opposite is
-    Flanking — chooses the closest Front Enemy (Center may choose
-    Left or Right).
+    A Lord at Front with NO Enemy directly opposite Flanks the closest
+    Front Enemy. For Center Flankers with both Left and Right Enemy
+    options, the owner chooses (BDC decision type 'flanker_target').
     """
     flanks: dict[str, list[tuple[str, str]]] = {"attacker": [], "defender": []}
     for me, opp in [("attacker", "defender"), ("defender", "attacker")]:
@@ -263,25 +263,30 @@ def _flanking_relationships(positions: dict) -> dict[str, list[tuple[str, str]]]
             if positions[me][slot] is None:
                 continue
             if positions[opp][slot] is not None:
-                continue  # directly opposed; not flanking
-            # No opposite enemy at this slot — Lord flanks an enemy.
+                continue
             enemy_slots = [s for s in SLOTS if positions[opp][s] is not None]
             if not enemy_slots:
                 continue
             if slot == "center":
-                # Center may choose Left or Right (caller's decision via BDC).
-                # For computation here, pick deterministically; the BDC
-                # call happens at hit-application time.
-                flanks[me].append((slot, enemy_slots[0]))
+                # Center Flanker — choose Left or Right if both present
+                if "left" in enemy_slots and "right" in enemy_slots:
+                    if bdc is not None:
+                        target = bdc.decide(
+                            "flanker_target", me,
+                            options=["left", "right"],
+                            info={"flanker_at": "center"},
+                        )
+                    else:
+                        target = "left"
+                else:
+                    target = "left" if "left" in enemy_slots else "right"
+                flanks[me].append((slot, target))
             else:
-                # Left or Right: must flank the closest Front Enemy.
-                # For our 3-slot model, that's: from left -> center if present, else right.
-                # From right -> center if present, else left.
                 if slot == "left":
                     target = "center" if "center" in enemy_slots else (
                         "right" if "right" in enemy_slots else enemy_slots[0]
                     )
-                else:  # right
+                else:
                     target = "center" if "center" in enemy_slots else (
                         "left" if "left" in enemy_slots else enemy_slots[0]
                     )
@@ -300,7 +305,7 @@ def _resolve_step(state, step: str, positions, reserve, conceded: str | None,
     """
     striking_side = "attacker" if step.startswith("atk") else "defender"
     target_side = "defender" if striking_side == "attacker" else "attacker"
-    flanks = _flanking_relationships(positions)
+    flanks = _flanking_relationships(positions, bdc)
 
     # For each potential target slot, compute total Hits aimed at the Lord there
     # from (a) directly-opposed striker, (b) Flanking strikers.
@@ -829,3 +834,150 @@ def _absorb_garrison_hits(state, locale_name: str, n_hits: int, rng_roll, hit_lo
                 garrison.pop(absorbing, None)
             n_hits -= 1
     return n_hits
+
+
+# =====================================================================
+# Phase 3d: post-Battle Loss rolls, Service shifts, Spoils, Knights' Quarter
+# =====================================================================
+def loss_roll_for_routed(state, lord_id: str, harsh_recovery: bool, rng_caller) -> dict:
+    """4.4.4 Roll for each Routed unit after Battle/Storm/Sally.
+
+    Standard: roll 1d6; if within unit's INHERENT Protection range, unit
+    recovers (return to mat); else LOST.
+    Harsh Recovery: applies to (a) Retreated without Concede, (b) Storm
+    Attackers. Unit fails UNLESS roll == 1.
+
+    Knights' Quarter (4.4.4): Cavalieri / Ritter that were Routed AND
+    LOST on a 3-6 are CAPTURED to OWNER'S Captured Knights box (used
+    for 4.9.2 Ransom). Captured-by-side recorded separately.
+
+    Villici don't roll (already removed when Hit).
+    """
+    lord = state["lords"][lord_id]
+    routed = dict(lord.get("routed_units", {}))
+    recovered: dict[str, int] = {}
+    lost: dict[str, int] = {}
+    captured: dict[str, int] = {}
+    for unit, count in routed.items():
+        if unit == "Villici":
+            continue
+        u = sd.UNITS.get(unit, {})
+        prot = u.get("protection", [])
+        for _ in range(count):
+            r = rng_caller(f"loss_{lord_id}_{unit}")
+            if harsh_recovery:
+                survives = r.value == 1
+            else:
+                survives = r.value in prot
+            if survives:
+                recovered[unit] = recovered.get(unit, 0) + 1
+            else:
+                # Knights' Quarter for Cavalieri/Ritter on 3-6 (Battle only,
+                # via the standard 4.4.4 Capture trigger; Storm Garrison
+                # capture is handled separately).
+                if unit in ("Cavalieri", "Ritter") and r.value >= 3:
+                    captured[unit] = captured.get(unit, 0) + 1
+                else:
+                    lost[unit] = lost.get(unit, 0) + 1
+    # Apply: recovered -> forces, lost -> pool, captured -> Captured Knights box
+    forces = lord.setdefault("forces", {})
+    for u, c in recovered.items():
+        forces[u] = forces.get(u, 0) + c
+    # Captured units belong to the OWNER for Ransom — store in side ledger
+    if captured:
+        state.setdefault("captured_knights", {}).setdefault(lord["side"], {})
+        for u, c in captured.items():
+            cap = state["captured_knights"][lord["side"]]
+            cap[u] = cap.get(u, 0) + c
+    # Clear routed pile (recovered/lost/captured all leave)
+    lord["routed_units"] = {}
+    return {"lord_id": lord_id, "recovered": recovered, "lost": lost,
+            "captured": captured, "harsh_recovery": harsh_recovery}
+
+
+def service_shift_for_retreated(state, lord_id: str, conceded_with_carroccio: bool,
+                                 rng_caller) -> dict:
+    """4.4.3 Service shifts on Retreat. 1d6: 1-2 -> 1 box left, 3-4 -> 2
+    boxes, 5-6 -> 3 boxes. Conceded + retained Carroccio = exactly 1 box."""
+    if conceded_with_carroccio:
+        shift = 1
+        r_val = None
+    else:
+        r = rng_caller(f"retreat_shift_{lord_id}")
+        r_val = r.value
+        shift = 1 if r_val <= 2 else (2 if r_val <= 4 else 3)
+    lord = state["lords"][lord_id]
+    cur = lord.get("service_box")
+    if cur is not None:
+        boxes = state["calendar"]["boxes"]
+        if str(cur) in boxes and lord_id in boxes[str(cur)]["services"]:
+            boxes[str(cur)]["services"].remove(lord_id)
+        new = cur - shift
+        if new < 1:
+            state["calendar"]["off_left_service"].append(lord_id)
+            lord["service_box"] = None
+        else:
+            lord["service_box"] = new
+            boxes.setdefault(str(new), {"cylinders": [], "services": [], "victory": [], "markers": []})
+            boxes[str(new)]["services"].append(lord_id)
+    return {"lord_id": lord_id, "die": r_val, "shift_left": shift}
+
+
+def transfer_spoils(state, loser_id: str, winners: list[str],
+                    retreated: bool, conceded: bool,
+                    withdrew: bool) -> dict:
+    """4.4.3 Post-Battle Spoils transfer.
+
+    - REMOVED or RETREATED-WITHOUT-CONCEDE: transfer ALL Assets except
+      Ships. If Lord has Mustered Carroccio, winner captures it (+2 VP).
+    - CONCEDED + RETREATED: transfer Loot + Provender BEYOND Unladen
+      carry. Loser keeps Carroccio.
+    - WITHDREW into Stronghold: keep ALL.
+    """
+    if not winners:
+        return {"loser_id": loser_id, "transferred": {}, "carroccio_captured": False}
+    loser = state["lords"][loser_id]
+    transferred: dict[str, int] = {}
+    carroccio_cap = False
+    if withdrew:
+        return {"loser_id": loser_id, "transferred": {}, "carroccio_captured": False,
+                "reason": "withdrew"}
+    elif conceded and retreated:
+        # Concede+Retreat: Loot + (Provender beyond Unladen carry).
+        carts = loser["assets"].get("Cart", 0)
+        prov = loser["assets"].get("Provender", 0)
+        excess_prov = max(0, prov - carts)  # Unladen carry on Road = up to 2*Carts; conservative
+        loot = loser["assets"].get("Loot", 0)
+        transferred["Loot"] = loot
+        transferred["Provender"] = excess_prov
+        loser["assets"]["Loot"] = 0
+        loser["assets"]["Provender"] = prov - excess_prov
+    else:
+        # Removed OR retreated-without-concede: transfer ALL except Ships.
+        for asset, count in list(loser["assets"].items()):
+            if asset == "Ship":
+                continue
+            if count > 0:
+                transferred[asset] = transferred.get(asset, 0) + count
+                loser["assets"][asset] = 0
+        # Carroccio capture
+        carroccio = next((v for v in loser.get("vassals", [])
+                          if v.get("special") and v.get("name") == "Carroccio"
+                          and v.get("on_mat")), None)
+        if carroccio:
+            carroccio_cap = True
+            # +2 VP to winning side
+            winner_side = state["lords"][winners[0]]["side"]
+            state["vp"][winner_side] = min(state["vp"].get(winner_side, 0) + 2, 17.5)
+            # Remove Carroccio Vassal from loser
+            loser["vassals"] = [v for v in loser["vassals"] if v.get("name") != "Carroccio"]
+    # Distribute to winners: round-robin starting with first
+    if transferred:
+        winner_idx = 0
+        for asset, total in transferred.items():
+            for _ in range(total):
+                w = state["lords"][winners[winner_idx % len(winners)]]
+                w["assets"][asset] = w["assets"].get(asset, 0) + 1
+                winner_idx += 1
+    return {"loser_id": loser_id, "transferred": transferred,
+            "carroccio_captured": carroccio_cap}
