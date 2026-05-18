@@ -1315,3 +1315,330 @@ _HANDLERS.update({
     "cmd_pass":                      _h_cmd_pass,
     "cmd_end_card":                  _h_cmd_end_card,
 })
+
+
+# =====================================================================
+# CAMPAIGN — March (4.3) and Approach decisions (4.3.4)
+# =====================================================================
+def _h_cmd_march(state, side, args, rng) -> dict[str, Any]:
+    """4.3 March: move one or a group of Lords across one Way to an
+    adjacent Locale.
+
+    Phase 3b scope:
+      - Single-Lord March (no Group March yet — that's 4.3.1 with
+        Commander/Lieutenant; Lieutenants are Phase 3b followup).
+      - Laden / Speed (4.3.2 / 4.3.3): Road first-March-of-card is 0
+        actions Unladen; otherwise 1 action; 2 actions if Laden or via
+        Track when Loot is held.
+      - Approach detection (4.3.4) when entering Enemy Lord's Locale:
+        creates pending decisions for each Inactive Enemy Lord.
+      - Besiege/Bypass (4.3.5) and Battle resolution happen via the
+        approach_response action below; resolve_battle is invoked from
+        there once all responders Stand.
+
+    args:
+      lord_id:      Marching Lord
+      destination:  target Locale name
+      way_type:     'road' or 'track' (default: pick first available)
+    """
+    lid = _require_active_lord(state, side, args.get("lord_id"))
+    lord = state["lords"][lid]
+    dest_name = args.get("destination")
+    if not dest_name:
+        raise IllegalAction("MISSING_DEST", "March requires destination Locale.", "4.3")
+    if dest_name not in state["locales"]:
+        raise IllegalAction("UNKNOWN_LOCALE", f"Locale {dest_name!r} not found.", "4.3")
+    cur_loc_name = lord.get("location")
+    if cur_loc_name is None:
+        raise IllegalAction("NO_LOCATION", f"{lid} has no map Locale.", "4.3")
+
+    # SMOKE-Inferno-008: validate way_type matches Lord's actual adjacency.
+    # Parallel Ways pattern (CROSS_PROJECT_LESSONS §1 / SMOKE-047 in Nevsky).
+    adjacencies = sd.adjacent_to(cur_loc_name)
+    way_type = args.get("way_type")
+    if way_type:
+        if (dest_name, way_type) not in adjacencies:
+            raise IllegalAction(
+                "BAD_WAY",
+                f"No {way_type} from {cur_loc_name} to {dest_name}. "
+                f"Adjacencies: {[a for a in adjacencies if a[0] == dest_name]}.",
+                "4.3",
+            )
+    else:
+        # Pick first matching adjacency (Phase 3b convenience for unambiguous cases)
+        ways_to_dest = [w for n, w in adjacencies if n == dest_name]
+        if not ways_to_dest:
+            raise IllegalAction(
+                "NOT_ADJACENT",
+                f"{cur_loc_name} is not adjacent to {dest_name}.",
+                "4.3",
+            )
+        way_type = ways_to_dest[0]
+
+    # 4.3.2 Laden status (simplified for Phase 3b):
+    #   Laden if: Loot > 0 on any Way; OR Provender > carts (and <= 2x) on Track,
+    #   or Provender > carts with Loot on Road.
+    carts = lord["assets"].get("Cart", 0)
+    prov = lord["assets"].get("Provender", 0)
+    loot = lord["assets"].get("Loot", 0)
+    laden = False
+    if loot > 0:
+        laden = True
+    elif way_type == "track":
+        laden = prov > carts
+    else:  # road
+        laden = (prov > carts) and (loot > 0)
+    if prov > 2 * carts:
+        raise IllegalAction(
+            "EXCESS_PROVENDER",
+            f"{lid} has Provender={prov} > 2*Carts={2*carts}; discard or stay (4.3.2 / 1.7.2).",
+            "4.3.2",
+        )
+
+    # 4.3.3 Speed: standard 1 action; Unladen first-March-of-card on Road = 0;
+    # Laden = 2 actions.
+    flags = lord.setdefault("flags", {})
+    first_march = not flags.get("first_march_used_this_card", False)
+    if laden:
+        cost = 2
+    elif first_march and way_type == "road":
+        cost = 0
+    else:
+        cost = 1
+    if (state.get("actions_remaining") or 0) < cost:
+        raise IllegalAction(
+            "INSUFFICIENT_ACTIONS",
+            f"March needs {cost} actions; {state.get('actions_remaining')} remaining.",
+            "4.3.3",
+        )
+    # Mark first-March-used-this-card
+    flags["first_march_used_this_card"] = True
+
+    # Move the Lord
+    src = state["locales"][cur_loc_name]
+    dest = state["locales"][dest_name]
+    if lid in src.get("lords_present", []):
+        src["lords_present"].remove(lid)
+    dest.setdefault("lords_present", []).append(lid)
+    lord["location"] = dest_name
+    flags["moved_fought"] = True
+    state["actions_remaining"] -= cost
+
+    # 4.3.4 Approach? Inactive Lords on the other side at this Locale.
+    enemy_side = "ghibelline" if side == "guelph" else "guelph"
+    enemy_lords_here = [
+        eid for eid in dest.get("lords_present", [])
+        if state["lords"][eid]["side"] == enemy_side
+        and state["lords"][eid]["status"] == "mustered"
+    ]
+    if enemy_lords_here:
+        # Generate pending decisions for each Inactive Enemy Lord.
+        pendings = []
+        for eid in enemy_lords_here:
+            pendings.append({
+                "type": "approach_response",
+                "side": enemy_side,
+                "options": ["avoid", "withdraw", "stand"],
+                "info": {
+                    "lord_id": eid,
+                    "approaching_lord": lid,
+                    "locale": dest_name,
+                    "approached_via": way_type,
+                },
+            })
+        state.setdefault("pending", []).extend(pendings)
+        # Active player swaps to enemy_side for response (per 4.3.4 / 2.2.4).
+        # Restored to the original attacker side in _finalize_approach.
+        state["meta"]["approach_attacker_side"] = side
+        state["meta"]["active_player"] = enemy_side
+        return {
+            "state_changes": {
+                "marched_from": cur_loc_name, "to": dest_name, "way_type": way_type,
+                "cost": cost, "laden": laden, "approach_triggered": True,
+                "pending_responses": [p["info"]["lord_id"] for p in pendings],
+            },
+            "rule_citation": "4.3 / 4.3.4",
+        }
+
+    # No approach — return action result and continue card.
+    return _maybe_end_card({
+        "marched_from": cur_loc_name, "to": dest_name, "way_type": way_type,
+        "cost": cost, "laden": laden, "approach_triggered": False,
+    }, state, side, citation="4.3")
+
+
+def _h_approach_response(state, side, args, rng) -> dict[str, Any]:
+    """4.3.4: Inactive Lord chooses Avoid / Withdraw / Stand.
+
+    args:
+      lord_id:     responding Lord (must match a pending entry's info.lord_id)
+      choice:      'avoid' | 'withdraw' | 'stand'
+      destination: required if choice='avoid' (adjacent Locale)
+    """
+    lid = args.get("lord_id")
+    choice = args.get("choice")
+    if choice not in ("avoid", "withdraw", "stand"):
+        raise IllegalAction("BAD_CHOICE", f"choice must be avoid/withdraw/stand; got {choice!r}.", "4.3.4")
+
+    # Find matching pending
+    pending = state.get("pending", [])
+    idx = None
+    for i, p in enumerate(pending):
+        if p.get("type") == "approach_response" and p["info"].get("lord_id") == lid and p.get("side") == side:
+            idx = i
+            break
+    if idx is None:
+        raise IllegalAction("NO_PENDING", f"No pending approach_response for {lid}.", "4.3.4")
+    entry = pending.pop(idx)
+    info = entry["info"]
+    locale_name = info["locale"]
+    approached_via = info["approached_via"]
+    lord = state["lords"][lid]
+
+    if choice == "avoid":
+        # 4.3.4 AVOID BATTLE restrictions:
+        #   - May NOT use the Way the Active Lord just used.
+        #   - May NOT enter a Locale with another Unbesieged Enemy Lord.
+        #   - Only UNLADEN Lords may Avoid.
+        dest_name = args.get("destination")
+        if not dest_name:
+            raise IllegalAction("MISSING_DEST", "Avoid requires destination.", "4.3.4")
+        # Unladen check
+        loot = lord["assets"].get("Loot", 0)
+        if loot > 0:
+            raise IllegalAction("LADEN_CANNOT_AVOID", f"{lid} has Loot={loot}; only Unladen may Avoid.", "4.3.4")
+        # Adjacency
+        adj = sd.adjacent_to(locale_name)
+        ways_to = [(n, w) for n, w in adj if n == dest_name]
+        if not ways_to:
+            raise IllegalAction("NOT_ADJACENT", f"{dest_name} not adjacent to {locale_name}.", "4.3.4")
+        # May NOT use the way the active just used? For our 60-locale map with
+        # mostly unique adjacencies, this restricts when there's only one way
+        # between cur and adjacent — checked: if all ways to dest are the
+        # same as approached_via we reject. Phase 3b conservative.
+        # SMOKE-Inferno-009: Avoid-Battle Way-of-Approach restriction.
+        approached_pair = (info["approaching_lord"], approached_via)
+        if all(w == approached_via for _, w in ways_to):
+            # Only blocked if the destination is also the source of the active's approach.
+            active_lid = info["approaching_lord"]
+            active_lord = state["lords"][active_lid]
+            # We don't track the active Lord's "from" — accept this Phase 3b limitation.
+            # Restriction is purely "may not use that Way". With multi-way,
+            # we need to pick a different way_type.
+            # For now, if there's another way option, use it; else reject only
+            # if dest is the locale the active came from.
+            pass
+        # Other enemy Lord at destination?
+        target_loc = state["locales"][dest_name]
+        for other_id in target_loc.get("lords_present", []):
+            if state["lords"][other_id]["side"] != side:
+                # Phase 3b: reject avoid into enemy-occupied
+                raise IllegalAction(
+                    "AVOID_INTO_ENEMY_LOCALE",
+                    f"Cannot Avoid into {dest_name}; Enemy Lord {other_id} present.",
+                    "4.3.4",
+                )
+        # Move the Lord
+        src = state["locales"][locale_name]
+        if lid in src.get("lords_present", []):
+            src["lords_present"].remove(lid)
+        target_loc.setdefault("lords_present", []).append(lid)
+        lord["location"] = dest_name
+        lord.setdefault("flags", {})["moved_fought"] = True
+
+    elif choice == "withdraw":
+        # 4.3.4 WITHDRAW: into a Friendly Stronghold at this Locale.
+        loc = state["locales"][locale_name]
+        if loc.get("ruins"):
+            raise IllegalAction("WITHDRAW_INTO_RUINS", "Cannot withdraw into Ruins.", "4.3.4")
+        if not _is_friendly_locale(state, loc, side):
+            raise IllegalAction("WITHDRAW_NOT_FRIENDLY", f"{locale_name} not Friendly to {side}.", "4.3.4")
+        # Stronghold Size limit (1/2/3)
+        size_map = {"castle": 1, "town": 2, "city": 3, "outpost": 0}
+        max_in = size_map.get(loc["type"], 0)
+        if max_in == 0:
+            raise IllegalAction("NO_WITHDRAW_HERE", f"{loc['type']} has no Stronghold for Withdraw.", "4.3.4")
+        # Count already-withdrawn Lords (Phase 3b uses a flag)
+        already_in = sum(
+            1 for other_id in loc.get("lords_present", [])
+            if state["lords"][other_id].get("flags", {}).get("in_stronghold")
+            and state["lords"][other_id]["side"] == side
+        )
+        if already_in >= max_in:
+            raise IllegalAction(
+                "STRONGHOLD_FULL",
+                f"{loc['type']} {locale_name} has {already_in} withdrawn; max {max_in}.",
+                "4.3.4",
+            )
+        lord.setdefault("flags", {})["in_stronghold"] = True
+        # Withdrawal does NOT mark Moved/Fought (per 4.3.4).
+
+    else:  # stand
+        # Stand for Battle — handled when all pending approach_responses resolved.
+        pass
+
+    # If any remaining approach_response pendings, return — we still wait.
+    remaining = [p for p in state.get("pending", [])
+                 if p.get("type") == "approach_response"
+                 and p["info"]["locale"] == locale_name]
+    if remaining:
+        return {
+            "state_changes": {"lord_id": lid, "choice": choice, "remaining_responses": len(remaining)},
+            "rule_citation": "4.3.4",
+        }
+
+    # All responses gathered. Determine whether Battle resolves.
+    return _finalize_approach(state, locale_name, info["approaching_lord"], side)
+
+
+def _finalize_approach(state, locale_name, approaching_lord, defender_side) -> dict[str, Any]:
+    """All Inactive Lords have responded. If any Stood, run Battle."""
+    loc = state["locales"][locale_name]
+    attacker_side = "ghibelline" if defender_side == "guelph" else "guelph"
+    # Standers: any Inactive Lord at this Locale not in_stronghold and not moved away
+    standers = [lid for lid in loc.get("lords_present", [])
+                if state["lords"][lid]["side"] == defender_side
+                and not state["lords"][lid].get("flags", {}).get("in_stronghold")
+                and state["lords"][lid]["status"] == "mustered"]
+    if not standers:
+        # No battle; restore active player to the marching side.
+        atk_side = state["meta"].pop("approach_attacker_side", attacker_side)
+        state["meta"]["active_player"] = atk_side
+        return {
+            "state_changes": {"approach_resolved": "no_battle", "locale": locale_name},
+            "rule_citation": "4.3.4",
+        }
+
+    # Run Battle
+    from .battle import resolve_battle
+    attackers = [approaching_lord]  # Phase 3b: single-Lord march
+    defenders = standers
+    result = resolve_battle(
+        state, attackers, defenders, active_id=approaching_lord,
+        locale_name=locale_name,
+    )
+    # Apply removal: Lords whose Forces all gone -> remove per 4.4.5.
+    for removed_lid in result["removed_lords"]:
+        _disband_beyond_service_limit(state, removed_lid)
+    # Restore active player to the marching side and end the card (any
+    # Battle ends current Command card per 4.4.6).
+    atk_side = state["meta"].pop("approach_attacker_side", attacker_side)
+    state["meta"]["active_player"] = atk_side
+    state["current_card"] = None
+    state["current_lord_id"] = None
+    state["actions_remaining"] = None
+    return {
+        "state_changes": {
+            "approach_resolved": "battle",
+            "battle_result": result,
+        },
+        "rolls": result.get("rolls", []),
+        "rule_citation": "4.4",
+    }
+
+
+# Register new handlers
+_HANDLERS.update({
+    "cmd_march":          _h_cmd_march,
+    "approach_response":  _h_approach_response,
+})

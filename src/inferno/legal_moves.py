@@ -30,6 +30,13 @@ from .flow import current_campaign_step, current_side, current_step
 
 
 def enumerate_legal(state: dict[str, Any]) -> list[dict[str, Any]]:
+    # Pending decisions take precedence over phase enumeration (per BRIEF
+    # "Non-Combat Pending Decisions"). If an approach_response is pending
+    # for the active side, only that response is legal.
+    pendings = state.get("pending") or []
+    for p in pendings:
+        if p.get("type") == "approach_response" and p.get("side") == state["meta"].get("active_player"):
+            return _enum_approach_response(state, p)
     phase = state["meta"].get("phase")
     if phase == "levy":
         return _enum_levy(state)
@@ -402,6 +409,32 @@ def _enum_command_phase(state, side) -> list[dict[str, Any]]:
                         })
         except (KeyError, AttributeError):
             pass
+    # SMOKE-Inferno-010: cmd_march pre-checks — adjacency, action cost, Laden.
+    try:
+        cur_loc = lord.get("location")
+        if cur_loc:
+            for neighbour, way_type in sd.adjacent_to(cur_loc):
+                # Skip Outposts unless this Lord has it as a Seat (1.3.1).
+                dest = state["locales"].get(neighbour, {})
+                if dest.get("type") == "outpost" and neighbour not in lord.get("seats", []):
+                    continue
+                # Cost estimation: 0 if Unladen first-March on road, 1 normal, 2 Laden.
+                carts = lord["assets"].get("Cart", 0)
+                prov = lord["assets"].get("Provender", 0)
+                loot = lord["assets"].get("Loot", 0)
+                laden = loot > 0 or (way_type == "track" and prov > carts) or (way_type == "road" and prov > carts and loot > 0)
+                first_march = not lord.get("flags", {}).get("first_march_used_this_card", False)
+                cost = 2 if laden else (0 if (first_march and way_type == "road") else 1)
+                if cost <= actions_remaining:
+                    moves.append({
+                        "action": "cmd_march", "side": side,
+                        "args": {"lord_id": lid, "destination": neighbour, "way_type": way_type},
+                        "description": f"{lid} Marches to {neighbour} via {way_type} ({cost} actions).",
+                        "rule_citation": "4.3",
+                    })
+    except (KeyError, AttributeError, TypeError):
+        pass
+
     # Pass is always available
     if actions_remaining >= 1:
         moves.append({
@@ -474,3 +507,80 @@ def _is_friendly_stronghold_quiet(state, locale, side) -> bool:
         return _is_friendly_locale_quiet(state, locale, side)
     except (KeyError, AttributeError, TypeError):
         return False
+
+
+
+def _enum_approach_response(state, pending) -> list[dict[str, Any]]:
+    """Per 4.3.4: each Inactive Lord chooses avoid / withdraw / stand.
+
+    Defensive enumeration: only emit options the handler would accept.
+    """
+    info = pending["info"]
+    lid = info["lord_id"]
+    locale_name = info["locale"]
+    side = pending["side"]
+    lord = state["lords"].get(lid)
+    loc = state["locales"].get(locale_name, {})
+    out: list[dict[str, Any]] = []
+
+    # Stand is always available
+    out.append({
+        "action": "approach_response", "side": side,
+        "args": {"lord_id": lid, "choice": "stand"},
+        "description": f"{lid} stands for Battle at {locale_name}.",
+        "rule_citation": "4.3.4",
+    })
+
+    # SMOKE-Inferno-011: Avoid Battle pre-check — Unladen + adjacent + not into enemy.
+    try:
+        if (lord and lord["assets"].get("Loot", 0) == 0):
+            for neighbour, way_type in sd.adjacent_to(locale_name):
+                if way_type == info.get("approached_via"):
+                    # Phase 3b conservative: same-Way ambiguity is rejected
+                    # only if all routes are that Way; here we accept the
+                    # candidate and let the handler validate.
+                    pass
+                target = state["locales"].get(neighbour, {})
+                # No Avoiding into an enemy-occupied Locale
+                has_enemy = any(
+                    state["lords"][oid]["side"] != side
+                    and state["lords"][oid].get("flags", {}).get("in_stronghold", False) is False
+                    for oid in target.get("lords_present", [])
+                )
+                if has_enemy:
+                    continue
+                # Outpost gate: only owning Lord may enter
+                if target.get("type") == "outpost" and neighbour not in lord.get("seats", []):
+                    continue
+                out.append({
+                    "action": "approach_response", "side": side,
+                    "args": {"lord_id": lid, "choice": "avoid",
+                             "destination": neighbour},
+                    "description": f"{lid} Avoids Battle to {neighbour} ({way_type}).",
+                    "rule_citation": "4.3.4",
+                })
+    except (KeyError, AttributeError, TypeError):
+        pass
+
+    # SMOKE-Inferno-012: Withdraw pre-check — friendly Stronghold, room.
+    try:
+        if (lord and loc and not loc.get("ruins")
+                and _is_friendly_locale_quiet(state, loc, side)):
+            size_map = {"castle": 1, "town": 2, "city": 3, "outpost": 0}
+            cap = size_map.get(loc.get("type"), 0)
+            if cap > 0:
+                in_count = sum(
+                    1 for oid in loc.get("lords_present", [])
+                    if state["lords"][oid]["side"] == side
+                    and state["lords"][oid].get("flags", {}).get("in_stronghold")
+                )
+                if in_count < cap:
+                    out.append({
+                        "action": "approach_response", "side": side,
+                        "args": {"lord_id": lid, "choice": "withdraw"},
+                        "description": f"{lid} Withdraws into {locale_name} ({loc.get('type')}, cap {cap}).",
+                        "rule_citation": "4.3.4",
+                    })
+    except (KeyError, AttributeError, TypeError):
+        pass
+    return out
