@@ -1858,28 +1858,29 @@ def adjacent_to(locale: str) -> list[tuple[str, str]]:
 # Inferno_Sequence_of_Play.txt Plan-size table:
 #   Spring = 7, Summer = 6, Autumn = 7, Winter = 4
 #
-# The Grow rule explicitly identifies "late-Spring (April-May)" and "Autumn
-# (October-November)" - so Apr-May -> Spring, Oct-Nov -> Autumn. The other
-# months are partitioned below; this exact mapping is logged as Q-001 in
-# RULES_QUESTIONS.md pending user confirmation against the Inferno RoP
-# season-color band on the Calendar.
+# Per Q-001 (resolved, RULES_DECISIONS.md): Rules of Play 4.9.1 enumerates
+# Grow turns as boxes 2/5/8/11/14, labelled "April-May late-Spring" and
+# "October-November Autumn". Since Grow fires every Spring and every
+# Autumn turn, the enumerated set is exhaustive: Spring = Apr-May only,
+# Autumn = Oct-Nov only. The remaining month-pairs are forced to Summer
+# (Jun-Jul, Aug-Sep) and Winter (Feb-Mar, Dec-Jan).
 SEASON_BY_BOX = {
      1: "winter",   # Feb-Mar 1259
      2: "spring",   # Apr-May 1259  (Grow eligible)
      3: "summer",   # Jun-Jul 1259
-     4: "summer",   # Aug-Sep 1259  (assumed; see Q-001)
+     4: "summer",   # Aug-Sep 1259  (Q-001 resolved: Summer per RoP 4.9.1)
      5: "autumn",   # Oct-Nov 1259  (Grow eligible)
      6: "winter",   # Dec-Jan 1259-60
      7: "winter",   # Feb-Mar 1260
      8: "spring",   # Apr-May 1260  (Grow eligible)
      9: "summer",   # Jun-Jul 1260
-    10: "summer",   # Aug-Sep 1260  (assumed)
+    10: "summer",   # Aug-Sep 1260  (Q-001 resolved: Summer per RoP 4.9.1)
     11: "autumn",   # Oct-Nov 1260  (Grow eligible)
     12: "winter",   # Dec-Jan 1260-61
     13: "winter",   # Feb-Mar 1261
     14: "spring",   # Apr-May 1261  (Grow eligible)
     15: "summer",   # Jun-Jul 1261
-    16: "summer",   # Aug-Sep 1261  (assumed)
+    16: "summer",   # Aug-Sep 1261  (Q-001 resolved: Summer per RoP 4.9.1)
 }
 
 PLAN_SIZE_BY_SEASON = {
