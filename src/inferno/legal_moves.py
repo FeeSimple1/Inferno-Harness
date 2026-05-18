@@ -435,6 +435,53 @@ def _enum_command_phase(state, side) -> list[dict[str, Any]]:
     except (KeyError, AttributeError, TypeError):
         pass
 
+    # SMOKE-Inferno-013: Besiege/Bypass mandatory at Enemy Stronghold (4.3.5).
+    try:
+        if loc and not loc.get("ruins") and loc["type"] != "outpost":
+            # Need: side has Lord here outside, enemy Stronghold (not currently friendly),
+            # no Siege/Bypass markers yet (otherwise an arrived-later branch applies).
+            is_enemy = not _is_friendly_locale_quiet(state, loc, side)
+            outside = not lord.get("flags", {}).get("in_stronghold")
+            if (is_enemy and outside and not loc.get("siege") and not loc.get("bypass")
+                    and actions_remaining >= 0):
+                for choice in ("besiege", "bypass"):
+                    moves.append({
+                        "action": "besiege_or_bypass", "side": side,
+                        "args": {"lord_id": lid, "choice": choice},
+                        "description": f"{lid} {choice}s Enemy {loc['type']} at {lord['location']}.",
+                        "rule_citation": "4.3.5",
+                    })
+    except (KeyError, AttributeError, TypeError):
+        pass
+    # SMOKE-Inferno-014: cmd_siege when own side has Siege at this Locale (4.5.1).
+    try:
+        own_sieges = [s for s in (loc.get("siege") or []) if s.get("side") == side]
+        if (own_sieges and not lord.get("flags", {}).get("in_stronghold")
+                and actions_remaining >= 1):
+            moves.append({
+                "action": "cmd_siege", "side": side, "args": {"lord_id": lid},
+                "description": f"{lid} pursues Siege at {lord['location']} (entire card).",
+                "rule_citation": "4.5.1",
+            })
+            # Storm if at least 1 Siege marker
+            moves.append({
+                "action": "cmd_storm", "side": side, "args": {"lord_id": lid},
+                "description": f"{lid} Storms {lord['location']} ({sum(s.get('count',1) for s in own_sieges)} Siege markers).",
+                "rule_citation": "4.5.2",
+            })
+    except (KeyError, AttributeError, TypeError):
+        pass
+    # SMOKE-Inferno-015: cmd_sally when Besieged inside (4.5.3).
+    try:
+        if lord.get("flags", {}).get("in_stronghold") and loc and loc.get("siege"):
+            moves.append({
+                "action": "cmd_sally", "side": side, "args": {"lord_id": lid},
+                "description": f"{lid} Sallies from {lord['location']}.",
+                "rule_citation": "4.5.3",
+            })
+    except (KeyError, AttributeError, TypeError):
+        pass
+
     # Pass is always available
     if actions_remaining >= 1:
         moves.append({

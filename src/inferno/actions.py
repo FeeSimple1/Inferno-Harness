@@ -1642,3 +1642,337 @@ _HANDLERS.update({
     "cmd_march":          _h_cmd_march,
     "approach_response":  _h_approach_response,
 })
+
+
+# =====================================================================
+# CAMPAIGN — Besiege/Bypass, Siege, Storm, Sally, Treachery (Phase 3c)
+# =====================================================================
+def _h_besiege_or_bypass(state, side, args, rng) -> dict[str, Any]:
+    """4.3.5: when active side has Lord(s) at an Enemy Stronghold (not
+    Ruins) and no Enemy outside, choose Besiege or Bypass.
+
+    args:
+      lord_id:  the Lord at the Locale outside the Stronghold
+      choice:   'besiege' or 'bypass'
+    """
+    lid = _require_active_lord(state, side, args.get("lord_id"))
+    lord = state["lords"][lid]
+    locale_name = lord.get("location")
+    loc = state["locales"].get(locale_name)
+    if not loc:
+        raise IllegalAction("NO_LOCATION", f"{lid} has no Locale.", "4.3.5")
+    if loc["allegiance"] == side and not loc.get("current_allegiance"):
+        raise IllegalAction("FRIENDLY_LOCALE", f"{locale_name} is Friendly; no Besiege/Bypass.", "4.3.5")
+    if loc.get("ruins"):
+        raise IllegalAction("RUINS_NO_STRONGHOLD", f"{locale_name} is Ruins; no Stronghold to Besiege.", "4.3.5")
+    if loc["type"] == "outpost":
+        raise IllegalAction("OUTPOST", f"Outposts never Besieged.", "4.3.5")
+    choice = args.get("choice")
+    if choice not in ("besiege", "bypass"):
+        raise IllegalAction("BAD_CHOICE", f"choice must be besiege/bypass; got {choice!r}.", "4.3.5")
+
+    if choice == "besiege":
+        loc.setdefault("siege", []).append({"side": side, "color": "gold" if side == "guelph" else "purple", "count": 1})
+        # End card; FPD; flip side
+        return _finish_card_with({"besieged": locale_name}, state, side,
+                                  reason="besiege_ends_card", citation="4.3.5")
+    else:  # bypass
+        loc.setdefault("bypass", []).append({"side": side, "lord_id": lid})
+        lord.setdefault("flags", {})["bypassing"] = locale_name
+        return _maybe_end_card({"bypassed": locale_name}, state, side, citation="4.3.5")
+
+
+def _h_cmd_siege(state, side, args, rng) -> dict[str, Any]:
+    """4.5.1 SIEGE (entire card). Roll Surrender (if no Besieged Lord
+    inside), else add Siegeworks (1 Siege marker if side has Lords ≥
+    Stronghold Size; max 4)."""
+    lid = _require_active_lord(state, side, args.get("lord_id"))
+    lord = state["lords"][lid]
+    locale_name = lord.get("location")
+    loc = state["locales"][locale_name]
+    if not loc.get("siege"):
+        raise IllegalAction("NO_SIEGE_HERE", f"No Siege at {locale_name}.", "4.5.1")
+    # Only the Besieging side may take Siege action.
+    enemy_side = "ghibelline" if side == "guelph" else "guelph"
+    # Besieged Lords inside (in_stronghold flag, same Locale)?
+    inside = [oid for oid in loc.get("lords_present", [])
+              if state["lords"][oid].get("flags", {}).get("in_stronghold")
+              and state["lords"][oid]["side"] == enemy_side]
+    siege_count = sum(s.get("count", 1) for s in loc["siege"])
+    ravage_bonus = 1 if loc.get("ravaged") else 0
+    surrender = None
+    rolls = []
+    if not inside:
+        # Roll Surrender dice
+        size = sd.STRONGHOLDS[loc["type"]]["size"]
+        threshold = siege_count + ravage_bonus
+        dice = []
+        for i in range(size):
+            r = rng.roll(f"surrender_{locale_name}_{i}")
+            dice.append(r.value)
+            rolls.append({"context": r.context, "value": r.value})
+        if all(d <= threshold for d in dice):
+            surrender = True
+            # Apply Surrender outcome
+            _apply_surrender(state, locale_name, side, rng, rolls)
+        else:
+            surrender = False
+    # Step 2 Siegeworks if no Surrender
+    if surrender is not True:
+        own_lords_here = [oid for oid in loc.get("lords_present", [])
+                          if state["lords"][oid]["side"] == side
+                          and not state["lords"][oid].get("flags", {}).get("in_stronghold")]
+        if len(own_lords_here) >= sd.STRONGHOLDS[loc["type"]]["size"]:
+            new_count = min(siege_count + 1, 4)
+            loc["siege"] = [{"side": side, "color": "gold" if side == "guelph" else "purple", "count": new_count}]
+    # All Lords here marked Fought
+    for oid in loc.get("lords_present", []):
+        state["lords"][oid].setdefault("flags", {})["moved_fought"] = True
+    state["actions_remaining"] = 0
+    state["card_action_consumed_by_entire_card"] = True
+    return _finish_card_with({
+        "siege_at": locale_name, "surrender": surrender,
+        "siege_count_after": sum(s.get("count", 1) for s in loc.get("siege", [])),
+        "ravage_bonus": ravage_bonus,
+    }, state, side, reason="siege_entire_card", citation="4.5.1")
+
+
+def _apply_surrender(state, locale_name, side, rng, rolls_log):
+    """Per 4.5.1: Surrender flips Allegiance, removes Siege markers,
+    triggers Revolt/Treachery # = Stronghold Value."""
+    loc = state["locales"][locale_name]
+    size = sd.STRONGHOLDS[loc["type"]]["size"]
+    # Remove enemy Allegiance markers; add own
+    enemy = "ghibelline" if side == "guelph" else "guelph"
+    loc["current_allegiance"] = [m for m in loc.get("current_allegiance", []) if m.get("side") != enemy]
+    for _ in range(size):
+        loc["current_allegiance"].append({"side": side, "value": 1})
+    state["vp"][side] = min(state["vp"].get(side, 0) + size, 17.5)
+    state["vp"][enemy] = max(state["vp"].get(enemy, 0) - size, 0)
+    # Remove all Siege markers
+    loc["siege"] = []
+    # Revolt + Treachery # = Size
+    for _ in range(size):
+        r = rng.roll(f"revolt_surrender_{locale_name}")
+        rolls_log.append({"context": r.context, "value": r.value})
+        # Add a Treachery card to side's Command deck
+        _add_treachery_to_enemy(state, "<surrender>", side)
+
+
+def _h_cmd_storm(state, side, args, rng) -> dict[str, Any]:
+    """4.5.2 STORM (1 action; ends card). Reuse resolve_storm."""
+    lid = _require_active_lord(state, side, args.get("lord_id"))
+    lord = state["lords"][lid]
+    locale_name = lord.get("location")
+    loc = state["locales"][locale_name]
+    if not loc.get("siege"):
+        raise IllegalAction("NO_SIEGE_HERE", f"No Siege at {locale_name}.", "4.5.2")
+    enemy_side = "ghibelline" if side == "guelph" else "guelph"
+    defenders = [oid for oid in loc.get("lords_present", [])
+                 if state["lords"][oid].get("flags", {}).get("in_stronghold")
+                 and state["lords"][oid]["side"] == enemy_side]
+    from .battle import resolve_storm
+    result = resolve_storm(
+        state, attackers=[lid], defenders=defenders,
+        active_id=lid, locale_name=locale_name,
+        scripted_decisions=args.get("scripted_decisions"),
+    )
+    if result["outcome"] == "sack":
+        _apply_sack(state, locale_name, side, result, rng)
+    elif result["outcome"] == "attacker_loss":
+        # Per 4.5.2: Attackers neither Retreat nor give Spoils. Siege markers stay.
+        pass
+    # Card ends (4.4.6)
+    return _finish_card_with({
+        "storm_result": result,
+    }, state, side, reason="storm_ends_card", citation="4.5.2")
+
+
+def _apply_sack(state, locale_name, side, storm_result, rng):
+    """Per 4.5.2 SACK: Ruins, Spoils, Knights' Quarter, Revolt+Treachery."""
+    loc = state["locales"][locale_name]
+    size = sd.STRONGHOLDS[loc["type"]]["size"]
+    enemy = "ghibelline" if side == "guelph" else "guelph"
+    # Remove markers
+    loc["siege"] = []
+    loc["current_allegiance"] = [m for m in loc.get("current_allegiance", []) if m.get("side") != enemy]
+    loc["walls_plus_one"] = None
+    # Place Ruins in opposite color of PRINTED Allegiance
+    ruins_color = "purple" if loc["allegiance"] == "guelph" else "gold"
+    loc["ruins"] = ruins_color
+    # Adjust VP: +1/2 to side whose color the Ruins is
+    ruins_side = "guelph" if loc["allegiance"] == "ghibelline" else "ghibelline"
+    state["vp"][ruins_side] = min(state["vp"].get(ruins_side, 0) + 0.5, 17.5)
+    # Remove the removed Lords inside per 4.4.5 (already in storm_result)
+    for removed_lid in storm_result.get("removed_lords", []):
+        if removed_lid in state["lords"]:
+            _disband_beyond_service_limit(state, removed_lid)
+    # Revolt + Treachery # = Value
+    for _ in range(size):
+        r = rng.roll(f"revolt_sack_{locale_name}")
+        _add_treachery_to_enemy(state, "<sack>", side)
+
+
+def _h_cmd_sally(state, side, args, rng) -> dict[str, Any]:
+    """4.5.3 SALLY (1 action; ends card). Besieged Lord Sallies."""
+    lid = _require_active_lord(state, side, args.get("lord_id"))
+    lord = state["lords"][lid]
+    if not lord.get("flags", {}).get("in_stronghold"):
+        raise IllegalAction("NOT_BESIEGED", f"{lid} not Besieged.", "4.5.3")
+    locale_name = lord.get("location")
+    loc = state["locales"][locale_name]
+    enemy_side = "ghibelline" if side == "guelph" else "guelph"
+    besiegers = [oid for oid in loc.get("lords_present", [])
+                 if state["lords"][oid]["side"] == enemy_side
+                 and not state["lords"][oid].get("flags", {}).get("in_stronghold")]
+    if not besiegers:
+        raise IllegalAction("NO_BESIEGERS", f"No Besieging Lords at {locale_name}.", "4.5.3")
+    # Sally = Battle reuse with Sally-ish parameters. Phase 3c approximation:
+    # use resolve_battle with attackers = sallying, defenders = besiegers.
+    from .battle import resolve_battle
+    result = resolve_battle(
+        state, attackers=[lid], defenders=besiegers,
+        active_id=lid, locale_name=locale_name,
+        scripted_decisions=args.get("scripted_decisions"),
+    )
+    if result["loser"] == "defender":
+        # Besiegers lose: Siege ends
+        loc["siege"] = []
+    else:
+        # Sallying Lord loses: RAID — reduce Siege markers to 1
+        if loc.get("siege"):
+            loc["siege"] = [{"side": loc["siege"][0]["side"], "color": loc["siege"][0]["color"], "count": 1}]
+        # Sallying Lord goes back inside (already in_stronghold)
+        lord.setdefault("flags", {})["in_stronghold"] = True
+    for removed_lid in result["removed_lords"]:
+        if removed_lid in state["lords"]:
+            _disband_beyond_service_limit(state, removed_lid)
+    return _finish_card_with({"sally_result": result}, state, side,
+                              reason="sally_ends_card", citation="4.5.3")
+
+
+def _h_cmd_treachery_revolt(state, side, args, rng) -> dict[str, Any]:
+    """4.7.5 Treachery-Revolt. Commit 1-4 Coin; roll dice = Stronghold
+    Value; if each ≤ Coin, Stronghold flips Allegiance."""
+    lid = _require_active_lord(state, side, args.get("lord_id"))
+    lord = state["lords"][lid]
+    target_name = args.get("target_locale")
+    coin = int(args.get("coin", 1))
+    if not (1 <= coin <= 4):
+        raise IllegalAction("BAD_COIN", "Revolt commits 1-4 Coin.", "4.7.5")
+    if lord["assets"].get("Coin", 0) < coin:
+        raise IllegalAction("INSUFFICIENT_COIN", f"{lid} has {lord['assets'].get('Coin',0)} Coin; needs {coin}.", "4.7.5")
+    target = state["locales"].get(target_name)
+    if not target:
+        raise IllegalAction("UNKNOWN_LOCALE", f"{target_name} not found.", "4.7.5")
+    if target.get("ruins"):
+        raise IllegalAction("RUINS", "Cannot Revolt Ruins.", "4.7.5/1.4.1")
+    if target["type"] == "outpost":
+        raise IllegalAction("OUTPOST", "Cannot Revolt Outposts.", "4.7.5/1.4.1")
+    # Target must be Enemy + at or adjacent to Active Lord
+    if _is_friendly_locale(state, target, side):
+        raise IllegalAction("FRIENDLY_LOCALE", "Target must be Enemy aligned.", "4.7.5")
+    # Adjacency
+    cur = lord.get("location")
+    if cur != target_name:
+        adj_names = [n for n, _ in sd.adjacent_to(cur)]
+        if target_name not in adj_names:
+            raise IllegalAction("NOT_ADJACENT", f"{target_name} not at/adjacent to {cur}.", "4.7.5")
+    # No Enemy Lord there or adjacent
+    enemy = "ghibelline" if side == "guelph" else "guelph"
+    danger_locales = [target_name] + [n for n, _ in sd.adjacent_to(target_name)]
+    for loc_n in danger_locales:
+        l = state["locales"].get(loc_n)
+        if not l:
+            continue
+        for oid in l.get("lords_present", []):
+            if state["lords"][oid]["side"] == enemy and state["lords"][oid]["status"] == "mustered":
+                raise IllegalAction("ENEMY_LORD_NEARBY", f"Enemy Lord {oid} at or adjacent to {target_name}.", "4.7.5/1.4.1")
+    # Roll dice
+    size = sd.STRONGHOLDS[target["type"]]["size"]
+    rolls = []
+    accepted = True
+    for i in range(size):
+        r = rng.roll(f"revolt_treachery_{target_name}_{i}")
+        rolls.append({"context": r.context, "value": r.value})
+        if r.value > coin:
+            accepted = False
+    if accepted:
+        # Pay Coin, flip Allegiance
+        lord["assets"]["Coin"] -= coin
+        target["current_allegiance"] = [m for m in target.get("current_allegiance", []) if m.get("side") != enemy]
+        for _ in range(size):
+            target["current_allegiance"].append({"side": side, "value": 1})
+        state["vp"][side] = min(state["vp"].get(side, 0) + size, 17.5)
+        state["vp"][enemy] = max(state["vp"].get(enemy, 0) - size, 0)
+    return _finish_card_with({
+        "treachery_revolt": {"target": target_name, "coin": coin, "size": size,
+                              "accepted": accepted, "rolls": [r["value"] for r in rolls]},
+    }, state, side, reason="treachery_card_ends", citation="4.7.5")
+
+
+def _h_cmd_treachery_bribe(state, side, args, rng) -> dict[str, Any]:
+    """4.7.6 Treachery-Bribe. Roll 1d6 > Vassal's Service Rating = success.
+
+    Phase 3c implementation: Mustered targets only (Unmustered Vassal
+    Seat path deferred to a follow-up since it requires Vassal-Seat
+    lookup against removed Lords).
+    """
+    lid = _require_active_lord(state, side, args.get("lord_id"))
+    lord = state["lords"][lid]
+    target_lord_id = args.get("target_lord_id")
+    vassal_name = args.get("vassal")
+    if lord["assets"].get("Coin", 0) < 1:
+        raise IllegalAction("NO_COIN", "Bribe requires at least 1 Coin.", "4.7.6")
+    target_lord = state["lords"].get(target_lord_id)
+    if target_lord is None or target_lord["status"] != "mustered":
+        raise IllegalAction("BAD_TARGET", "Target Lord not Mustered.", "4.7.6")
+    # Find the Vassal
+    target_vassal = None
+    for v in target_lord.get("vassals", []):
+        if v["name"] == vassal_name:
+            target_vassal = v
+            break
+    if target_vassal is None:
+        raise IllegalAction("UNKNOWN_VASSAL", f"{target_lord_id} has no Vassal {vassal_name!r}.", "4.7.6")
+    if target_vassal.get("special"):
+        raise IllegalAction("SPECIAL_VASSAL", "Special Vassals (Carroccio/Sestiere/Terzo/Altopascio) cannot be Bribed.", "4.7.6")
+    # Adjacency check
+    cur = lord.get("location")
+    target_loc = target_lord.get("location")
+    if target_loc != cur:
+        adj_names = [n for n, _ in sd.adjacent_to(cur)]
+        if target_loc not in adj_names:
+            raise IllegalAction("NOT_ADJACENT", f"{target_loc} not at/adjacent to {cur}.", "4.7.6")
+    r = rng.roll(f"bribe_{target_vassal['name']}")
+    success = r.value > target_vassal.get("service_rating", 0)
+    if success:
+        lord["assets"]["Coin"] -= 1
+        # Move Vassal: remove from target, add to active Lord
+        target_lord["vassals"] = [v for v in target_lord["vassals"] if v["name"] != vassal_name]
+        # Move surviving Forces to active Lord
+        for unit, count in target_vassal.get("forces", {}).items():
+            lord["forces"][unit] = lord["forces"].get(unit, 0) + count
+        # Add Vassal to active Lord's mat as a Turncoat
+        target_vassal["turncoat"] = True
+        target_vassal["ready"] = False  # already mustered onto Active Lord's mat
+        lord.setdefault("vassals", []).append(target_vassal)
+        # If target Lord's last Forces are gone, he Disbands per 1.6 (Phase 3c: check)
+        if sum(target_lord.get("forces", {}).values()) == 0:
+            _disband_beyond_service_limit(state, target_lord_id)
+    return _finish_card_with({
+        "treachery_bribe": {"target_lord": target_lord_id, "vassal": vassal_name,
+                             "service_rating": target_vassal.get("service_rating"),
+                             "die": r.value, "success": success},
+    }, state, side, reason="treachery_card_ends", citation="4.7.6")
+
+
+# Register Phase 3c handlers
+_HANDLERS.update({
+    "besiege_or_bypass":         _h_besiege_or_bypass,
+    "cmd_siege":                 _h_cmd_siege,
+    "cmd_storm":                 _h_cmd_storm,
+    "cmd_sally":                 _h_cmd_sally,
+    "cmd_treachery_revolt":      _h_cmd_treachery_revolt,
+    "cmd_treachery_bribe":       _h_cmd_treachery_bribe,
+})

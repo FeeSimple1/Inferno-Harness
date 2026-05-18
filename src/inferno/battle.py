@@ -529,3 +529,303 @@ def resolve_battle(state, attacker_ids: list[str], defender_ids: list[str],
 
 def _snapshot_positions(positions) -> dict:
     return {side: dict(positions[side]) for side in ("attacker", "defender")}
+
+
+# =====================================================================
+# Storm / Sally (Phase 3c)
+# =====================================================================
+STORM_STRIKE_ORDER = [
+    "def_archery",
+    "atk_archery",
+    "def_all_melee",   # ALL Defending Melee (Horse + Foot)
+    "atk_all_melee",   # ALL Attacking Melee
+]
+
+
+def _strike_hits_storm(units: dict[str, int], step: str) -> float:
+    """Storm initiative collapses Horse+Foot Melee. Archery only for
+    units that have it (Garrison rules let Foot units use their Archery
+    rating in Storm)."""
+    if step.endswith("archery"):
+        total = 0.0
+        for unit, count in units.items():
+            u = sd.UNITS.get(unit)
+            if not u:
+                continue
+            # In a Garrison context Archery fires for Foot units.
+            # Phase 3c: Garrison units always Archery-eligible per 4.5.2.
+            total += count * u.get("archery", 0)
+        return total
+    if step.endswith("all_melee"):
+        total = 0.0
+        for unit, count in units.items():
+            u = sd.UNITS.get(unit)
+            if not u:
+                continue
+            # Use storm-specific melee strikes per Forces table:
+            # 'storm_strikes_attacker' for attacking units, 'storm_strikes_defender' for defending.
+            # Caller passes appropriate units dict; here we use the side hint via step.
+            field = "storm_strikes_attacker" if step.startswith("atk") else "storm_strikes_defender"
+            total += count * u.get(field, 0)
+        return total
+    return 0.0
+
+
+def _garrison_for(stronghold_type: str) -> dict[str, int]:
+    """Per 4.5.2: Garrisons by Stronghold tier (see STRONGHOLDS table).
+    Castle has Militia (1) instead of Armigieri.
+    """
+    g = dict(sd.STRONGHOLDS.get(stronghold_type, {}).get("garrison", {}))
+    return g
+
+
+def resolve_storm(state, attackers: list[str], defenders: list[str],
+                  active_id: str, locale_name: str,
+                  scripted_decisions: list[dict] | None = None,
+                  callback: Callable | None = None) -> dict[str, Any]:
+    """4.5.2 Storm. Attacker outside Besieged Stronghold attacks; Defender
+    uses Walls 1-4 (+Walls+1), Garrison units, Attacker uses Siegeworks
+    (= Siege markers) as own Walls.
+
+    Phase 3c implementation:
+      - Front row capped at 1 Lord per side (Storm Array per 2.2).
+      - 4-step initiative: Def Archery, Atk Archery, Def All-Melee,
+        Atk All-Melee (per 4.5.2 STRONGHOLD EFFECTS).
+      - Walls/Siegeworks rolled before assigning Hits to units.
+      - Storm runs at most # Siege markers rounds.
+      - Only Attacker may Concede (Round >= 2).
+      - On Defender loss: SACK outcome flag (Ruins + Spoils + revolts
+        — applied by the action handler, not here).
+      - On Attacker loss: Attackers neither Retreat nor give Spoils;
+        Siege markers remain; flag for action handler to handle.
+    """
+    bdc = BattleDecisionContext(scripted=list(scripted_decisions or []),
+                                callback=callback)
+    locale = state["locales"][locale_name]
+    stronghold_type = locale.get("type")
+    siege_count = sum(s.get("count", 1) for s in locale.get("siege", []))
+    siegeworks_die = list(range(1, siege_count + 1))  # 1..N nullifies a hit
+    walls_die = list(sd.STRONGHOLDS.get(stronghold_type, {}).get("walls_die", []))
+    if locale.get("walls_plus_one"):
+        walls_die = walls_die + [max(walls_die) + 1 if walls_die else 5]
+
+    # Garrison Forces (separate from Defending Lord(s))
+    garrison = _garrison_for(stronghold_type)
+    state.setdefault("storm_garrison", {})[locale_name] = dict(garrison)
+
+    # Storm Array: 1 Lord per side at Center; others Reserve.
+    positions = _empty_positions()
+    positions["attacker"]["center"] = active_id
+    reserve = {"attacker": [a for a in attackers if a != active_id],
+               "defender": list(defenders)}
+    if defenders:
+        positions["defender"]["center"] = defenders[0]
+        reserve["defender"] = defenders[1:]
+
+    from .rng import HarnessRNG
+    rng = HarnessRNG(state["meta"]["rng_seed"],
+                     advance=state["meta"].get("rng_advance", 0))
+    rolls_before = rng.advance_count
+
+    conceded: str | None = None
+    rounds: list[dict] = []
+    removed_lords: set = set()
+    routed_per_lord: dict = {}
+    max_rounds = max(1, siege_count)  # Storm lasts at most # Siege markers rounds
+
+    for round_n in range(1, max_rounds + 1):
+        round_log: dict[str, Any] = {"round": round_n}
+
+        # Concede (Attacker only, Round >= 2)
+        if round_n >= 2 and conceded is None:
+            choice = bdc.decide(
+                "concede", "attacker",
+                options=["no", "yes"],
+                info={"round": round_n, "siege_count": siege_count},
+            )
+            if choice == "yes":
+                conceded = "attacker"
+                round_log["concede"] = "attacker"
+
+        # Storm Reposition (Round >= 2): each side MAY add ONE Lord from
+        # Reserve to Front, capped at Stronghold Size (Castle=1).
+        # Phase 3c: Castle size=1 means no additional Lords; Town/City
+        # can add up to Size total.
+        if round_n >= 2:
+            size = sd.STRONGHOLDS.get(stronghold_type, {}).get("size", 1)
+            for side in ("attacker", "defender"):
+                front_count = sum(1 for s in SLOTS if positions[side][s] is not None)
+                if reserve[side] and front_count < size:
+                    add = bdc.decide(
+                        "storm_reserve_add", side,
+                        options=["yes", "no"],
+                        info={"front_count": front_count, "stronghold_size": size},
+                    )
+                    if add == "yes":
+                        empty = [s for s in SLOTS if positions[side][s] is None]
+                        slot = empty[0] if empty else None
+                        if slot:
+                            positions[side][slot] = reserve[side].pop(0)
+
+        # 4-step Storm Strike
+        hit_log_round: list = []
+        for step in STORM_STRIKE_ORDER:
+            _resolve_storm_step(state, step, positions, reserve, conceded,
+                                bdc, rng.roll, hit_log_round, removed_lords,
+                                routed_per_lord, garrison, walls_die, siegeworks_die,
+                                locale_name)
+        round_log["hit_log"] = hit_log_round
+        round_log["positions"] = _snapshot_positions(positions)
+        rounds.append(round_log)
+
+        # End check (4.5.2):
+        #   - Rounds completed = Siege markers (handled by loop max)
+        #   - A side has all units there Routed
+        #   - Attacker Concedes
+        atk_alive = any(positions["attacker"][s] is not None for s in SLOTS) or reserve["attacker"]
+        def_alive = (any(positions["defender"][s] is not None for s in SLOTS)
+                     or reserve["defender"]
+                     or sum(state["storm_garrison"][locale_name].values()) > 0)
+        if conceded == "attacker":
+            break
+        if not atk_alive or not def_alive:
+            break
+
+    # Determine outcome (4.5.2):
+    # Unless ALL Defenders Routed, Storm Attackers LOSE.
+    def_completely_routed = (
+        not any(positions["defender"][s] is not None for s in SLOTS)
+        and not reserve["defender"]
+        and sum(state["storm_garrison"][locale_name].values()) == 0
+    )
+    atk_alive = any(positions["attacker"][s] is not None for s in SLOTS) or reserve["attacker"]
+    if def_completely_routed and atk_alive:
+        winner, loser = "attacker", "defender"
+        outcome = "sack"  # 4.5.2: Sack on Defender loss
+    else:
+        winner, loser = "defender", "attacker"
+        outcome = "attacker_loss"  # Siege markers stay
+
+    # Persist RNG advance
+    state["meta"]["rng_advance"] = state["meta"].get("rng_advance", 0) + (rng.advance_count - rolls_before)
+
+    # Mark Moved/Fought on all Lords involved (including Reserve per 4.5 Aftermath).
+    for lid in attackers + defenders:
+        if lid in state["lords"]:
+            state["lords"][lid].setdefault("flags", {})["moved_fought"] = True
+
+    return {
+        "locale": locale_name,
+        "mode": "storm",
+        "winner": winner,
+        "loser": loser,
+        "outcome": outcome,
+        "conceded": conceded,
+        "rounds_played": len(rounds),
+        "rounds": rounds,
+        "positions_final": _snapshot_positions(positions),
+        "reserve_final": dict(reserve),
+        "removed_lords": sorted(removed_lords),
+        "routed_per_lord": routed_per_lord,
+        "garrison_final": dict(state["storm_garrison"].get(locale_name, {})),
+        "siege_count": siege_count,
+        "decisions": bdc.trace,
+        "rolls": [{"context": r.context, "value": r.value} for r in rng.drain_log()],
+    }
+
+
+def _resolve_storm_step(state, step, positions, reserve, conceded,
+                        bdc, rng_roll, hit_log, removed_lords,
+                        routed_per_lord, garrison, walls_die, siegeworks_die,
+                        locale_name):
+    """One Storm Strike step. Garrison contributes to Defender Strikes
+    and absorbs Hits aimed at Defender first per 4.5.2."""
+    striking_side = "attacker" if step.startswith("atk") else "defender"
+    target_side = "defender" if striking_side == "attacker" else "attacker"
+
+    per_target_hits: dict[str, float] = {s: 0.0 for s in SLOTS}
+    for slot in SLOTS:
+        striker_id = positions[striking_side][slot]
+        if striker_id is None:
+            continue
+        striker_lord = state["lords"][striker_id]
+        units = _live_units(striker_lord)
+        # If defender, add Garrison Strikes (Storm Array has Garrison defending).
+        if striking_side == "defender":
+            units = dict(units)
+            for u, c in state["storm_garrison"][locale_name].items():
+                units[u] = units.get(u, 0) + c
+        h = _strike_hits_storm(units, step)
+        # In Storm Array, only Center is used; direct opposite.
+        per_target_hits[slot] = per_target_hits.get(slot, 0) + h
+    if conceded == striking_side:
+        per_target_hits = {k: v / 2 for k, v in per_target_hits.items()}
+    per_target_hits = {k: math.ceil(v) for k, v in per_target_hits.items()}
+
+    for slot, n_hits in per_target_hits.items():
+        if n_hits <= 0:
+            continue
+        target_id = positions[target_side][slot]
+        if target_id is None:
+            continue
+        # Apply Walls/Siegeworks roll before unit-Protection.
+        if target_side == "defender" and walls_die:
+            n_hits = _apply_walls(int(n_hits), walls_die, rng_roll, f"walls_{locale_name}")
+        elif target_side == "attacker" and siegeworks_die:
+            n_hits = _apply_walls(int(n_hits), siegeworks_die, rng_roll, f"siegeworks_{locale_name}")
+        # Defender: assign Hits to GARRISON first until exhausted.
+        if target_side == "defender" and locale_name in state["storm_garrison"]:
+            n_hits = _absorb_garrison_hits(state, locale_name, int(n_hits), rng_roll, hit_log)
+        if n_hits > 0:
+            _absorb_hits(state, target_id, int(n_hits), rng_roll, hit_log, routed_per_lord)
+            if _all_units_routed(state["lords"][target_id]):
+                removed_lords.add(target_id)
+                positions[target_side][slot] = None
+
+
+def _apply_walls(n_hits: int, walls_range: list[int], rng_roll, ctx: str) -> int:
+    """Roll a die per Hit; cancel one Hit per roll within walls_range."""
+    surviving = 0
+    for i in range(n_hits):
+        r = rng_roll(f"{ctx}_{i}")
+        if r.value not in walls_range:
+            surviving += 1
+    return surviving
+
+
+def _absorb_garrison_hits(state, locale_name: str, n_hits: int, rng_roll, hit_log) -> int:
+    """Per 4.5.2: Defender MUST assign Hits to Garrison units until they
+    are Routed; then to Lord units. Returns hits remaining after Garrison."""
+    garrison = state["storm_garrison"][locale_name]
+    # Same absorption order as Lord units
+    order = ["Villici", "Light Horse", "Militia", "Berrovieri", "Armigieri",
+             "Men-at-Arms", "Cavalieri", "Ritter"]
+    while n_hits > 0:
+        absorbing = None
+        for u in order:
+            if garrison.get(u, 0) > 0:
+                absorbing = u
+                break
+        if absorbing is None:
+            break
+        if absorbing == "Villici":
+            garrison["Villici"] -= 1
+            n_hits -= 1
+            hit_log.append({"garrison_unit": "Villici", "removed": True, "locale": locale_name})
+            continue
+        u = sd.UNITS[absorbing]
+        prot = u.get("protection", [])
+        r = rng_roll(f"garrison_{absorbing}_{locale_name}")
+        survived = r.value in prot
+        hit_log.append({
+            "garrison_unit": absorbing, "die": r.value,
+            "protection": prot, "survived": survived, "locale": locale_name,
+        })
+        if survived:
+            n_hits -= 1
+        else:
+            garrison[absorbing] -= 1
+            if garrison[absorbing] <= 0:
+                garrison.pop(absorbing, None)
+            n_hits -= 1
+    return n_hits
