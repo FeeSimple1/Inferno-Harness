@@ -76,16 +76,6 @@ class TestEventEffects:
         assert r["applied"] is True
         assert s["locales"]["Cortona"]["ruins"] is None
 
-    def test_F20_heat_and_frost_adds_provender_to_guelph_mustered(self):
-        s = load_scenario("A", seed=1)
-        before = {lid: s["lords"][lid]["assets"].get("Provender", 0)
-                  for lid in s["lords"] if s["lords"][lid]["side"] == "guelph"
-                  and s["lords"][lid]["status"] == "mustered"}
-        rng = HarnessRNG(seed=1)
-        ce.apply_event_effect(s, "F20", "guelph", {}, rng)
-        for lid, p_before in before.items():
-            assert s["lords"][lid]["assets"]["Provender"] == p_before + 1
-
     def test_F25_war_event_flags_guelph_cta(self):
         s = load_scenario("A", seed=1)
         rng = HarnessRNG(seed=1)
@@ -112,15 +102,18 @@ class TestFlaggedManual:
     application by the LLM consumer."""
 
     @pytest.mark.parametrize("card_id", [
-        "F4", "F6", "F8", "F12", "F16",   # Guelph battle modifiers
-        "F11", "F15", "F18", "F22", "F23",  # Guelph conditional/situational
-        "S4", "S6", "S8", "S12", "S16",   # Ghib mirrors
+        "F1",   # Ambush (in-Battle Approach hook)
+        "F3",   # Surprise (Storm interaction)
+        "F7",   # Greek Fire (no target args -> manual)
+        "F16",  # Bloody Red Stream (in-Battle Rout-recovery)
+        "S1", "S3",  # Ghib mirrors
+        "S7", "S10", "S13", "S14", "S16",
     ])
     def test_flagged_returns_manual_marker(self, card_id):
         s = load_scenario("A", seed=1)
         rng = HarnessRNG(seed=1)
         r = ce.apply_event_effect(s, card_id, "guelph", {}, rng)
-        assert r.get("manual") is True
+        assert r.get("manual") is True, f"{card_id} should still be flagged manual; got {r}"
         assert "note" in r
 
 
@@ -213,3 +206,199 @@ class TestScenarioFExhaustion:
         s["meta"]["turn"] = 9
         dispatch(s, {"action": "levy_aow_draw", "side": "guelph"})
         assert s["meta"].get("exhaustion_rolled_this_levy") is True
+
+
+
+# =====================================================================
+# Tier-3 audit fixes + de-flag verification
+# =====================================================================
+class TestTier3Fixes:
+    """Regression tests for card-text fidelity gaps found in Tier-3 audit."""
+
+    def test_smoke_inferno_018_f20_heat_frost_triggers_wastage_summer(self):
+        """SMOKE-Inferno-018: F20 Heat & Frost triggers Wastage in Summer,
+        not 'each Lord +1 Provender'."""
+        from inferno.scenarios import load_scenario
+        s = load_scenario("A", seed=1)
+        s["meta"]["turn"] = 3  # Summer
+        # Give Firenze 2 Coin so he has a Wastage-eligible Asset
+        s["lords"]["firenze"]["assets"]["Coin"] = 2
+        rng = HarnessRNG(seed=1)
+        r = ce.apply_event_effect(s, "F20", "guelph", {}, rng)
+        assert r["applied"] is True
+        # Wastage should have decremented Firenze's Coin
+        assert s["lords"]["firenze"]["assets"]["Coin"] < 2
+        assert "wastage" in r
+
+    def test_smoke_inferno_018_f20_heat_frost_rejected_outside_summer_winter(self):
+        """F20 requires Summer or Winter (box 2 = Spring)."""
+        from inferno.scenarios import load_scenario
+        s = load_scenario("A", seed=1)
+        s["meta"]["turn"] = 2  # Spring
+        rng = HarnessRNG(seed=1)
+        r = ce.apply_event_effect(s, "F20", "guelph", {}, rng)
+        assert r["applied"] is False
+
+    def test_smoke_inferno_019_s20_summer_removes_guido_unit(self):
+        """SMOKE-Inferno-019: S20 in Summer removes 1 unit specifically
+        from Guido Guerra (not generic Ritter)."""
+        from inferno.scenarios import load_scenario
+        s = load_scenario("D", seed=1)  # Guido Mustered in D
+        s["meta"]["turn"] = 9  # Jun-Jul -> Summer
+        guido = s["lords"]["guido_guerra"]
+        if guido["status"] != "mustered":
+            pytest.skip("Guido not Mustered in this scenario state")
+        units_before = sum(guido["forces"].values())
+        rng = HarnessRNG(seed=1)
+        r = ce.apply_event_effect(s, "S20", "ghibelline", {}, rng)
+        units_after = sum(guido["forces"].values())
+        if units_before > 0:
+            assert units_after == units_before - 1
+            assert r["guido_unit_removed"] is not None
+
+    def test_smoke_inferno_020_f22_manfredi_shifts_target_cylinder(self):
+        """SMOKE-Inferno-020: F22 Manfredi shifts a Lord with Ritter,
+        does NOT block Muster."""
+        from inferno.scenarios import load_scenario
+        s = load_scenario("F", seed=1)
+        # Find a Lord with Ritter on Calendar — astimberg has 2 Ritter and is on box 7.
+        astimberg = s["lords"]["astimberg"]
+        astimberg["forces"] = {"Ritter": 2}
+        before_box = astimberg["calendar_box"]
+        rng = HarnessRNG(seed=1)
+        r = ce.apply_event_effect(s, "F22", "guelph",
+                                   {"target_lord_id": "astimberg", "mode": "shift"}, rng)
+        assert r["applied"] is True
+        assert astimberg["calendar_box"] == before_box + 1
+
+    def test_smoke_inferno_020_f22_manfredi_remove_assets(self):
+        """F22 mode=remove_assets takes up to 3 from target."""
+        from inferno.scenarios import load_scenario
+        s = load_scenario("F", seed=1)
+        astimberg = s["lords"]["astimberg"]
+        astimberg["forces"] = {"Ritter": 1}
+        astimberg["assets"] = {"Coin": 2, "Cart": 2}
+        rng = HarnessRNG(seed=1)
+        r = ce.apply_event_effect(s, "F22", "guelph",
+                                   {"target_lord_id": "astimberg",
+                                    "mode": "remove_assets",
+                                    "assets_to_remove": {"Coin": 1, "Cart": 2}}, rng)
+        assert r["applied"] is True
+        assert astimberg["assets"]["Coin"] == 1
+        assert astimberg["assets"]["Cart"] == 0
+
+    def test_smoke_inferno_020_f22_rejects_lord_without_ritter(self):
+        """F22 target must have at least one Ritter on mat."""
+        from inferno.scenarios import load_scenario
+        s = load_scenario("A", seed=1)
+        # firenze has no Ritter
+        rng = HarnessRNG(seed=1)
+        r = ce.apply_event_effect(s, "F22", "ghibelline",
+                                   {"target_lord_id": "firenze", "mode": "shift"}, rng)
+        assert r["applied"] is False
+        assert "no Ritter" in r["reason"]
+
+    def test_smoke_inferno_021_f21_primo_popolo_shifts_firenze(self):
+        """SMOKE-Inferno-021: F21 shifts Firenze/Arezzo cylinder/Service,
+        not Vassal-Seat Coin."""
+        from inferno.scenarios import load_scenario
+        s = load_scenario("A", seed=1)
+        # Firenze has service_box=3 in scenario A
+        before = s["lords"]["firenze"]["service_box"]
+        rng = HarnessRNG(seed=1)
+        r = ce.apply_event_effect(s, "F21", "guelph", {"target": "firenze"}, rng)
+        assert r["applied"] is True
+        assert s["lords"]["firenze"]["service_box"] == before + 2
+
+
+class TestDeflaggedCards:
+    """Verify previously-flagged cards now produce real state changes."""
+
+    def test_f11_poggio_bonizio_lordship_pending(self):
+        """F11 sets a one-shot Lordship bonus on target Lord."""
+        from inferno.scenarios import load_scenario
+        s = load_scenario("A", seed=1)
+        # Poggio Bonizio has Ghib markers in A by default; clear them first
+        s["locales"]["Poggio Bonizio"]["current_allegiance"] = []
+        rng = HarnessRNG(seed=1)
+        r = ce.apply_event_effect(s, "F11", "guelph",
+                                   {"mode": "lordship", "target_lord_id": "firenze"}, rng)
+        assert r["applied"] is True
+        assert s["lords"]["firenze"]["flags"]["lordship_bonus_pending"] == 3
+
+    def test_f11_conditional_check_blocks(self):
+        """F11 rejected when Poggio Bonizio has Ghib markers."""
+        from inferno.scenarios import load_scenario
+        s = load_scenario("A", seed=1)
+        # A places 2 Ghib markers on Poggio Bonizio by default.
+        rng = HarnessRNG(seed=1)
+        r = ce.apply_event_effect(s, "F11", "guelph",
+                                   {"mode": "lordship", "target_lord_id": "firenze"}, rng)
+        assert r["applied"] is False
+        assert "Ghibelline markers" in r["reason"]
+
+    def test_f15_casole_sets_auto_treachery_flag(self):
+        """F15 sets flag for next Firenze Treachery at a Castle."""
+        from inferno.scenarios import load_scenario
+        s = load_scenario("A", seed=1)
+        rng = HarnessRNG(seed=1)
+        r = ce.apply_event_effect(s, "F15", "guelph", {}, rng)
+        assert r["applied"] is True
+        active = s.get("active_events", {}).get("this_levy", [])
+        assert any(e.get("flag") == "firenze_treachery_castle_auto" for e in active)
+
+    def test_f18_grosseto_auto_treachery_flag(self):
+        from inferno.scenarios import load_scenario
+        s = load_scenario("A", seed=1)
+        rng = HarnessRNG(seed=1)
+        r = ce.apply_event_effect(s, "F18", "guelph", {}, rng)
+        assert r["applied"] is True
+
+    def test_f23_treasurers_pays_2_coin_for_cta(self):
+        """F23 pays 2 Coin total and flags Guelph CtA."""
+        from inferno.scenarios import load_scenario
+        s = load_scenario("A", seed=1)
+        # Firenze/Arezzo have Coin in A
+        coin_before = (s["lords"]["firenze"]["assets"]["Coin"]
+                       + s["lords"]["arezzo"]["assets"]["Coin"])
+        rng = HarnessRNG(seed=1)
+        r = ce.apply_event_effect(s, "F23", "guelph", {"mode": "declare_cta"}, rng)
+        assert r["applied"] is True
+        assert "guelph" in s.get("war_declared_this_levy", [])
+        coin_after = (s["lords"]["firenze"]["assets"]["Coin"]
+                      + s["lords"]["arezzo"]["assets"]["Coin"])
+        assert coin_before - coin_after == 2
+
+    def test_s17_ghibelline_refugees_shift_other(self):
+        """S17 conditional on Provenzano OR Santa Fiora on map."""
+        from inferno.scenarios import load_scenario
+        s = load_scenario("D", seed=1)  # both Mustered in D
+        # Set Santa Fiora's cylinder on Calendar so we can shift it
+        s["lords"]["santa_fiora"]["calendar_box"] = 10
+        rng = HarnessRNG(seed=1)
+        r = ce.apply_event_effect(s, "S17", "ghibelline",
+                                   {"mode": "shift_other", "target": "santa_fiora"}, rng)
+        # Either applied or skipped (both Mustered = ambiguous which to shift)
+        assert r["applied"] is True
+
+    def test_s22_closed_gates_mirror_f10(self):
+        from inferno.scenarios import load_scenario
+        s = load_scenario("A", seed=1)
+        s["locales"]["Cortona"]["ruins"] = "purple"
+        rng = HarnessRNG(seed=1)
+        r = ce.apply_event_effect(s, "S22", "ghibelline", {"locale": "Cortona"}, rng)
+        assert r["applied"] is True
+        assert s["locales"]["Cortona"]["ruins"] is None
+
+
+class TestBattleModifierFlags:
+    """Cards that set in_battle_modifier flags (still partial implementation)."""
+
+    def test_f4_sudden_clash_sets_pending_flag(self):
+        from inferno.scenarios import load_scenario
+        s = load_scenario("A", seed=1)
+        rng = HarnessRNG(seed=1)
+        r = ce.apply_event_effect(s, "F4", "guelph",
+                                   {"target_lord_id": "firenze"}, rng)
+        assert r["applied"] is True
+        assert any(m["id"] == "F4" for m in s.get("battle_modifiers_pending", []))

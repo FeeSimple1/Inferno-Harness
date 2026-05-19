@@ -196,8 +196,20 @@ def F3_event(state, side, args, rng):
 
 @register_event("F4")
 def F4_event(state, side, args, rng):
-    """F4 SUDDEN CLASH (Hold): Round 1, named Lord's Horse Melee precedes all Archery and selects targets."""
-    return _manual("F4", "In Battle Round 1: target Lord's Horse Melee precedes all Archery; Select Target.")
+    """F4 SUDDEN CLASH (Hold).
+
+    Sets in_battle_modifier_pending so the Battle engine can consult
+    it for Round 1 Strike order. Full Strike-order surgery is reserved
+    for a future engine pass; the flag is the contract.
+    """
+    target = args.get("target_lord_id")
+    if not target or target not in state["lords"]:
+        return _manual("F4", "Provide target_lord_id (Guelph Lord in upcoming Battle).")
+    state.setdefault("battle_modifiers_pending", []).append({
+        "id": "F4", "side": "guelph", "lord_id": target,
+        "effect": "sudden_clash_r1_horse_first_select_target",
+    })
+    return {"applied": True, "flag_set": "F4_pending", "for_lord": target}
 
 
 @register_event("F5")
@@ -212,8 +224,11 @@ def F5_event(state, side, args, rng):
 
 @register_event("F6")
 def F6_event(state, side, args, rng):
-    """F6 HILLS (Hold): in Battle Defending, double Guelph Archery Hits (added Hits as Bowmen)."""
-    return _manual("F6", "Defending in Battle: double all your Archery Hits this Battle; added Hits as Bowmen.")
+    """F6: sets in_battle_modifier flag (hills_double_archery_defending)."""
+    state.setdefault("battle_modifiers_pending", []).append({
+        "id": "F6", "side": "guelph", "effect": "hills_double_archery_defending",
+    })
+    return {"applied": True, "flag_set": "F6_pending"}
 
 
 @register_event("F7")
@@ -297,8 +312,29 @@ def F10_event(state, side, args, rng):
 
 @register_event("F11")
 def F11_event(state, side, args, rng):
-    """F11 POGGIO BONIZIO (Hold): if PB free of Ghib markers, +3 Lordship to a Lord OR add 1 Treachery."""
-    return _manual("F11", "During Muster or CtA Allies, +3 Lordship to one Guelph Lord, OR add 1 Treachery.")
+    """F11 POGGIO BONIZIO answers Firenze's call.
+
+    Conditional: only playable when Poggio Bonizio has no Ghibelline
+    (gold) Allegiance markers.
+      args.mode = 'lordship' (default): target_lord_id gets Lordship +3
+                                         for his next Muster action sequence.
+      args.mode = 'treachery':           add 1 Guelph Treachery card.
+    """
+    pb = state["locales"].get("Poggio Bonizio")
+    if pb is None:
+        return {"applied": False, "reason": "Poggio Bonizio not in scenario."}
+    has_ghib_markers = any(m.get("side") == "ghibelline"
+                            for m in pb.get("current_allegiance", []))
+    if has_ghib_markers:
+        return {"applied": False, "reason": "Poggio Bonizio has Ghibelline markers; condition not met."}
+    if args.get("mode") == "treachery":
+        return {"applied": True, "added": _add_treachery_from_set_aside(state, "guelph")}
+    target = args.get("target_lord_id")
+    if not target or target not in state["lords"]:
+        return {"applied": False, "reason": "target_lord_id required for lordship mode."}
+    # One-shot bonus: applies to this Lord's next Muster segment.
+    state["lords"][target].setdefault("flags", {})["lordship_bonus_pending"] = 3
+    return {"applied": True, "lordship_bonus_for": target, "bonus": 3}
 
 
 @register_event("F12")
@@ -339,8 +375,21 @@ def F14_event(state, side, args, rng):
 
 @register_event("F15")
 def F15_event(state, side, args, rng):
-    """F15 CASOLE (Hold): Firenze Treachery at Castle auto-succeeds w/ 0 Coin, or add Firenze Treachery."""
-    return _manual("F15", "On Firenze Treachery at a Castle: auto-succeed 0 Coin; OR add Firenze Treachery.")
+    """F15 CASOLE (Hold).
+
+      mode = 'auto_succeed' (default): flag the next Firenze Treachery
+                                       at a Castle to auto-succeed 0 Coin.
+      mode = 'treachery':              add the Firenze Treachery card
+                                       (if set-aside) to the Guelph deck.
+    """
+    if args.get("mode") == "treachery":
+        return {"applied": True,
+                "added": _add_treachery_from_set_aside(state, "guelph", lord_slug="firenze")}
+    state.setdefault("active_events", {}).setdefault("this_levy", []).append({
+        "id": "F15", "side": side, "name": "Casole",
+        "flag": "firenze_treachery_castle_auto",
+    })
+    return {"applied": True, "flag_set": "firenze_treachery_castle_auto"}
 
 
 @register_event("F16")
@@ -366,49 +415,304 @@ def F17_event(state, side, args, rng):
 
 @register_event("F18")
 def F18_event(state, side, args, rng):
-    """F18 GROSSETO (Hold): Treachery at Grosseto 0 Coin OR if Grosseto Guelph, shift Santa Fiora 2."""
-    return _manual("F18", "Treachery at Grosseto: succeed 0 Coin; OR if Grosseto Guelph, shift Santa Fiora 2.")
+    """F18 GROSSETO (Hold).
+
+      mode = 'auto_treachery_at_grosseto' (default): flag next Guelph
+            Treachery at Grosseto to auto-succeed 0 Coin.
+      mode = 'shift_santa_fiora' (if Grosseto Guelph): shift Santa Fiora
+            cylinder right or Service left by 2 boxes.
+    """
+    mode = args.get("mode", "auto_treachery_at_grosseto")
+    grosseto = state["locales"].get("Grosseto")
+    if mode == "shift_santa_fiora":
+        if not grosseto:
+            return {"applied": False, "reason": "Grosseto missing"}
+        guelph_markers = any(m.get("side") == "guelph"
+                              for m in grosseto.get("current_allegiance", []))
+        if not guelph_markers:
+            return {"applied": False, "reason": "Grosseto not Guelph-marked"}
+        # Adverse shift on Santa Fiora (enemy of Guelphs): cylinder right
+        # or Service left.
+        sf = state["lords"]["santa_fiora"]
+        if sf.get("calendar_box") is not None:
+            cur = sf["calendar_box"]
+            new_box = min(cur + 2, 17)
+            cal_boxes = state["calendar"]["boxes"]
+            if str(cur) in cal_boxes and "santa_fiora" in cal_boxes[str(cur)]["cylinders"]:
+                cal_boxes[str(cur)]["cylinders"].remove("santa_fiora")
+            if new_box > 16:
+                state["calendar"]["off_right"].append("santa_fiora")
+                sf["calendar_box"] = None
+            else:
+                sf["calendar_box"] = new_box
+                cal_boxes.setdefault(str(new_box),
+                    {"cylinders": [], "services": [], "victory": [], "markers": []})
+                cal_boxes[str(new_box)]["cylinders"].append("santa_fiora")
+            return {"applied": True, "cylinder_to": sf["calendar_box"]}
+        elif sf.get("service_box") is not None:
+            cur = sf["service_box"]
+            new_box = max(cur - 2, 0)
+            cal_boxes = state["calendar"]["boxes"]
+            if str(cur) in cal_boxes and "santa_fiora" in cal_boxes[str(cur)]["services"]:
+                cal_boxes[str(cur)]["services"].remove("santa_fiora")
+            if new_box < 1:
+                state["calendar"]["off_left_service"].append("santa_fiora")
+                sf["service_box"] = None
+            else:
+                sf["service_box"] = new_box
+                cal_boxes.setdefault(str(new_box),
+                    {"cylinders": [], "services": [], "victory": [], "markers": []})
+                cal_boxes[str(new_box)]["services"].append("santa_fiora")
+            return {"applied": True, "service_to": sf["service_box"]}
+        return {"applied": False, "reason": "Santa Fiora has no Calendar marker"}
+    # Default: auto Treachery flag
+    state.setdefault("active_events", {}).setdefault("this_levy", []).append({
+        "id": "F18", "side": side, "name": "Grosseto",
+        "flag": "guelph_treachery_at_locale_auto", "locale": "Grosseto",
+    })
+    return {"applied": True, "flag_set": "guelph_treachery_at_grosseto_auto"}
 
 
 @register_event("F19")
 def F19_event(state, side, args, rng):
-    """F19 VOLTERRA: shift Colle or Lucca Service 2 OR add 1 Treachery."""
-    if args.get("mode") == "treachery":
-        return {"applied": True, "added": _add_treachery_from_set_aside(state, "guelph")}
-    target = args.get("target", "colle")
-    new = _shift_service_right(state, target, boxes=2)
-    return {"applied": True, "target": target, "service_to": new}
+    """F19 VOLTERRA (Hold).
+
+    Per AoW Reference (and Errata): 'Play for Treachery at Volterra to
+    succeed for 0 Coin or, if Volterra Guelph, to shift Pisa cylinder
+    or Service 2 boxes.' This mirrors F18 Grosseto for Volterra/Pisa.
+
+      mode = 'auto_treachery_at_volterra' (default): flag.
+      mode = 'shift_pisa':                            shift Pisa.
+    """
+    mode = args.get("mode", "auto_treachery_at_volterra")
+    volterra = state["locales"].get("Volterra")
+    if mode == "shift_pisa":
+        if not volterra:
+            return {"applied": False, "reason": "Volterra missing"}
+        guelph_markers = any(m.get("side") == "guelph"
+                              for m in volterra.get("current_allegiance", []))
+        if not guelph_markers:
+            return {"applied": False, "reason": "Volterra not Guelph-marked"}
+        pisa = state["lords"]["pisa"]
+        if pisa.get("calendar_box") is not None:
+            cur = pisa["calendar_box"]
+            new_box = min(cur + 2, 17)
+            cal_boxes = state["calendar"]["boxes"]
+            if str(cur) in cal_boxes and "pisa" in cal_boxes[str(cur)]["cylinders"]:
+                cal_boxes[str(cur)]["cylinders"].remove("pisa")
+            if new_box > 16:
+                state["calendar"]["off_right"].append("pisa")
+                pisa["calendar_box"] = None
+            else:
+                pisa["calendar_box"] = new_box
+                cal_boxes.setdefault(str(new_box),
+                    {"cylinders": [], "services": [], "victory": [], "markers": []})
+                cal_boxes[str(new_box)]["cylinders"].append("pisa")
+            return {"applied": True, "cylinder_to": pisa["calendar_box"]}
+        elif pisa.get("service_box") is not None:
+            return {"applied": True, "service_to": _shift_service_right(state, "pisa", -2)}
+        return {"applied": False, "reason": "Pisa has no Calendar marker"}
+    state.setdefault("active_events", {}).setdefault("this_levy", []).append({
+        "id": "F19", "side": side, "name": "Volterra",
+        "flag": "guelph_treachery_at_locale_auto", "locale": "Volterra",
+    })
+    return {"applied": True, "flag_set": "guelph_treachery_at_volterra_auto"}
 
 
 @register_event("F20")
 def F20_event(state, side, args, rng):
-    """F20 HEAT & FROST (This Levy): each Lord may have 1 Provender added to mat."""
-    state.setdefault("active_events", {}).setdefault("this_levy", []).append({
-        "id": "F20", "side": side, "name": "Heat & Frost",
-    })
-    # Add 1 Provender to each Guelph Mustered Lord
-    for lord in state["lords"].values():
-        if lord["side"] == "guelph" and lord["status"] == "mustered":
-            lord["assets"]["Provender"] = min(lord["assets"].get("Provender", 0) + 1, 16)
-    return {"applied": True, "provender_added_to": [l for l in state["lords"] if state["lords"][l]["side"] == "guelph" and state["lords"][l]["status"] == "mustered"]}
+    """F20 HEAT & FROST.
+
+    SMOKE-Inferno-018 (card-text fidelity): card actually triggers
+    Wastage (4.9.5) for all Lords NOW — twice for Lords at a Siege
+    Locale or marked Moved/Fought. If Summer, removes 1 Ritter
+    additionally.
+
+    Per AoW Reference Text+Tips: this is NOT a 'each Lord +1 Provender'
+    card. It is a Wastage trigger, fired in Summer or Winter only,
+    immediately before Feed (4.8.1).
+    """
+    from . import static_data as sd
+    season = sd.SEASON_BY_BOX.get(state["meta"]["turn"], "winter")
+    if season not in ("summer", "winter"):
+        return {"applied": False, "reason": "Heat & Frost requires Summer or Winter season."}
+    log = {"wastage": [], "ritter_removed": []}
+    for lid, lord in state["lords"].items():
+        if lord["status"] != "mustered":
+            continue
+        # Determine cycles: 1 by default; 2 if at Siege Locale or Moved/Fought.
+        loc = state["locales"].get(lord.get("location") or "")
+        at_siege = bool(loc and loc.get("siege"))
+        moved = bool(lord.get("flags", {}).get("moved_fought"))
+        cycles = 2 if (at_siege or moved) else 1
+        # Apply Wastage: for each cycle, if Lord has >1 of any Asset OR
+        # >1 'This Lord' Capability, discard one (Asset count -= 1, or
+        # capability returned to side AoW deck). Defaulting to first
+        # multi-Asset; LLM consumer can re-run with specific choices.
+        for _ in range(cycles):
+            eligible = False
+            for a, c in lord.get("assets", {}).items():
+                if c > 1:
+                    lord["assets"][a] -= 1
+                    log["wastage"].append({"lord_id": lid, "asset": a})
+                    eligible = True
+                    break
+            if not eligible and len(lord.get("capabilities", [])) > 1:
+                cid = lord["capabilities"].pop()
+                state["decks"][lord["side"]]["aow_deck"].append(cid)
+                log["wastage"].append({"lord_id": lid, "capability": cid})
+    # Summer: remove 1 Ritter from any side (per the card; play side chooses).
+    if season == "summer":
+        for lid, lord in state["lords"].items():
+            if lord["status"] != "mustered":
+                continue
+            if lord["forces"].get("Ritter", 0) > 0:
+                lord["forces"]["Ritter"] -= 1
+                if lord["forces"]["Ritter"] <= 0:
+                    lord["forces"].pop("Ritter")
+                log["ritter_removed"].append(lid)
+                break  # Card says "remove 1 Ritter" (singular)
+    return {"applied": True, **log}
 
 
 @register_event("F21")
 def F21_event(state, side, args, rng):
-    """F21 PRIMO POPOLO: name a Guelph Vassal-Seat Locale; if Friendly, +1 Coin to Lord there."""
-    return _manual("F21", "Name a Vassal-Seat at Friendly Locale: +1 Coin to Lord there.")
+    """F21 PRIMO POPOLO – Guelph merchant class.
+
+    SMOKE-Inferno-021 (card-text fidelity): card text actually reads
+    'Shift Firenze or Arezzo cylinder or Service 2 Calendar boxes
+    or add 1 of their Treachery.' Tip clarifies cylinder LEFT or
+    Service RIGHT.
+    """
+    if args.get("mode") == "treachery":
+        return {"applied": True, "added": _add_treachery_from_set_aside(state, "guelph")}
+    target = args.get("target", "firenze")
+    if target not in ("firenze", "arezzo"):
+        return {"applied": False, "reason": "target must be firenze or arezzo"}
+    if state["lords"][target].get("calendar_box") is not None:
+        return {"applied": True, "target": target, "cylinder_to": _shift_cylinder_left(state, target, boxes=2)}
+    elif state["lords"][target].get("service_box") is not None:
+        return {"applied": True, "target": target, "service_to": _shift_service_right(state, target, boxes=2)}
+    return {"applied": False, "reason": f"{target} has no Calendar marker to shift"}
 
 
 @register_event("F22")
 def F22_event(state, side, args, rng):
-    """F22 MANFREDI holds back: if Ghibelline Lord with Ritter Unmustered, do not Muster."""
-    return _manual("F22", "Choose any Ghibelline Lord with Ritter shown on mat: he may not Muster this Levy.")
+    """F22 MANFREDI holds back.
+
+    SMOKE-Inferno-020 (card-text fidelity): per AoW Reference (Errata
+    applied), 'Select a Lord with Ritter. Shift his cylinder or Service
+    1 Calendar box or remove 3 of his Assets.' "Ghibelline" deleted by
+    Errata so any-side Lord with Ritter qualifies.
+
+    args:
+      target_lord_id:  Lord with Ritter (must have at least one Ritter
+                       on his mat, including via Turncoat).
+      mode:            'shift' (default) | 'remove_assets'
+      assets_to_remove: dict for mode=remove_assets, e.g.
+                       {"Coin": 1, "Provender": 2}
+    """
+    target_lid = args.get("target_lord_id")
+    if not target_lid or target_lid not in state["lords"]:
+        return _manual("F22", "Provide target_lord_id (any Lord with Ritter on mat).")
+    target = state["lords"][target_lid]
+    if target.get("forces", {}).get("Ritter", 0) == 0:
+        return {"applied": False, "reason": f"{target_lid} has no Ritter on mat."}
+    mode = args.get("mode", "shift")
+    if mode == "shift":
+        if target.get("calendar_box") is not None:
+            cur = target["calendar_box"]
+            cal_boxes = state["calendar"]["boxes"]
+            if str(cur) in cal_boxes and target_lid in cal_boxes[str(cur)]["cylinders"]:
+                cal_boxes[str(cur)]["cylinders"].remove(target_lid)
+            new_box = cur + 1
+            if new_box > 16:
+                state["calendar"]["off_right"].append(target_lid)
+                target["calendar_box"] = None
+            else:
+                target["calendar_box"] = new_box
+                cal_boxes.setdefault(str(new_box),
+                    {"cylinders": [], "services": [], "victory": [], "markers": []})
+                cal_boxes[str(new_box)]["cylinders"].append(target_lid)
+            return {"applied": True, "shifted_cylinder_to": target["calendar_box"]}
+        elif target.get("service_box") is not None:
+            cur = target["service_box"]
+            cal_boxes = state["calendar"]["boxes"]
+            if str(cur) in cal_boxes and target_lid in cal_boxes[str(cur)]["services"]:
+                cal_boxes[str(cur)]["services"].remove(target_lid)
+            new_box = cur - 1
+            if new_box < 1:
+                state["calendar"]["off_left_service"].append(target_lid)
+                target["service_box"] = None
+            else:
+                target["service_box"] = new_box
+                cal_boxes.setdefault(str(new_box),
+                    {"cylinders": [], "services": [], "victory": [], "markers": []})
+                cal_boxes[str(new_box)]["services"].append(target_lid)
+            return {"applied": True, "shifted_service_to": target["service_box"]}
+        else:
+            return {"applied": False, "reason": "Target has no Calendar marker to shift."}
+    elif mode == "remove_assets":
+        request = args.get("assets_to_remove", {})
+        total_request = sum(request.values())
+        if total_request > 3:
+            return {"applied": False, "reason": "Cannot remove more than 3 Assets total."}
+        removed = {}
+        for a, n in request.items():
+            have = target["assets"].get(a, 0)
+            take = min(n, have)
+            if take > 0:
+                target["assets"][a] -= take
+                removed[a] = take
+        return {"applied": True, "removed_assets": removed}
+    return {"applied": False, "reason": "mode must be shift or remove_assets"}
 
 
 @register_event("F23")
 def F23_event(state, side, args, rng):
-    """F23 TREASURERS (Hold): pay 2 Coin to declare CtA OR add 1 Treachery."""
-    return _manual("F23", "Pay 2 Coin from any Guelph Lord(s) to declare Call to Arms; OR pay 2 Coin to add 1 Treachery.")
+    """F23 TREASURERS (Hold).
+
+      mode = 'declare_cta' (default): pay 2 Coin total (from one or
+            more Guelph Lords) to declare Call to Arms this Levy.
+      mode = 'treachery':              pay 2 Coin total to add a set-
+            aside Guelph Treachery card to the Command deck.
+    """
+    coin_sources = args.get("coin_sources", {})  # {lord_id: count}
+    total = sum(coin_sources.values())
+    if total != 2 and not coin_sources:
+        # Auto-pick: find 2 Coin from any Mustered Guelph Lords.
+        coin_sources = {}
+        remaining = 2
+        for lid, lord in state["lords"].items():
+            if lord["side"] != "guelph" or lord["status"] != "mustered":
+                continue
+            avail = lord["assets"].get("Coin", 0)
+            if avail == 0:
+                continue
+            take = min(avail, remaining)
+            coin_sources[lid] = take
+            remaining -= take
+            if remaining == 0:
+                break
+        if remaining > 0:
+            return {"applied": False, "reason": "Insufficient Guelph Coin available."}
+        total = 2
+    if total != 2:
+        return {"applied": False, "reason": "Treasurers requires exactly 2 Coin."}
+    # Pay Coin
+    for lid, n in coin_sources.items():
+        if state["lords"][lid]["assets"].get("Coin", 0) < n:
+            return {"applied": False, "reason": f"{lid} has insufficient Coin."}
+    for lid, n in coin_sources.items():
+        state["lords"][lid]["assets"]["Coin"] -= n
+    if args.get("mode") == "treachery":
+        added = _add_treachery_from_set_aside(state, "guelph")
+        return {"applied": True, "mode": "treachery", "paid": coin_sources, "added": added}
+    # declare_cta: flag Guelph CtA eligibility for this Levy.
+    declared = set(state.get("war_declared_this_levy", []))
+    declared.add("guelph")
+    state["war_declared_this_levy"] = list(declared)
+    return {"applied": True, "mode": "declare_cta", "paid": coin_sources}
 
 
 @register_event("F24")
@@ -514,7 +818,15 @@ def S3_event(state, side, args, rng):
 
 @register_event("S4")
 def S4_event(state, side, args, rng):
-    return _manual("S4", "See F4 Sudden Clash (Ghibelline version).")
+    """S4 SUDDEN CLASH (Ghib mirror) — sets in_battle_modifier flag."""
+    target = args.get("target_lord_id")
+    if not target or target not in state["lords"]:
+        return _manual("S4", "Provide target_lord_id (Ghibelline Lord in upcoming Battle).")
+    state.setdefault("battle_modifiers_pending", []).append({
+        "id": "S4", "side": "ghibelline", "lord_id": target,
+        "effect": "sudden_clash_r1_horse_first_select_target",
+    })
+    return {"applied": True, "flag_set": "S4_pending", "for_lord": target}
 
 
 @register_event("S5")
@@ -604,7 +916,39 @@ def S16_event(state, side, args, rng):
 
 @register_event("S17")
 def S17_event(state, side, args, rng):
-    return _manual("S17", "Ghibelline Refugees — refugee influx, situational.")
+    """S17 GHIBELLINE REFUGEES (Hold).
+
+    Playable only if Provenzano or Santa Fiora on map. Three modes:
+      'shift_other' — shift the OTHER's cylinder left 2 boxes.
+      'lordship'    — +2 Lordship to one or both (one-shot).
+      'treachery'   — add a Provenzano or Santa Fiora Treachery card.
+    """
+    prov_on = state["lords"]["provenzano"]["status"] == "mustered"
+    sf_on   = state["lords"]["santa_fiora"]["status"] == "mustered"
+    if not (prov_on or sf_on):
+        return {"applied": False, "reason": "Neither Provenzano nor Santa Fiora on map."}
+    mode = args.get("mode", "shift_other")
+    if mode == "treachery":
+        target_slug = args.get("treachery_for", "provenzano")
+        return {"applied": True,
+                "added": _add_treachery_from_set_aside(state, "ghibelline", lord_slug=target_slug)}
+    if mode == "lordship":
+        targets = args.get("targets", [])
+        if not targets:
+            targets = [lid for lid in ("provenzano", "santa_fiora")
+                       if state["lords"][lid]["status"] == "mustered"]
+        for t in targets:
+            state["lords"][t].setdefault("flags", {})["lordship_bonus_pending"] = (
+                state["lords"][t].get("flags", {}).get("lordship_bonus_pending", 0) + 2
+            )
+        return {"applied": True, "lordship_bonus_for": targets, "bonus": 2}
+    # default shift_other
+    if prov_on and not sf_on:
+        return {"applied": True, "shifted_cylinder_to": _shift_cylinder_left(state, "santa_fiora", 2)}
+    if sf_on and not prov_on:
+        return {"applied": True, "shifted_cylinder_to": _shift_cylinder_left(state, "provenzano", 2)}
+    target = args.get("target", "santa_fiora")
+    return {"applied": True, "shifted_cylinder_to": _shift_cylinder_left(state, target, 2)}
 
 
 @register_event("S18")
@@ -619,24 +963,98 @@ def S19_event(state, side, args, rng):
 
 @register_event("S20")
 def S20_event(state, side, args, rng):
-    """S20 HEAT & FROST: each Ghibelline Mustered Lord gains 1 Provender."""
-    state.setdefault("active_events", {}).setdefault("this_levy", []).append({
-        "id": "S20", "side": side, "name": "Heat & Frost",
-    })
-    for lord in state["lords"].values():
-        if lord["side"] == "ghibelline" and lord["status"] == "mustered":
-            lord["assets"]["Provender"] = min(lord["assets"].get("Provender", 0) + 1, 16)
-    return {"applied": True}
+    """S20 HEAT & FROST (Ghib mirror).
+
+    SMOKE-Inferno-019 (card-text fidelity): mirror of F20 with the
+    Summer-side effect "remove 1 unit from Guido" (Guido Guerra
+    specifically, not generic Ritter).
+    """
+    from . import static_data as sd
+    season = sd.SEASON_BY_BOX.get(state["meta"]["turn"], "winter")
+    if season not in ("summer", "winter"):
+        return {"applied": False, "reason": "Heat & Frost requires Summer or Winter season."}
+    log = {"wastage": [], "guido_unit_removed": None}
+    for lid, lord in state["lords"].items():
+        if lord["status"] != "mustered":
+            continue
+        loc = state["locales"].get(lord.get("location") or "")
+        at_siege = bool(loc and loc.get("siege"))
+        moved = bool(lord.get("flags", {}).get("moved_fought"))
+        cycles = 2 if (at_siege or moved) else 1
+        for _ in range(cycles):
+            eligible = False
+            for a, c in lord.get("assets", {}).items():
+                if c > 1:
+                    lord["assets"][a] -= 1
+                    log["wastage"].append({"lord_id": lid, "asset": a})
+                    eligible = True
+                    break
+            if not eligible and len(lord.get("capabilities", [])) > 1:
+                cid = lord["capabilities"].pop()
+                state["decks"][lord["side"]]["aow_deck"].append(cid)
+                log["wastage"].append({"lord_id": lid, "capability": cid})
+    # Summer: remove 1 unit from Guido Guerra (per card)
+    if season == "summer":
+        guido = state["lords"].get("guido_guerra")
+        if guido and guido.get("forces"):
+            for u, c in list(guido["forces"].items()):
+                if c > 0:
+                    guido["forces"][u] -= 1
+                    if guido["forces"][u] <= 0:
+                        guido["forces"].pop(u)
+                    log["guido_unit_removed"] = u
+                    break
+    return {"applied": True, **log}
 
 
 @register_event("S21")
 def S21_event(state, side, args, rng):
-    return _manual("S21", "Constituto: This Campaign Tax modifier.")
+    """S21 CONSTITUTO – City statute (Hold).
+
+      mode = 'shift' (default): shift Siena or Pisa cylinder left or
+            Service right by 2 boxes.
+      mode = 'lordship':       +3 Lordship to one (one-shot).
+    """
+    target = args.get("target", "siena")
+    if target not in ("siena", "pisa"):
+        return {"applied": False, "reason": "target must be siena or pisa"}
+    if args.get("mode") == "lordship":
+        state["lords"][target].setdefault("flags", {})["lordship_bonus_pending"] = 3
+        return {"applied": True, "lordship_bonus_for": target, "bonus": 3}
+    if state["lords"][target].get("calendar_box") is not None:
+        return {"applied": True, "cylinder_to": _shift_cylinder_left(state, target, 2)}
+    elif state["lords"][target].get("service_box") is not None:
+        return {"applied": True, "service_to": _shift_service_right(state, target, 2)}
+    return {"applied": False, "reason": f"{target} has no Calendar marker"}
 
 
 @register_event("S22")
 def S22_event(state, side, args, rng):
-    return _manual("S22", "Closed Gates (Ghibelline); see F10.")
+    """S22 CLOSED GATES (Ghib mirror of F10).
+
+    Remove 1 purple (Ghib-owned) Ruins, else remove 1 gold Ruins
+    where Stronghold eligible for Revolt -> Revolts to Ghibelline.
+    """
+    purple_ruins = [n for n, l in state["locales"].items() if l.get("ruins") == "purple"]
+    if purple_ruins:
+        loc_name = args.get("locale") or purple_ruins[0]
+        state["locales"][loc_name]["ruins"] = None
+        state["vp"]["guelph"] = max(state["vp"].get("guelph", 0) - 0.5, 0)
+        return {"applied": True, "removed_ruins_at": loc_name}
+    gold_ruins = [n for n, l in state["locales"].items() if l.get("ruins") == "gold"]
+    if gold_ruins:
+        loc_name = args.get("locale") or gold_ruins[0]
+        loc = state["locales"][loc_name]
+        from . import static_data as sd
+        size = sd.STRONGHOLDS.get(loc["type"], {}).get("size", 1)
+        loc["ruins"] = None
+        state["vp"]["ghibelline"] = max(state["vp"].get("ghibelline", 0) - 0.5, 0)
+        loc["current_allegiance"] = [m for m in loc.get("current_allegiance", []) if m.get("side") != "guelph"]
+        for _ in range(size):
+            loc["current_allegiance"].append({"side": "ghibelline", "value": 1})
+        state["vp"]["ghibelline"] = min(state["vp"].get("ghibelline", 0) + size, 17.5)
+        return {"applied": True, "revolted_at": loc_name, "size": size}
+    return {"applied": False, "reason": "no eligible Ruins"}
 
 
 @register_event("S23")
