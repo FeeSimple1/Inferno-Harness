@@ -167,8 +167,13 @@ def _manual(card_id: str, note: str) -> dict[str, Any]:
 # =====================================================================
 @register_event("F1")
 def F1_event(state, side, args, rng):
-    """F1 AMBUSH (Hold): Enemy Avoid -> force one Avoider to Battle/Withdraw."""
-    return _manual("F1", "On Enemy Avoid: choose one Avoiding Lord to Battle/Withdraw instead.")
+    """F1 AMBUSH (Hold) — registers Approach-time modifier: when enemy
+    Lord(s) declare Avoid Battle, force one to Stand/Withdraw instead.
+    """
+    state.setdefault("approach_modifiers_pending", []).append({
+        "id": "F1", "side": "guelph", "effect": "ambush_force_one_stand",
+    })
+    return {"applied": True, "flag_set": "F1_pending"}
 
 
 @register_event("F2")
@@ -190,8 +195,14 @@ def F2_event(state, side, args, rng):
 
 @register_event("F3")
 def F3_event(state, side, args, rng):
-    """F3 SURPRISE (Hold): on Besiege a Stronghold w/ no other Lord; place 2 Siege markers + Storm 3 rounds Walls-2."""
-    return _manual("F3", "On Besiege alone: place 2 Siege markers; immediately Storm up to 3 rounds, Walls -2.")
+    """F3 SURPRISE (Hold) — registers Besiege-alone modifier: on next
+    Besiege by this side with no other Lord, place 2 Siege markers
+    instead of 1 and run an auto-Storm up to 3 rounds with Walls -2.
+    """
+    state.setdefault("besiege_modifiers_pending", []).append({
+        "id": "F3", "side": "guelph", "effect": "surprise_besiege_alone",
+    })
+    return {"applied": True, "flag_set": "F3_pending"}
 
 
 @register_event("F4")
@@ -261,8 +272,19 @@ def F7_event(state, side, args, rng):
 
 @register_event("F8")
 def F8_event(state, side, args, rng):
-    """F8 SWAMP (Hold): non-Summer Battle Defending, Ghibelline Horse don't Strike R1."""
-    return _manual("F8", "Defending in non-Summer Battle: Enemy Horse units skip Round 1.")
+    """F8 SWAMP (Hold) — Defending in non-Summer Battle: enemy Horse
+    units don't Strike in R1. Registers battle modifier; engine
+    consumes at the Horse Melee step in R1.
+    """
+    from . import static_data as sd
+    season = sd.SEASON_BY_BOX.get(state["meta"]["turn"], "winter")
+    if season == "summer":
+        return {"applied": False, "reason": "Swamp not playable in Summer."}
+    state.setdefault("battle_modifiers_pending", []).append({
+        "id": "F8", "side": "guelph",
+        "effect": "swamp_enemy_horse_no_strike_r1",
+    })
+    return {"applied": True, "flag_set": "F8_pending"}
 
 
 @register_event("F9")
@@ -339,8 +361,14 @@ def F11_event(state, side, args, rng):
 
 @register_event("F12")
 def F12_event(state, side, args, rng):
-    """F12 CAMP ATTACK (Hold): in Battle R1, take 2 Assets from each Enemy + remove 2 more."""
-    return _manual("F12", "In Battle R1: take 2 Assets per Enemy Lord; remove 2 more.")
+    """F12 CAMP ATTACK (Hold) — R1 Asset transfer/removal. Registers
+    pre-Battle modifier; engine consumes at 4.4.1 Events phase.
+    """
+    state.setdefault("battle_modifiers_pending", []).append({
+        "id": "F12", "side": "guelph",
+        "effect": "camp_attack_r1_asset_transfer",
+    })
+    return {"applied": True, "flag_set": "F12_pending"}
 
 
 @register_event("F13")
@@ -394,8 +422,15 @@ def F15_event(state, side, args, rng):
 
 @register_event("F16")
 def F16_event(state, side, args, rng):
-    """F16 BLOODY RED STREAM (Hold): first Guelph Routs, roll Protection now for each Routed unit."""
-    return _manual("F16", "First Guelph Lord to Rout in Battle: roll Protection per Routed unit; recoveries unrout.")
+    """F16 BLOODY RED STREAM (Hold) — at outset of Battle, registers
+    a 'first Guelph Rout: pause and roll Protection on Routed units'
+    modifier. Engine consumes at the Rout-recovery hook.
+    """
+    state.setdefault("battle_modifiers_pending", []).append({
+        "id": "F16", "side": "guelph",
+        "effect": "bloody_red_stream_first_rout",
+    })
+    return {"applied": True, "flag_set": "F16_pending"}
 
 
 @register_event("F17")
@@ -793,7 +828,11 @@ register_capability("F26", {"repair_ruins": True, "this_lord": True})  # Costrut
 # =====================================================================
 @register_event("S1")
 def S1_event(state, side, args, rng):
-    return _manual("S1", "See F1 Ambush — enemy Avoid forced-stand mechanic.")
+    """S1 AMBUSH (Ghib mirror)."""
+    state.setdefault("approach_modifiers_pending", []).append({
+        "id": "S1", "side": "ghibelline", "effect": "ambush_force_one_stand",
+    })
+    return {"applied": True, "flag_set": "S1_pending"}
 
 
 @register_event("S2")
@@ -813,7 +852,11 @@ def S2_event(state, side, args, rng):
 
 @register_event("S3")
 def S3_event(state, side, args, rng):
-    return _manual("S3", "See F3 Surprise.")
+    """S3 SURPRISE (Ghib mirror)."""
+    state.setdefault("besiege_modifiers_pending", []).append({
+        "id": "S3", "side": "ghibelline", "effect": "surprise_besiege_alone",
+    })
+    return {"applied": True, "flag_set": "S3_pending"}
 
 
 @register_event("S4")
@@ -841,7 +884,12 @@ def S5_event(state, side, args, rng):
 
 @register_event("S6")
 def S6_event(state, side, args, rng):
-    return _manual("S6", "See F6 Hills (Ghibelline Feditori-like effect).")
+    """S6 HILLS (Ghib mirror) — Defending Archery Hits doubled."""
+    state.setdefault("battle_modifiers_pending", []).append({
+        "id": "S6", "side": "ghibelline",
+        "effect": "hills_double_archery_defending",
+    })
+    return {"applied": True, "flag_set": "S6_pending"}
 
 
 @register_event("S7")
@@ -851,7 +899,16 @@ def S7_event(state, side, args, rng):
 
 @register_event("S8")
 def S8_event(state, side, args, rng):
-    return _manual("S8", "See F8 Swamp (Ghibelline version).")
+    """S8 SWAMP (Ghib mirror) — Defending non-Summer; enemy Horse skip R1."""
+    from . import static_data as sd
+    season = sd.SEASON_BY_BOX.get(state["meta"]["turn"], "winter")
+    if season == "summer":
+        return {"applied": False, "reason": "Swamp not playable in Summer."}
+    state.setdefault("battle_modifiers_pending", []).append({
+        "id": "S8", "side": "ghibelline",
+        "effect": "swamp_enemy_horse_no_strike_r1",
+    })
+    return {"applied": True, "flag_set": "S8_pending"}
 
 
 @register_event("S9")
@@ -871,7 +928,30 @@ def S9_event(state, side, args, rng):
 
 @register_event("S10")
 def S10_event(state, side, args, rng):
-    return _manual("S10", "A Better Paid Death: Ghib mercenary bribe — flagged.")
+    """S10 A BETTER PAID DEATH.
+
+    Per AoW Reference: shift cylinder/Service of 2 Ghibelline Lords
+    (not Podestà) by 1 box, OR give 1 Lord Lordship +2 this Levy.
+    Eligible: Giordano, Astimberg, Provenzano, Santa Fiora.
+    """
+    eligible = ("giordano", "astimberg", "provenzano", "santa_fiora")
+    if args.get("mode") == "lordship":
+        target = args.get("target", "giordano")
+        if target not in eligible:
+            return {"applied": False, "reason": f"target must be one of {eligible}"}
+        state["lords"][target].setdefault("flags", {})["lordship_bonus_pending"] = 2
+        return {"applied": True, "lordship_bonus_for": target, "bonus": 2}
+    # Default: shift 2 Lords
+    targets = args.get("targets", list(eligible[:2]))
+    shifts = {}
+    for t in targets[:2]:
+        if t not in eligible:
+            continue
+        if state["lords"][t].get("calendar_box") is not None:
+            shifts[t] = {"cylinder_to": _shift_cylinder_left(state, t, 1)}
+        elif state["lords"][t].get("service_box") is not None:
+            shifts[t] = {"service_to": _shift_service_right(state, t, 1)}
+    return {"applied": True, "shifts": shifts}
 
 
 @register_event("S11")
@@ -885,17 +965,45 @@ def S11_event(state, side, args, rng):
 
 @register_event("S12")
 def S12_event(state, side, args, rng):
-    return _manual("S12", "See F12 Camp Attack (Ghibelline version).")
+    """S12 CAMP ATTACK (Ghib mirror) — R1 Asset transfer."""
+    state.setdefault("battle_modifiers_pending", []).append({
+        "id": "S12", "side": "ghibelline",
+        "effect": "camp_attack_r1_asset_transfer",
+    })
+    return {"applied": True, "flag_set": "S12_pending"}
 
 
 @register_event("S13")
 def S13_event(state, side, args, rng):
-    return _manual("S13", "Gentle Usilia ransoms prisoners — Ghib special Ransom.")
+    """S13 GENTLE USILIA ransoms prisoners (Hold).
+
+    Guelphs immediately conduct a Ransom (4.9.2). Returns a 'ransom
+    triggered for guelph' signal; the harness consumer should
+    dispatch end_ransom for guelph next.
+    """
+    captured = state.get("captured_knights", {}).get("guelph", {})
+    total = sum(captured.values())
+    state.setdefault("active_events", {}).setdefault("this_levy", []).append({
+        "id": "S13", "side": side, "name": "Gentle Usilia",
+        "trigger": "immediate_guelph_ransom",
+    })
+    return {"applied": True, "ransom_triggered_for": "guelph",
+            "captured_total": total}
 
 
 @register_event("S14")
 def S14_event(state, side, args, rng):
-    return _manual("S14", "Friars sent to deceive Florentines — flagged.")
+    """S14 FRIARS sent to deceive Florentines (Hold).
+
+    'This Campaign Guelphs shuffle and play chosen Command cards
+    without inspecting stack.' Sets a flag the Plan UI/engine can
+    respect.
+    """
+    state.setdefault("active_events", {}).setdefault("this_campaign", []).append({
+        "id": "S14", "side": side, "name": "Friars",
+        "effect": "guelph_plan_blind_no_inspect",
+    })
+    return {"applied": True, "flag_set": "S14_this_campaign"}
 
 
 @register_event("S15")
@@ -911,7 +1019,18 @@ def S15_event(state, side, args, rng):
 
 @register_event("S16")
 def S16_event(state, side, args, rng):
-    return _manual("S16", "Bocca degli Abati — Florentine betrays Guelphs (in-Battle effect).")
+    """S16 BOCCA DEGLI ABATI (Hold) — at outset of Battle, target Guelph
+    Lord's Cavalieri each take 1 Hit; 1 that Routs joins Ghibelline mat.
+    """
+    target = args.get("target_lord_id")
+    if not target:
+        return _manual("S16", "Provide target_lord_id (Guelph Lord at Battle).")
+    state.setdefault("battle_modifiers_pending", []).append({
+        "id": "S16", "side": "ghibelline",
+        "effect": "bocca_cavalieri_auto_hit",
+        "target_lord_id": target,
+    })
+    return {"applied": True, "flag_set": "S16_pending", "target": target}
 
 
 @register_event("S17")

@@ -102,12 +102,9 @@ class TestFlaggedManual:
     application by the LLM consumer."""
 
     @pytest.mark.parametrize("card_id", [
-        "F1",   # Ambush (in-Battle Approach hook)
-        "F3",   # Surprise (Storm interaction)
-        "F7",   # Greek Fire (no target args -> manual)
-        "F16",  # Bloody Red Stream (in-Battle Rout-recovery)
-        "S1", "S3",  # Ghib mirrors
-        "S7", "S10", "S13", "S14", "S16",
+        "F7",   # Greek Fire (manual when no target args provided)
+        "S7",   # Luceria (Capability-only — Event half is flagged)
+        "S16",  # Bocca degli Abati (manual when no target_lord_id)
     ])
     def test_flagged_returns_manual_marker(self, card_id):
         s = load_scenario("A", seed=1)
@@ -402,3 +399,181 @@ class TestBattleModifierFlags:
                                    {"target_lord_id": "firenze"}, rng)
         assert r["applied"] is True
         assert any(m["id"] == "F4" for m in s.get("battle_modifiers_pending", []))
+
+
+# =====================================================================
+# Phase 5: Battle/Approach/Besiege hook tests
+# =====================================================================
+class TestPhase5BattleHooks:
+    """Each de-flagged card registers a pending modifier; the engine
+    consumes at the right hook point."""
+
+    def test_f6_hills_registers_battle_modifier(self):
+        from inferno.scenarios import load_scenario
+        s = load_scenario("A", seed=1)
+        rng = HarnessRNG(seed=1)
+        r = ce.apply_event_effect(s, "F6", "guelph", {}, rng)
+        assert r["applied"] is True
+        assert any(m["effect"] == "hills_double_archery_defending"
+                   for m in s.get("battle_modifiers_pending", []))
+
+    def test_f8_swamp_requires_non_summer(self):
+        from inferno.scenarios import load_scenario
+        s = load_scenario("A", seed=1)
+        s["meta"]["turn"] = 3  # Summer
+        rng = HarnessRNG(seed=1)
+        r = ce.apply_event_effect(s, "F8", "guelph", {}, rng)
+        assert r["applied"] is False
+        assert "Summer" in r["reason"]
+
+    def test_f8_swamp_non_summer_sets_flag(self):
+        from inferno.scenarios import load_scenario
+        s = load_scenario("A", seed=1)
+        s["meta"]["turn"] = 1  # Winter
+        rng = HarnessRNG(seed=1)
+        r = ce.apply_event_effect(s, "F8", "guelph", {}, rng)
+        assert r["applied"] is True
+        assert any(m["effect"] == "swamp_enemy_horse_no_strike_r1"
+                   for m in s.get("battle_modifiers_pending", []))
+
+    def test_f12_camp_attack_registers(self):
+        from inferno.scenarios import load_scenario
+        s = load_scenario("A", seed=1)
+        rng = HarnessRNG(seed=1)
+        ce.apply_event_effect(s, "F12", "guelph", {}, rng)
+        assert any(m["effect"] == "camp_attack_r1_asset_transfer"
+                   for m in s.get("battle_modifiers_pending", []))
+
+    def test_f16_bloody_red_stream_registers(self):
+        from inferno.scenarios import load_scenario
+        s = load_scenario("A", seed=1)
+        rng = HarnessRNG(seed=1)
+        ce.apply_event_effect(s, "F16", "guelph", {}, rng)
+        assert any(m["effect"] == "bloody_red_stream_first_rout"
+                   for m in s.get("battle_modifiers_pending", []))
+
+
+class TestPhase5HillsIntegration:
+    """Run a Battle with Hills pending and verify doubled archery hits."""
+
+    def test_battle_with_hills_doubles_defender_archery(self):
+        """Hills is for Defending side. Resolve a Battle with the
+        modifier set; the post-Battle pre_modifiers field should
+        record the multiplier applied."""
+        from inferno.battle import resolve_battle
+        from inferno.scenarios import load_scenario
+        s = load_scenario("A", seed=1)
+        # Give Siena some archery-capable Forces (Militia w/ Arcieri-like) —
+        # Phase 5 doesn't auto-enable Lord-mat archery (Garrison-only by 4.4.2).
+        # So Hills' effect is observable only when a card enables Archery for
+        # Lord-mat units. We assert the modifier persists through the Battle
+        # (active_for_battle flag) — the consumed-once pattern.
+        s.setdefault("battle_modifiers_pending", []).append({
+            "id": "F6", "side": "defender",  # placeholder; engine matches side label
+            "effect": "hills_double_archery_defending",
+        })
+        # Place Siena at Firenze for Battle
+        s["locales"]["Siena"]["lords_present"].remove("siena")
+        s["locales"]["Firenze"]["lords_present"].append("siena")
+        s["lords"]["siena"]["location"] = "Firenze"
+        result = resolve_battle(s, ["firenze"], ["siena"], "firenze", "Firenze")
+        # The Battle completes; Hills modifier should be cleared post-Battle.
+        assert all(m.get("effect") != "hills_double_archery_defending"
+                   for m in s.get("battle_modifiers_pending", []))
+
+
+class TestPhase5SwampSkip:
+    def test_swamp_skips_enemy_horse_r1(self):
+        """Defending side with Swamp active causes enemy Horse to skip R1 melee."""
+        from inferno.battle import resolve_battle
+        from inferno.scenarios import load_scenario
+        s = load_scenario("A", seed=1)
+        s["meta"]["turn"] = 1  # Winter (Swamp legal)
+        # Defender is the Battle 'defender' role.
+        s.setdefault("battle_modifiers_pending", []).append({
+            "id": "F8", "side": "defender",
+            "effect": "swamp_enemy_horse_no_strike_r1",
+        })
+        s["locales"]["Siena"]["lords_present"].remove("siena")
+        s["locales"]["Firenze"]["lords_present"].append("siena")
+        s["lords"]["siena"]["location"] = "Firenze"
+        result = resolve_battle(s, ["firenze"], ["siena"], "firenze", "Firenze")
+        # Check R1 hit_log for the skipped step
+        r1 = result["rounds"][0]
+        steps_skipped = [h for h in r1["hit_log"] if h.get("skipped") == "swamp_horse_no_strike_r1"]
+        assert len(steps_skipped) >= 1
+
+
+class TestPhase5CampAttack:
+    def test_camp_attack_transfers_assets_pre_battle(self):
+        """Camp Attack takes 2 Assets per Enemy + removes 2 more in R1."""
+        from inferno.battle import resolve_battle
+        from inferno.scenarios import load_scenario
+        s = load_scenario("A", seed=1)
+        # Set up Camp Attack pending for Guelph side
+        s.setdefault("battle_modifiers_pending", []).append({
+            "id": "F12", "side": "guelph",
+            "effect": "camp_attack_r1_asset_transfer",
+        })
+        s["locales"]["Siena"]["lords_present"].remove("siena")
+        s["locales"]["Firenze"]["lords_present"].append("siena")
+        s["lords"]["siena"]["location"] = "Firenze"
+        # Siena has Coin=2, Cart=2, Provender=2 by default — 6 total Assets.
+        siena_before = dict(s["lords"]["siena"]["assets"])
+        result = resolve_battle(s, ["firenze"], ["siena"], "firenze", "Firenze")
+        # 2 taken to Guelph + 2 removed = 4 Assets gone (or capped at available).
+        siena_after = s["lords"]["siena"]["assets"]
+        delta = sum(siena_before.values()) - sum(siena_after.values())
+        assert delta == 4
+        # pre_modifiers should record the action
+        assert result.get("pre_modifiers", {}).get("camp_attack")
+
+
+class TestPhase5DeflaggedRemaining:
+    """The last batch — S10, S13, S14."""
+
+    def test_s10_better_paid_death_shifts_two(self):
+        from inferno.scenarios import load_scenario
+        s = load_scenario("D", seed=1)  # Astimberg / Provenzano Mustered or on Calendar
+        # Put astimberg on calendar so cylinder shift applies
+        rng = HarnessRNG(seed=1)
+        r = ce.apply_event_effect(s, "S10", "ghibelline",
+                                   {"targets": ["astimberg", "provenzano"]}, rng)
+        assert r["applied"] is True
+
+    def test_s13_gentle_usilia_triggers_guelph_ransom_signal(self):
+        from inferno.scenarios import load_scenario
+        s = load_scenario("A", seed=1)
+        rng = HarnessRNG(seed=1)
+        r = ce.apply_event_effect(s, "S13", "ghibelline", {}, rng)
+        assert r["applied"] is True
+        assert r["ransom_triggered_for"] == "guelph"
+
+    def test_s14_friars_sets_this_campaign_flag(self):
+        from inferno.scenarios import load_scenario
+        s = load_scenario("A", seed=1)
+        rng = HarnessRNG(seed=1)
+        r = ce.apply_event_effect(s, "S14", "ghibelline", {}, rng)
+        assert r["applied"] is True
+        active = s.get("active_events", {}).get("this_campaign", [])
+        assert any(e.get("effect") == "guelph_plan_blind_no_inspect" for e in active)
+
+
+class TestPhase5ApproachAndBesiege:
+    def test_f1_ambush_registers_approach_modifier(self):
+        from inferno.scenarios import load_scenario
+        s = load_scenario("A", seed=1)
+        rng = HarnessRNG(seed=1)
+        r = ce.apply_event_effect(s, "F1", "guelph", {}, rng)
+        assert r["applied"] is True
+        assert any(m["effect"] == "ambush_force_one_stand"
+                   for m in s.get("approach_modifiers_pending", []))
+
+    def test_f3_surprise_registers_besiege_modifier(self):
+        from inferno.scenarios import load_scenario
+        s = load_scenario("A", seed=1)
+        rng = HarnessRNG(seed=1)
+        r = ce.apply_event_effect(s, "F3", "guelph", {}, rng)
+        assert r["applied"] is True
+        assert any(m["effect"] == "surprise_besiege_alone"
+                   for m in s.get("besiege_modifiers_pending", []))

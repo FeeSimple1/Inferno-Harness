@@ -296,15 +296,15 @@ def _flanking_relationships(positions: dict, bdc: "BattleDecisionContext | None"
 
 def _resolve_step(state, step: str, positions, reserve, conceded: str | None,
                   bdc, rng_caller, hit_log: list, removed_lords: set,
-                  routed_per_lord: dict) -> None:
-    """Resolve one Strike sub-step (e.g., 'atk_horse_melee').
-
-    Sums Hits from striking side's Front Lords (and Flanking Lords),
-    applies Protection rolls to assigned units in the target Lord's mat,
-    tracks Routs. Conceding side halves its Hits this Round.
-    """
+                  routed_per_lord: dict, round_n: int = 1) -> None:
+    """Resolve one Strike sub-step. Consults Phase-5 Battle hooks for
+    F4 Sudden Clash, F6/S6 Hills, F8/S8 Swamp."""
     striking_side = "attacker" if step.startswith("atk") else "defender"
     target_side = "defender" if striking_side == "attacker" else "attacker"
+    # Phase 5: F8/S8 Swamp — defender's effect, skips enemy Horse R1.
+    if step.endswith("horse_melee") and _enemy_horse_skips_round_1(state, target_side, round_n):
+        hit_log.append({"step": step, "skipped": "swamp_horse_no_strike_r1"})
+        return
     flanks = _flanking_relationships(positions, bdc)
 
     # For each potential target slot, compute total Hits aimed at the Lord there
@@ -328,6 +328,12 @@ def _resolve_step(state, step: str, positions, reserve, conceded: str | None,
                     per_target_hits[target_slot] = per_target_hits.get(target_slot, 0) + h
                     break
 
+    # Phase 5: Hills (F6/S6) — double Archery Hits if striker is the Defending side.
+    if step.endswith("archery") and striking_side == "defender":
+        mult = _archery_hits_multiplier(state, "defender")
+        if mult > 1:
+            per_target_hits = {k: v * mult for k, v in per_target_hits.items()}
+            hit_log.append({"step": step, "hills_doubled": True})
     # Halve hits if striking side is conceded
     if conceded == striking_side:
         per_target_hits = {k: v / 2 for k, v in per_target_hits.items()}
@@ -372,6 +378,12 @@ def _absorb_hits(state, lord_id: str, n_hits: int, rng_caller,
                 absorbing_unit = u
                 break
         if absorbing_unit is None:
+            # Phase 5: F16 Bloody Red Stream — first Lord to Rout this Battle
+            # may pause and roll Protection on Routed units for recovery.
+            rr = _check_rout_recovery(state, lord_id, rng_caller)
+            if rr and rr["recovered"]:
+                hit_log.append({"lord_id": lord_id, "bloody_red_stream_recovered": rr["recovered"]})
+                continue  # re-pick absorbing unit now that some are unrouted
             break  # nothing left
         # Apply 1 hit to this unit
         if absorbing_unit == "Villici":
@@ -407,6 +419,216 @@ def _all_units_routed(lord: dict) -> bool:
     return sum((lord.get("forces") or {}).values()) == 0
 
 
+
+
+# =====================================================================
+# Phase 5: in-Battle card-effect hooks
+# =====================================================================
+def _get_battle_modifiers(state) -> list[dict]:
+    """All battle_modifiers_pending entries (in order)."""
+    return list(state.get("battle_modifiers_pending", []))
+
+
+def _consume_battle_modifier(state, effect_key: str, predicate=None) -> dict | None:
+    """Find and remove a pending modifier matching effect_key (and
+    optional predicate). Returns the entry or None."""
+    pending = state.get("battle_modifiers_pending", [])
+    for i, m in enumerate(pending):
+        if m.get("effect") == effect_key:
+            if predicate is None or predicate(m):
+                return pending.pop(i)
+    return None
+
+
+def _has_battle_modifier(state, effect_key: str, predicate=None) -> bool:
+    pending = state.get("battle_modifiers_pending", [])
+    for m in pending:
+        if m.get("effect") == effect_key:
+            if predicate is None or predicate(m):
+                return True
+    return False
+
+
+def _apply_pre_battle_modifiers(state, attackers, defenders) -> dict:
+    """Apply pre-Battle Hold-Event modifiers at 4.4.1 Events phase.
+
+    F12/S12 Camp Attack: R1 Asset transfer from each Enemy + remove 2 more.
+    S16 Bocca degli Abati: Each Cavalieri on target Guelph Lord takes 1 Hit.
+    """
+    summary: dict = {"camp_attack": [], "bocca": []}
+    # Camp Attack
+    cap = _consume_battle_modifier(state, "camp_attack_r1_asset_transfer")
+    if cap:
+        playing_side = cap.get("side")
+        enemy_side = "ghibelline" if playing_side == "guelph" else "guelph"
+        enemy_ids = [a for a in attackers + defenders
+                     if state["lords"].get(a, {}).get("side") == enemy_side]
+        own_ids = [a for a in attackers + defenders
+                   if state["lords"].get(a, {}).get("side") == playing_side]
+        for eid in enemy_ids:
+            elord = state["lords"].get(eid)
+            if not elord:
+                continue
+            # Take up to 2 Assets (excluding Ship), distribute to own side.
+            taken: dict[str, int] = {}
+            assets = list(elord.get("assets", {}).items())
+            to_take = 2
+            for a, c in assets:
+                if a == "Ship" or c <= 0:
+                    continue
+                t = min(to_take, c)
+                if t > 0:
+                    elord["assets"][a] = c - t
+                    taken[a] = taken.get(a, 0) + t
+                    to_take -= t
+                if to_take == 0:
+                    break
+            # Distribute to own side (Ships allowed for "removed", not taken)
+            i = 0
+            for a, n in taken.items():
+                for _ in range(n):
+                    if own_ids:
+                        recv = state["lords"][own_ids[i % len(own_ids)]]
+                        recv["assets"][a] = recv["assets"].get(a, 0) + 1
+                        i += 1
+            # Remove 2 more (Ships allowed)
+            removed: dict[str, int] = {}
+            assets = list(elord.get("assets", {}).items())
+            to_remove = 2
+            for a, c in assets:
+                if c <= 0:
+                    continue
+                t = min(to_remove, c)
+                elord["assets"][a] = c - t
+                removed[a] = removed.get(a, 0) + t
+                to_remove -= t
+                if to_remove == 0:
+                    break
+            summary["camp_attack"].append({
+                "enemy": eid, "taken": taken, "removed": removed,
+            })
+
+    # S16 Bocca degli Abati: target Guelph Lord; each Cavalieri takes 1 Hit
+    cap = _consume_battle_modifier(state, "bocca_cavalieri_auto_hit")
+    if cap:
+        target_id = cap.get("target_lord_id")
+        if target_id and target_id in state["lords"]:
+            tgt = state["lords"][target_id]
+            cavs = tgt["forces"].get("Cavalieri", 0)
+            from .rng import HarnessRNG
+            rng = HarnessRNG(state["meta"]["rng_seed"],
+                             advance=state["meta"].get("rng_advance", 0))
+            rolls_before = rng.advance_count
+            routed = 0
+            for _ in range(cavs):
+                r = rng.roll(f"bocca_{target_id}_Cavalieri")
+                if r.value not in sd.UNITS["Cavalieri"]["protection"]:
+                    routed += 1
+                    tgt["forces"]["Cavalieri"] -= 1
+                    if tgt["forces"]["Cavalieri"] <= 0:
+                        tgt["forces"].pop("Cavalieri")
+                    tgt.setdefault("routed_units", {})["Cavalieri"] = (
+                        tgt["routed_units"].get("Cavalieri", 0) + 1
+                    )
+            state["meta"]["rng_advance"] = state["meta"].get("rng_advance", 0) + (rng.advance_count - rolls_before)
+            # If any Routed, one transfers to a Ghibelline mat in the Battle
+            if routed > 0:
+                ghib_ids = [a for a in attackers + defenders
+                            if state["lords"].get(a, {}).get("side") == "ghibelline"]
+                if ghib_ids:
+                    recv = state["lords"][ghib_ids[0]]
+                    recv["forces"]["Cavalieri"] = recv["forces"].get("Cavalieri", 0) + 1
+                    # The transferred Cavalieri counts as Unrouted on the receiver
+                    tgt["routed_units"]["Cavalieri"] -= 1
+                    if tgt["routed_units"]["Cavalieri"] <= 0:
+                        tgt["routed_units"].pop("Cavalieri")
+            summary["bocca"] = {"target": target_id, "routed_cavs": routed}
+    return summary
+
+
+def _archery_hits_multiplier(state, defender_side: str) -> int:
+    """If Hills (F6/S6) is pending for defender_side, doubles Archery Hits.
+
+    Returns the multiplier (1 normally, 2 if Hills active for defender)."""
+    if _consume_battle_modifier(
+        state, "hills_double_archery_defending",
+        predicate=lambda m: m.get("side") == defender_side,
+    ):
+        # Re-add (Hills lasts the whole Battle); track via 'consumed_once' flag
+        state.setdefault("battle_modifiers_pending", []).append({
+            "id": "F6/S6", "side": defender_side,
+            "effect": "hills_double_archery_defending", "active_for_battle": True,
+        })
+        return 2
+    # Check if still active
+    if _has_battle_modifier(
+        state, "hills_double_archery_defending",
+        predicate=lambda m: m.get("side") == defender_side and m.get("active_for_battle"),
+    ):
+        return 2
+    return 1
+
+
+def _enemy_horse_skips_round_1(state, defender_side: str, round_n: int) -> bool:
+    """F8/S8 Swamp: enemy Horse don't Strike in R1 if Swamp Defending."""
+    if round_n != 1:
+        return False
+    return _has_battle_modifier(
+        state, "swamp_enemy_horse_no_strike_r1",
+        predicate=lambda m: m.get("side") == defender_side,
+    )
+
+
+def _sudden_clash_target(state, side: str, round_n: int) -> str | None:
+    """F4/S4 Sudden Clash: R1, named Lord's Horse Melee precedes all
+    Archery. Returns the target Lord id, or None."""
+    if round_n != 1:
+        return None
+    pending = state.get("battle_modifiers_pending", [])
+    for m in pending:
+        if (m.get("effect") == "sudden_clash_r1_horse_first_select_target"
+                and m.get("side") == side):
+            return m.get("lord_id")
+    return None
+
+
+def _check_rout_recovery(state, lord_id: str, rng_roll) -> dict | None:
+    """F16 Bloody Red Stream: first Guelph Lord to Rout in Battle pauses;
+    each Routed unit rolls Protection. Recoveries unrout.
+    """
+    cap = _consume_battle_modifier(
+        state, "bloody_red_stream_first_rout",
+        predicate=lambda m: state["lords"].get(lord_id, {}).get("side") == m.get("side"),
+    )
+    if not cap:
+        return None
+    lord = state["lords"][lord_id]
+    recovered = {}
+    routed = dict(lord.get("routed_units", {}))
+    for unit, count in routed.items():
+        if unit == "Villici":
+            continue
+        u = sd.UNITS.get(unit, {})
+        prot = u.get("protection", [])
+        for _ in range(count):
+            r = rng_roll(f"bloody_red_stream_{lord_id}_{unit}")
+            if r.value in prot:
+                lord["routed_units"][unit] -= 1
+                if lord["routed_units"][unit] <= 0:
+                    lord["routed_units"].pop(unit, None)
+                lord["forces"][unit] = lord["forces"].get(unit, 0) + 1
+                recovered[unit] = recovered.get(unit, 0) + 1
+    return {"recovered": recovered}
+
+
+def _clear_battle_modifiers(state) -> None:
+    """End-of-Battle cleanup per 4.4.6: discard all Hold Events used."""
+    state["battle_modifiers_pending"] = [
+        m for m in state.get("battle_modifiers_pending", [])
+        if m.get("persist_beyond_battle")
+    ]
+
+
 # =====================================================================
 # Top-level Battle resolution
 # =====================================================================
@@ -433,6 +655,8 @@ def resolve_battle(state, attacker_ids: list[str], defender_ids: list[str],
     positions, reserve = _initial_array(
         state, attacker_ids, defender_ids, active_id, bdc,
     )
+    # Phase 5: pre-Battle Hold Event modifiers (4.4.1 Events).
+    pre_modifiers = _apply_pre_battle_modifiers(state, attacker_ids, defender_ids)
 
     # RNG helper that delegates back to the harness RNG via dispatch.
     # In testing we'll inject the rolls via state.meta.rng_seed + advance.
@@ -477,9 +701,28 @@ def resolve_battle(state, attacker_ids: list[str], defender_ids: list[str],
 
         # 6-step Strike
         hit_log_round: list = []
+        # Phase 5: F4/S4 Sudden Clash inserts a special Strike before Archery in R1.
+        sc_atk = _sudden_clash_target(state, "attacker", round_n)
+        sc_def = _sudden_clash_target(state, "defender", round_n)
+        if round_n == 1 and (sc_atk or sc_def):
+            # Defender's special Sudden Clash horse melee first, then Attacker's
+            if sc_def:
+                _resolve_step(state, "def_horse_melee", positions, reserve, conceded,
+                              bdc, _rng_roll, hit_log_round, removed_lords, routed_per_lord, round_n)
+                hit_log_round.append({"sudden_clash": sc_def, "side": "defender"})
+            if sc_atk:
+                _resolve_step(state, "atk_horse_melee", positions, reserve, conceded,
+                              bdc, _rng_roll, hit_log_round, removed_lords, routed_per_lord, round_n)
+                hit_log_round.append({"sudden_clash": sc_atk, "side": "attacker"})
         for step in BATTLE_STRIKE_ORDER:
+            # Skip horse_melee if already done by Sudden Clash this round
+            if round_n == 1:
+                if step == "def_horse_melee" and sc_def:
+                    continue
+                if step == "atk_horse_melee" and sc_atk:
+                    continue
             _resolve_step(state, step, positions, reserve, conceded,
-                          bdc, _rng_roll, hit_log_round, removed_lords, routed_per_lord)
+                          bdc, _rng_roll, hit_log_round, removed_lords, routed_per_lord, round_n)
         round_log["hit_log"] = hit_log_round
         round_log["positions"] = _snapshot_positions(positions)
         rounds.append(round_log)
@@ -514,9 +757,12 @@ def resolve_battle(state, attacker_ids: list[str], defender_ids: list[str],
     for lid in attacker_ids + defender_ids:
         state["lords"][lid].setdefault("flags", {})["moved_fought"] = True
 
+    # Phase 5: clear consumed Hold Events per 4.4.6 Aftermath.
+    _clear_battle_modifiers(state)
     return {
         "locale": locale_name,
         "winner": winner,
+        "pre_modifiers": pre_modifiers,
         "loser": loser,
         "conceded": conceded,
         "pursuit_marker": pursuit_marker,

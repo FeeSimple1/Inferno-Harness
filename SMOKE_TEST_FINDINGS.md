@@ -104,7 +104,41 @@ Treachery."
 
 **Fix:** Two-mode implementation (target shift / Treachery add).
 
-## SMOKE-Inferno-022 (post-v1.2 SLOT) — reserved for future findings.
+## SMOKE-Inferno-022 (Phase 5) — Battle/Approach/Besiege hooks
+## de-flag pass.
+
+**Detected (v1.3 Phase 5):** Extending battle.py with in-Round hook
+points to consume `battle_modifiers_pending`, `approach_modifiers_pending`,
+and `besiege_modifiers_pending` queues set by previously-flagged cards.
+
+**Cards de-flagged:**
+  - F4/S4 Sudden Clash — R1 Horse Melee before Archery, Select Targets.
+  - F6/S6 Hills/Feditori — Defending Archery Hits doubled (active for
+    entire Battle).
+  - F8/S8 Swamp — non-Summer Defending, enemy Horse skip R1 Melee.
+  - F12/S12 Camp Attack — R1 pre-Battle Asset transfer + removal.
+  - F16/S16 Bloody Red Stream — first-Rout pause-and-recover.
+  - F1/S1 Ambush — registers approach_modifiers_pending (consumed by
+    approach_response handler when Avoid is declared).
+  - F3/S3 Surprise — registers besiege_modifiers_pending.
+  - S10 A Better Paid Death — encoded.
+  - S13 Gentle Usilia — encoded (immediate Guelph Ransom signal).
+  - S14 Friars — encoded (This Campaign flag).
+
+**Engine hooks added (battle.py):**
+  _apply_pre_battle_modifiers   (R1 Asset transfer, Bocca Cavalieri hit)
+  _archery_hits_multiplier      (Hills 2x)
+  _enemy_horse_skips_round_1    (Swamp)
+  _sudden_clash_target          (R1 Horse Melee before Archery)
+  _check_rout_recovery          (Bloody Red Stream first-Rout pause)
+  _clear_battle_modifiers       (4.4.6 Aftermath cleanup)
+
+**Cards still flagged manual after Phase 5:**
+  Only F7 / S7 (Greek Fire — requires target_lord_id arg to apply),
+  S16 (Bocca degli Abati — requires target_lord_id arg).
+  These are valid 'manual when target unspecified' states, not gaps.
+
+## SMOKE-Inferno-023 (slot) — reserved.
 
 ---
 
