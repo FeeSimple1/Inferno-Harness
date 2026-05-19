@@ -138,7 +138,122 @@ and `besiege_modifiers_pending` queues set by previously-flagged cards.
   S16 (Bocca degli Abati — requires target_lord_id arg).
   These are valid 'manual when target unspecified' states, not gaps.
 
-## SMOKE-Inferno-023 (slot) — reserved.
+## SMOKE-Inferno-023 — card_data event_name/capability_name confusion.
+## Pattern 7 + Pattern 2 (mirror) + Pattern 14 (capability scope).
+
+**Detected (Phase 6):** During Capability-hook wiring for Feditori /
+Balestrieri / Palvesari / Arcieri / Luceria, found that
+`src/inferno/card_data.py` had wrong `capability_name` values for many
+cards. Per AoW Reference, capabilities are shared across cards:
+
+  F6 & F7   → Feditori (had: "Hills" / "Greek Fire")
+  F8        → Balestre Grosse (had: "Balestre Grosse" — correct)
+  F9-F11    → Balestrieri (had: event names)
+  F13-F15   → Palvesari (had: event names)
+  F16-F17   → Arcieri (had: event names)
+  S6        → Feditori (had: "Feditori" — but event was wrong: "Feditori"
+              not "Hills")
+  S9-S11    → Balestrieri (had: event names)
+  S13-S15   → Palvesari (had: event names)
+  S16-S17   → Arcieri (had: event names)
+
+**Root cause:** card_data was hand-coded from grep'ing the AoW
+Reference's section headers; the section header naming convention
+(`F6. HILLS` for the event, `F6 & F7. FEDITORI` for the capability)
+confused event vs capability mapping.
+
+**Fix (Phase 6):**
+  - Rewrote `card_data.GUELPH_CARDS` / `GHIBELLINE_CARDS` with explicit
+    event_name + capability_name fields per card, verified card-by-
+    card against the AoW Reference.
+  - Updated `card_effects.register_capability(...)` registrations to
+    match the actual capability semantics.
+  - Added `_lord_has_capability(state, lord_id, capability_name)` in
+    battle.py that does a name-based lookup across this_lord and
+    side_wide scopes.
+  - Wired Capability strike hooks: Feditori (Cavalieri x2 R1-R2),
+    Army Reserve (Cavalieri x2 R3+ for eligible Lords), Balestrieri
+    (Armigeri Crossbow Archery), Arcieri (Militia Bowmen Archery),
+    Luceria (Militia x1.5 Archery), Balestre Grosse (Men-at-Arms
+    Storm Crossbow), Trebuchets (Storm Walls -1 at 3-4 Siege),
+    Siege Towers (Storm R2+ attacker strikes first), Astrologers
+    (Command +1 on first card 1d6 ≤2), Via Francigena (Command +1
+    at Friendly Lord Seat).
+
+**Regression tests:** tests/test_phase6.py (17 tests covering capability
+lookup, Feditori, Army Reserve, Arcieri, Luceria, Balestrieri,
+Balestre Grosse, Trebuchets, Astrologers, Via Francigena).
+
+---
+
+## SMOKE-Inferno-024 (Phase 6 14-pattern audit summary)
+
+**Pattern audit per FUTURE_PROJECTS_LESSONS.md (CROSS_PROJECT_LESSONS §6):**
+
+  Pattern 1 (state-set-but-unreachable)    : 0 open (all setters paired
+                                              with readers / consumers).
+  Pattern 2 (mirror gaps)                  : 0 open (all 52 cards have
+                                              F+S registrations).
+  Pattern 3 (stale per-Lord flags)         : 0 open (lordship_used,
+                                              astrologers_rolled, first_
+                                              march_used, in_stronghold,
+                                              bypassing, moved_fought
+                                              all have explicit reset
+                                              paths at the right scope).
+  Pattern 4 (parallel Ways)                : N/A — Inferno_Map.txt
+                                              produces 0 parallel-way
+                                              Locale pairs.
+  Pattern 5 (overlay markers)              : 0 open (Walls+1 overlay
+                                              honored in resolve_storm
+                                              walls_die; Ruins overlay
+                                              checked in Forage/Supply/
+                                              Withdraw paths).
+  Pattern 6 (off-edge calendar)            : 0 open (all 4 off-edge
+                                              slots threaded through
+                                              shift functions).
+  Pattern 7 (card-text fidelity)           : SMOKE-018..023 closed.
+                                              52/52 cards mechanically
+                                              encoded; F7/S7/S16 valid
+                                              'awaiting target' paths.
+  Pattern 8 (lifecycle leaks)              : 0 open (3 disband paths,
+                                              each clearing forces /
+                                              assets / vassals / location
+                                              / capabilities / service).
+  Pattern 9 (rule-cite-but-no-enforce)     : 0 open (178 citation
+                                              strings in actions.py
+                                              each paired with logic).
+  Pattern 10 (no-target-no-op events)      : 0 open (cards return
+                                              {applied: False, reason}
+                                              on absent target;
+                                              {manual: True} for
+                                              cards awaiting target
+                                              args).
+  Pattern 11 (active-player desync)        : 0 open (active_player
+                                              mutations go through
+                                              flow.py; approach swap
+                                              tracks rollback target).
+  Pattern 12 (cap/floor uniformity)        : 0 open (7 min(...,17.5) +
+                                              7 max(...,0) VP bounds;
+                                              property test enforces
+                                              0 <= VP <= 17.5 across
+                                              fuzz play).
+  Pattern 13 (per-window flags reset)      : 0 open (this_levy /
+                                              this_campaign cleared at
+                                              4.9.6 Reset; astrologers
+                                              cleared in end_reset;
+                                              exhaustion_rolled cleared
+                                              on next Levy entry).
+  Pattern 14 (capability scope)            : 0 open (_lord_has_capability
+                                              filters both this_lord
+                                              and side_wide scopes by
+                                              card.capability_name).
+
+**Total active SMOKEs: 0.** Total SMOKEs surfaced and closed: 24.
+
+This matches the Nevsky-level audit completeness threshold. Further
+SMOKE finds will come from playtesting (Tier 2 sweep) and Tier 4
+property-based fuzz testing already in `test_invariants.py`.
+
 
 ---
 

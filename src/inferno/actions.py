@@ -902,8 +902,30 @@ def _h_command_reveal(state, side, args, rng) -> dict[str, Any]:
             return _finish_card(state, side, reason="lower_lord_pass", citation="4.2.4")
         # Set up action budget = Command rating
         rating = lord.get("ratings", {}).get("C", 0)
+        # Phase 6: Astrologers (F24/S24 Capability) — first Command card
+        # this Campaign for this Lord: roll 1d6; on 1-2, +1 Command.
+        astrologers_bonus = 0
+        astrologers_roll = None
+        from .battle import _lord_has_capability
+        if (_lord_has_capability(state, lord_id, "Astrologers")
+                and not lord.get("flags", {}).get("astrologers_rolled_this_campaign")):
+            r = rng.roll(f"astrologers_{lord_id}")
+            astrologers_roll = r.value
+            if r.value <= 2:
+                astrologers_bonus = 1
+            lord.setdefault("flags", {})["astrologers_rolled_this_campaign"] = True
+        # Phase 6: Via Francigena (F23 Capability) — Friendly Lord Seat -> Command +1.
+        via_francigena_bonus = 0
+        if _lord_has_capability(state, lord_id, "Via Francigena"):
+            if lord.get("location") in lord.get("seats", []):
+                # Phase 6 simplified Friendly check: own-printed allegiance
+                # or marked with own allegiance markers.
+                loc = state["locales"].get(lord.get("location"), {})
+                if (loc.get("allegiance") == side or
+                        any(m.get("side") == side for m in loc.get("current_allegiance", []))):
+                    via_francigena_bonus = 1
         state["current_lord_id"] = lord_id
-        state["actions_remaining"] = rating
+        state["actions_remaining"] = rating + astrologers_bonus + via_francigena_bonus
         state["card_action_consumed_by_entire_card"] = False
         return {
             "state_changes": {
@@ -2536,6 +2558,7 @@ def _h_end_reset(state, side, args, rng) -> dict[str, Any]:
     for lord in state["lords"].values():
         lord.get("flags", {}).pop("has_lower_lord", None)
         lord.get("flags", {}).pop("lower_lord_of", None)
+        lord.get("flags", {}).pop("astrologers_rolled_this_campaign", None)
     # Discard 'This Campaign' Events
     state.pop("active_events", None)
     # Advance Calendar

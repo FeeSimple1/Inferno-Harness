@@ -317,6 +317,9 @@ def _resolve_step(state, step: str, positions, reserve, conceded: str | None,
         striker_lord = state["lords"][striker_id]
         units = _live_units(striker_lord)
         h = _strike_hits(units, step)
+        # Phase 6: Capability strike modifiers (Feditori, Army Reserve,
+        # Arcieri, Luceria, Balestrieri)
+        h += _capability_strike_modifier(state, striker_id, units, step, round_n, "battle")
         # Flanking? If yes, target is the flank target; else direct opposite.
         opposite_slot = slot
         if positions[target_side][slot] is not None:
@@ -629,6 +632,145 @@ def _clear_battle_modifiers(state) -> None:
     ]
 
 
+
+
+# =====================================================================
+# Phase 6: Per-Capability hooks (Battle / Storm strike modifiers)
+# =====================================================================
+def _lord_has_capability(state, lord_id: str, capability_name: str) -> bool:
+    """True if Lord has the named Capability (via this_lord card or side-wide).
+
+    Capability name matches card.capability_name from card_data, e.g.
+    'Feditori', 'Balestrieri', 'Palvesari', 'Arcieri', 'Luceria',
+    'Army Reserve', 'Trebuchets', 'Siege Towers', 'Astrologers',
+    'Distringitores'.
+    """
+    from . import card_data as cd
+    lord = state.get("lords", {}).get(lord_id) or {}
+    side = lord.get("side")
+    for cid in lord.get("capabilities", []) or []:
+        card = cd.AOW_CARDS_BY_ID.get(cid, {})
+        if card.get("capability_name") == capability_name:
+            return True
+    for c in state.get("capabilities_in_play", []):
+        if c.get("side") != side or c.get("scope") != "side_wide":
+            continue
+        cid = c.get("id")
+        card = cd.AOW_CARDS_BY_ID.get(cid, {})
+        if card.get("capability_name") == capability_name:
+            return True
+    return False
+
+
+# Lord IDs eligible for Army Reserve per Capability text:
+#   F12 Army Reserve: Firenze, Arezzo, Lucca (plus Firenze Comune)
+#   S12 Army Reserve: Siena, Provenzano, Pisa (plus Siena Comune)
+ARMY_RESERVE_ELIGIBLE = {
+    "guelph":     {"firenze", "firenze_comune", "arezzo", "lucca"},
+    "ghibelline": {"siena", "siena_comune", "provenzano", "pisa"},
+}
+
+# Feditori eligible Lords (per S6 Tip: Siena, Provenzano, Pisa, Santa Fiora;
+# F-side Feditori is "Any Guelph").
+FEDITORI_S_ELIGIBLE = {"siena", "siena_comune", "provenzano", "pisa", "santa_fiora"}
+
+
+def _capability_strike_modifier(state, lord_id: str, units: dict[str, int],
+                                 step: str, round_n: int, mode: str = "battle") -> float:
+    """Compute Capability-driven extra Strike Hits for this Lord's units.
+
+    Returns the ADDITIONAL hits to add on top of base _strike_hits.
+
+    Capabilities implemented:
+      Feditori   — up to 4 (Guelph) / 3 (Ghib) Cavalieri Strike x2 in
+                   Battle Melee R1-R2 (extra +1 each).
+      Army Reserve — eligible Lord's Cavalieri Strike x2 in Battle Melee
+                   from R3 on (extra +1 each).
+      Balestrieri — up to 3 Armigeri get x1 Crossbow Archery.
+      Arcieri    — Militia get x1 (Bowman) Archery.
+      Luceria    — up to 3 Militia get x1.5 Archery (replaces Arcieri).
+      Balestre Grosse — Men-at-Arms get x0.5 Crossbow Archery in Storm.
+    """
+    if not lord_id:
+        return 0.0
+    lord = state["lords"].get(lord_id) or {}
+    side = lord.get("side")
+    extra = 0.0
+
+    # === Melee Steps (Battle / Storm) ===
+    if "horse_melee" in step or "all_melee" in step:
+        cavs = units.get("Cavalieri", 0)
+        # Feditori: +1 per Cavalieri (up to cap) in R1-R2 Battle.
+        if mode == "battle" and round_n <= 2 and cavs > 0:
+            if _lord_has_capability(state, lord_id, "Feditori"):
+                cap = 4 if side == "guelph" else 3
+                extra += min(cavs, cap)
+        # Army Reserve: +1 per Cavalieri R3+ Battle.
+        if mode == "battle" and round_n >= 3 and cavs > 0:
+            if (_lord_has_capability(state, lord_id, "Army Reserve")
+                    and lord_id in ARMY_RESERVE_ELIGIBLE.get(side or "", set())):
+                extra += cavs
+
+    # === Archery Steps ===
+    if "archery" in step:
+        # Lord-mat Militia get Archery x1 with Arcieri, x1.5 with Luceria.
+        militia = units.get("Militia", 0)
+        if militia > 0:
+            if _lord_has_capability(state, lord_id, "Luceria"):
+                extra += min(militia, 3) * 1.5
+            elif _lord_has_capability(state, lord_id, "Arcieri"):
+                extra += militia * 1.0
+        # Lord-mat Armigeri get Crossbow Archery x1 (Balestrieri).
+        arms = units.get("Armigieri", 0)
+        if arms > 0 and _lord_has_capability(state, lord_id, "Balestrieri"):
+            extra += min(arms, 3) * 1.0
+        # Storm-only: Men-at-Arms get Crossbow x0.5 (Balestre Grosse).
+        if mode == "storm" and units.get("Men-at-Arms", 0) > 0:
+            if _lord_has_capability(state, lord_id, "Balestre Grosse"):
+                extra += units["Men-at-Arms"] * 0.5
+
+    return extra
+
+
+def _siege_towers_strike_first_in_storm(state, side_label: str, round_n: int,
+                                         positions) -> str | None:
+    """F3/S3 Siege Towers Capability: Lord Attacking in Storm from R2 on
+    Strikes first with Archery and Melee. Returns the lord_id if active,
+    else None."""
+    if round_n < 2 or side_label != "attacker":
+        return None
+    for slot in SLOTS:
+        lid = positions[side_label][slot]
+        if lid and _lord_has_capability(state, lid, "Siege Towers"):
+            return lid
+    return None
+
+
+def _trebuchets_walls_reduction(state, locale_name: str, defenders: list[str],
+                                  attackers: list[str], mode: str) -> int:
+    """F4/S4 Trebuchets Capability: 'This Lord Unrouted at Storm or Sally
+    where 3-4 Siege reduces Enemy Siegeworks or Walls -1.' Returns 1 if
+    Trebuchets is in effect for the appropriate side AND there are 3-4
+    Siege markers, else 0.
+
+    mode: 'storm' (defender Walls reduced) or 'sally' (besieger Siegeworks reduced).
+    """
+    locale = state["locales"].get(locale_name, {})
+    siege_count = sum(s.get("count", 1) for s in locale.get("siege", []))
+    if siege_count < 3 or siege_count > 4:
+        return 0
+    # In Storm: Attacker's Trebuchets reduces defender Walls.
+    # In Sally: Attacker (sallying) Trebuchets reduces defender (besieger) Siegeworks.
+    pool = attackers if mode in ("storm", "sally") else []
+    for lid in pool:
+        if _lord_has_capability(state, lid, "Trebuchets"):
+            lord = state["lords"].get(lid) or {}
+            # Must be Unrouted: at least one unit remaining
+            if sum(lord.get("forces", {}).values()) > 0:
+                return 1
+    return 0
+
+
 # =====================================================================
 # Top-level Battle resolution
 # =====================================================================
@@ -864,6 +1006,13 @@ def resolve_storm(state, attackers: list[str], defenders: list[str],
     storm_walls_minus = sum(c["value"] for c in ce.active_capabilities_for(state, "storm_walls_minus"))
     if storm_walls_minus and walls_die:
         walls_die = walls_die[:-storm_walls_minus] if len(walls_die) > storm_walls_minus else []
+    # Phase 6: Trebuchets — Storm Attacker reduces Defender Walls by 1 if
+    # the attackers control a Lord with Trebuchets and there are 3-4 Sieges.
+    trebuchets_reduction = _trebuchets_walls_reduction(
+        state, locale_name, defenders, attackers, "storm",
+    )
+    if trebuchets_reduction and walls_die:
+        walls_die = walls_die[:-trebuchets_reduction] if len(walls_die) > trebuchets_reduction else []
     if locale.get("walls_plus_one"):
         walls_die = walls_die + [max(walls_die) + 1 if walls_die else 5]
 
@@ -1008,12 +1157,13 @@ def _resolve_storm_step(state, step, positions, reserve, conceded,
             continue
         striker_lord = state["lords"][striker_id]
         units = _live_units(striker_lord)
-        # If defender, add Garrison Strikes (Storm Array has Garrison defending).
         if striking_side == "defender":
             units = dict(units)
             for u, c in state["storm_garrison"][locale_name].items():
                 units[u] = units.get(u, 0) + c
         h = _strike_hits_storm(units, step)
+        # Phase 6: Capability strike modifiers in Storm context
+        h += _capability_strike_modifier(state, striker_id, units, step, 1, "storm")
         # In Storm Array, only Center is used; direct opposite.
         per_target_hits[slot] = per_target_hits.get(slot, 0) + h
     if conceded == striking_side:

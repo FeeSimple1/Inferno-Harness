@@ -56,7 +56,7 @@ GUELPH_CARDS = [
         "id": "F6",
         "side": "guelph",
         "event_name": "Hills",
-        "capability_name": "Hills",
+        "capability_name": "Feditori",
         "is_war": False,
         "event_kind": "hold"
     },
@@ -64,7 +64,7 @@ GUELPH_CARDS = [
         "id": "F7",
         "side": "guelph",
         "event_name": "Greek Fire",
-        "capability_name": "Greek Fire",
+        "capability_name": "Feditori",
         "is_war": False,
         "event_kind": "hold"
     },
@@ -80,7 +80,7 @@ GUELPH_CARDS = [
         "id": "F9",
         "side": "guelph",
         "event_name": "Genova breaks Pisan blockade",
-        "capability_name": "Genova breaks Pisan blockade",
+        "capability_name": "Balestrieri",
         "is_war": False,
         "event_kind": "immediate"
     },
@@ -88,17 +88,17 @@ GUELPH_CARDS = [
         "id": "F10",
         "side": "guelph",
         "event_name": "Closed Gates",
-        "capability_name": "Closed Gates",
+        "capability_name": "Balestrieri",
         "is_war": False,
-        "event_kind": "this_campaign"
+        "event_kind": "immediate"
     },
     {
         "id": "F11",
         "side": "guelph",
         "event_name": "Poggio Bonizio answers Firenze's call",
-        "capability_name": "Poggio Bonizio answers Firenze's call",
+        "capability_name": "Balestrieri",
         "is_war": False,
-        "event_kind": "immediate"
+        "event_kind": "hold"
     },
     {
         "id": "F12",
@@ -112,31 +112,31 @@ GUELPH_CARDS = [
         "id": "F13",
         "side": "guelph",
         "event_name": "No Time for Cowards",
-        "capability_name": "No Time for Cowards",
+        "capability_name": "Palvesari",
         "is_war": False,
-        "event_kind": "hold"
+        "event_kind": "immediate"
     },
     {
         "id": "F14",
         "side": "guelph",
         "event_name": "Provenzano sent as ambassador",
-        "capability_name": "Provenzano sent as ambassador",
+        "capability_name": "Palvesari",
         "is_war": False,
-        "event_kind": "this_campaign"
+        "event_kind": "immediate"
     },
     {
         "id": "F15",
         "side": "guelph",
         "event_name": "Casole",
-        "capability_name": "Casole",
+        "capability_name": "Palvesari",
         "is_war": False,
-        "event_kind": "immediate"
+        "event_kind": "hold"
     },
     {
         "id": "F16",
         "side": "guelph",
         "event_name": "A Bloody Red Stream",
-        "capability_name": "A Bloody Red Stream",
+        "capability_name": "Arcieri",
         "is_war": False,
         "event_kind": "hold"
     },
@@ -144,7 +144,7 @@ GUELPH_CARDS = [
         "id": "F17",
         "side": "guelph",
         "event_name": "Foreign Help",
-        "capability_name": "Foreign Help",
+        "capability_name": "Arcieri",
         "is_war": False,
         "event_kind": "immediate"
     },
@@ -154,7 +154,7 @@ GUELPH_CARDS = [
         "event_name": "Grosseto",
         "capability_name": "La Cavallata",
         "is_war": False,
-        "event_kind": "immediate"
+        "event_kind": "hold"
     },
     {
         "id": "F19",
@@ -162,7 +162,7 @@ GUELPH_CARDS = [
         "event_name": "Volterra",
         "capability_name": "Gualdana",
         "is_war": False,
-        "event_kind": "immediate"
+        "event_kind": "hold"
     },
     {
         "id": "F20",
@@ -170,7 +170,7 @@ GUELPH_CARDS = [
         "event_name": "Heat & Frost",
         "capability_name": "Masnadieri",
         "is_war": False,
-        "event_kind": "this_levy"
+        "event_kind": "hold"
     },
     {
         "id": "F21",
@@ -266,7 +266,7 @@ GHIBELLINE_CARDS = [
     {
         "id": "S6",
         "side": "ghibelline",
-        "event_name": "Feditori",
+        "event_name": "Hills",
         "capability_name": "Feditori",
         "is_war": False,
         "event_kind": "hold"
@@ -291,7 +291,7 @@ GHIBELLINE_CARDS = [
         "id": "S9",
         "side": "ghibelline",
         "event_name": "Pope at Bay flees to Viterbo",
-        "capability_name": "Pope at Bay flees to Viterbo",
+        "capability_name": "Balestrieri",
         "is_war": False,
         "event_kind": "immediate"
     },
@@ -299,7 +299,7 @@ GHIBELLINE_CARDS = [
         "id": "S10",
         "side": "ghibelline",
         "event_name": "A Better Paid Death",
-        "capability_name": "A Better Paid Death",
+        "capability_name": "Balestrieri",
         "is_war": False,
         "event_kind": "immediate"
     },
@@ -307,7 +307,7 @@ GHIBELLINE_CARDS = [
         "id": "S11",
         "side": "ghibelline",
         "event_name": "Volterra",
-        "capability_name": "Volterra",
+        "capability_name": "Balestrieri",
         "is_war": False,
         "event_kind": "immediate"
     },
@@ -323,15 +323,15 @@ GHIBELLINE_CARDS = [
         "id": "S13",
         "side": "ghibelline",
         "event_name": "Gentle Usilia ransoms prisoners",
-        "capability_name": "Gentle Usilia",
+        "capability_name": "Palvesari",
         "is_war": False,
-        "event_kind": "immediate"
+        "event_kind": "hold"
     },
     {
         "id": "S14",
         "side": "ghibelline",
         "event_name": "Friars sent to deceive Florentines",
-        "capability_name": "Friars",
+        "capability_name": "Palvesari",
         "is_war": False,
         "event_kind": "hold"
     },
@@ -339,7 +339,7 @@ GHIBELLINE_CARDS = [
         "id": "S15",
         "side": "ghibelline",
         "event_name": "War Loans",
-        "capability_name": "War Loans",
+        "capability_name": "Palvesari",
         "is_war": False,
         "event_kind": "immediate"
     },
@@ -347,7 +347,7 @@ GHIBELLINE_CARDS = [
         "id": "S16",
         "side": "ghibelline",
         "event_name": "Bocca degli Abati",
-        "capability_name": "Bocca degli Abati",
+        "capability_name": "Arcieri",
         "is_war": False,
         "event_kind": "hold"
     },
@@ -355,9 +355,9 @@ GHIBELLINE_CARDS = [
         "id": "S17",
         "side": "ghibelline",
         "event_name": "Ghibelline Refugees",
-        "capability_name": "Ghibelline Refugees",
+        "capability_name": "Arcieri",
         "is_war": False,
-        "event_kind": "immediate"
+        "event_kind": "hold"
     },
     {
         "id": "S18",
@@ -365,7 +365,7 @@ GHIBELLINE_CARDS = [
         "event_name": "Cortona",
         "capability_name": "La Cavallata",
         "is_war": False,
-        "event_kind": "immediate"
+        "event_kind": "hold"
     },
     {
         "id": "S19",
@@ -373,7 +373,7 @@ GHIBELLINE_CARDS = [
         "event_name": "Brigands",
         "capability_name": "Gualdana",
         "is_war": False,
-        "event_kind": "immediate"
+        "event_kind": "hold"
     },
     {
         "id": "S20",
@@ -381,7 +381,7 @@ GHIBELLINE_CARDS = [
         "event_name": "Heat & Frost",
         "capability_name": "Masnadieri",
         "is_war": False,
-        "event_kind": "this_levy"
+        "event_kind": "hold"
     },
     {
         "id": "S21",
@@ -389,7 +389,7 @@ GHIBELLINE_CARDS = [
         "event_name": "Constituto",
         "capability_name": "Sovrintendente",
         "is_war": False,
-        "event_kind": "this_campaign"
+        "event_kind": "hold"
     },
     {
         "id": "S22",
@@ -397,7 +397,7 @@ GHIBELLINE_CARDS = [
         "event_name": "Closed Gates",
         "capability_name": "Manfredi",
         "is_war": False,
-        "event_kind": "this_campaign"
+        "event_kind": "immediate"
     },
     {
         "id": "S23",
@@ -405,7 +405,7 @@ GHIBELLINE_CARDS = [
         "event_name": "Economic Sanctions",
         "capability_name": "Taglia",
         "is_war": False,
-        "event_kind": "immediate"
+        "event_kind": "this_campaign"
     },
     {
         "id": "S24",
