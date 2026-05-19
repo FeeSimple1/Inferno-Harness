@@ -248,7 +248,43 @@ Balestre Grosse, Trebuchets, Astrologers, Via Francigena).
                                               and side_wide scopes by
                                               card.capability_name).
 
-**Total active SMOKEs: 0.** Total SMOKEs surfaced and closed: 26.
+## SMOKE-Inferno-027 to 040 (v1.6 mechanics completion)
+
+  - 027 Sail to enemy Stronghold places Siege (4.7.3); Ship transport
+    validation (Horse + Provender + 2*Loot).
+  - 028 Newly Mustered Lords cannot take Levy actions this segment
+    (3.4.1). Enforced in both _enum_muster and _consume_lordship.
+  - 029 S23 Economic Sanctions blocks Guelph Tax this Campaign.
+  - 030 F5/S5 Road Works: treat Track as Road (incl. 0-cost first-
+    March bonus), move Laden as Unladen for the side's Lords.
+  - 031 Bribe Path-B (4.7.6): target an Unmustered Vassal whose
+    Seat is at/adjacent to the Active Lord. Vassals of removed Lords
+    count as Unmustered. Forces sourced from static_data; transferred
+    onto Active Lord's mat as Turncoat.
+  - 032 Hidden Mats option (1.5.2): state.meta.hidden_mats flag
+    plumbed through load_scenario; LLM-side redaction already
+    supported via hide_for_side.
+  - 033 Relief Sally (4.4.1): on Approach with own-side Besieged Lords
+    at the same Locale, Besieged join the attack as relief_sallying.
+    On loss, Sallying Lords Withdraw into Stronghold and Siege markers
+    reduce to 1.
+  - 034 Advanced Vassal Service (3.4.2): state.meta.advanced_vassal_
+    service opt-in flag. Per-Vassal service_box tracked. Disband path
+    handles Vassal-Beyond-Service by removing Vassal from mat and
+    returning Forces to pool. Turncoats immune.
+  - 035 Scenario A 'Sudden Campaign': first Levy AoW = 1 Capability
+    + 1 Event (instead of 2 of either kind).
+  - 036 Scenario B 'Reprisal War': Ghibellines pre-assign S18, S19,
+    S20 as Capabilities before their first Levy AoW draw.
+  - 037 Scenario B: skip Grow on Autumn 1259 (Turn 5).
+  - 038 Scenario A 'Preamble' / E 'Exhaustion': no CtA at all.
+    Scenario C 'Maremma War': Ghib-only CtA in first Levy.
+  - 039 Scenario C: Ghibelline Lords cannot cross the dashed line
+    until Guelphs place a Siege or Ravage marker.
+  - 040 Scenario C: Grosseto with 2+ Siege markers and no Besieged
+    Lord inside Surrenders at once.
+
+**Total active SMOKEs: 0.** Total SMOKEs surfaced and closed: 40.
 
 ## SMOKE-Inferno-025 — AoW deck never reshuffles at start of each Levy
 ## Pattern 3 (Stale per-side state, wrong scope).

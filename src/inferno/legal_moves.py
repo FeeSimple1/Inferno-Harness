@@ -164,10 +164,14 @@ def _enum_muster(state, side) -> list[dict[str, Any]]:
     levy_box = state["calendar"]["levy_box"]
 
     for lid, lord in own_mustered.items():
+        # SMOKE-Inferno-028: newly-Mustered Lords cannot act this segment (3.4.1).
+        if lord.get("flags", {}).get("just_mustered_this_segment"):
+            continue
         # Lordship gate (3.4): skip Lords who have used all their Lordship.
         rating = lord.get("ratings", {}).get("L", 0)
         used = lord.get("flags", {}).get("lordship_used", 0)
-        if used >= rating:
+        bonus = lord.get("flags", {}).get("lordship_bonus_pending", 0)
+        if used >= rating + bonus:
             continue
         for tlid, tlord in own_on_calendar.items():
             if (tlord.get("calendar_box") or 0) <= levy_box:

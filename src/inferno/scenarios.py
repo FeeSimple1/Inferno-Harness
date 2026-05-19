@@ -62,11 +62,13 @@ def _scenario_filename(scenario_id: str) -> str:
 # =====================================================================
 # Loader
 # =====================================================================
-def load_scenario(scenario_id: str, seed: int) -> State:
+def load_scenario(scenario_id: str, seed: int, hidden_mats: bool = False, advanced_vassal_service: bool = False) -> State:
     """Build a fully-initialized State from the given scenario id and RNG seed."""
     data = load_scenario_data(scenario_id)
     state: State = {
-        "meta": _init_meta(scenario_id, seed, data),
+        "meta": {**_init_meta(scenario_id, seed, data),
+                 "hidden_mats": hidden_mats,
+                 "advanced_vassal_service": advanced_vassal_service},
         "calendar": _init_calendar(data),
         "lords": _init_lords(data),
         "locales": _init_locales(data),
@@ -226,10 +228,10 @@ def _init_vassals_for(lord_data: dict[str, Any]) -> list[VassalState]:
             special=v.get("special", False),
             muster_die=v.get("muster_die"),
             vp_if_captured=v.get("vp_if_captured"),
-            # Default: non-Special Vassals are on the mat, Ready (3.4.1).
-            # Special Vassals (Carroccio/Sestieri/Terzi) Muster only via CtA.
             on_mat=not v.get("special", False),
             ready=not v.get("special", False),
+            # Advanced Vassal Service marker box (3.4.2). Initially None; set to
+            # Lord-Service+SR by the loader when advanced_vassal_service is on.
             service_box=None,
         )
         vassals_out.append(vassal)

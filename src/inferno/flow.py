@@ -62,10 +62,11 @@ def advance_to_next_side_or_step(state: dict[str, Any]) -> None:
         new_step = LEVY_STEPS[idx + 1]
         state["meta"]["levy_step"] = new_step
         state["meta"]["active_player"] = SIDE_ORDER[0]
-        # Reset per-Lord lordship_used when entering Muster (3.4)
+        # Reset per-Lord lordship_used + just_mustered_this_segment on entry to 3.4
         if new_step == "3.4":
             for lord in state["lords"].values():
                 lord.get("flags", {}).pop("lordship_used", None)
+                lord.get("flags", {}).pop("just_mustered_this_segment", None)
     else:
         # End of Levy: enter Campaign at the capability-discard step.
         state["meta"]["phase"] = "campaign"

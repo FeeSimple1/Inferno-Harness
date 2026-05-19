@@ -32,7 +32,7 @@ def _to_command_phase(scenario="A", seed=1):
 # =====================================================================
 class TestFullCtA:
     def test_cta_declare_requires_trigger(self):
-        s = load_scenario("A", seed=1)
+        s = load_scenario("B", seed=1)
         # Drive to 3.5 without any trigger
         for name, side in [
             ("levy_aow_draw","guelph"),("levy_aow_draw","ghibelline"),
@@ -46,7 +46,7 @@ class TestFullCtA:
         assert exc.value.code == "CTA_NOT_ELIGIBLE"
 
     def test_cta_declare_via_war_event(self):
-        s = load_scenario("A", seed=1)
+        s = load_scenario("B", seed=1)
         for name, side in [
             ("levy_aow_draw","guelph"),("levy_aow_draw","ghibelline"),
             ("levy_pay_done","guelph"),("levy_pay_done","ghibelline"),
@@ -61,7 +61,7 @@ class TestFullCtA:
         assert r["state_changes"]["trigger"] == "war_event"
 
     def test_cta_declare_via_vp_lag(self):
-        s = load_scenario("A", seed=1)
+        s = load_scenario("B", seed=1)
         for name, side in [
             ("levy_aow_draw","guelph"),("levy_aow_draw","ghibelline"),
             ("levy_pay_done","guelph"),("levy_pay_done","ghibelline"),
@@ -75,7 +75,7 @@ class TestFullCtA:
 
     def test_cta_full_walkthrough_skip_all(self):
         """Both sides declare nothing; CtA completes via skips."""
-        s = load_scenario("A", seed=1)
+        s = load_scenario("B", seed=1)
         for name, side in [
             ("levy_aow_draw","guelph"),("levy_aow_draw","ghibelline"),
             ("levy_pay_done","guelph"),("levy_pay_done","ghibelline"),

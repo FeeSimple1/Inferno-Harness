@@ -123,28 +123,46 @@ def _h_levy_aow_draw(state, side: str, args, rng) -> dict[str, Any]:
     drawn = []
     for _ in range(2):
         idx = rng.roll("aow_draw_index").value
-        # Map d6 to a deck index via uniform pick (use a fresh roll if out of range).
-        # Simpler: use a separate roll method. But our HarnessRNG only has roll().
-        # Use modulo (uniform enough for our purposes; deterministic from seed).
         idx = (idx - 1) % len(deck)
         drawn.append(deck.pop(idx))
 
     is_first = is_first_levy(state)
+    # SMOKE-Inferno-035: Scenario A 'Sudden Campaign' — first Levy AoW
+    # is 1 Capability + 1 Event (rather than 2 of either).
+    sudden_campaign = (state["meta"]["scenario"] == "A" and is_first)
+    # SMOKE-Inferno-036: Scenario B 'Reprisal War' — first Levy, Ghib
+    # pre-assigns S18, S19, S20 as Capabilities (then draws 2 more normally).
+    if (state["meta"]["scenario"] == "B" and is_first
+            and side == "ghibelline"
+            and not state["meta"].get("reprisal_war_assigned")):
+        deck_g = state["decks"]["ghibelline"]["aow_deck"]
+        for forced_id in ("S18", "S19", "S20"):
+            if forced_id in deck_g:
+                deck_g.remove(forced_id)
+                card = cd.AOW_CARDS_BY_ID[forced_id]
+                state.setdefault("capabilities_in_play", []).append({
+                    "id": forced_id, "name": card["capability_name"],
+                    "side": "ghibelline", "scope": "side_wide",
+                })
+        state["meta"]["reprisal_war_assigned"] = True
     capabilities_in_play = state.setdefault("capabilities_in_play", [])
     held = state["decks"][side]["aow_held"]
     notes = []
-    for cid in drawn:
+    for i, cid in enumerate(drawn):
         card = cd.AOW_CARDS_BY_ID.get(cid)
         if not card:
             raise IllegalAction("UNKNOWN_CARD", f"Card {cid} not in card_data.", "3.1")
-        if is_first:
-            # 3.1.2: deploy as Capability. Default to side_wide scope
-            # (Phase 4 will encode scope per card; for now flag as unknown).
+        # Sudden Campaign override: i=0 deploys as Capability; i=1 as Event.
+        treat_as_capability = (
+            is_first if not sudden_campaign else (i == 0)
+        )
+        if treat_as_capability:
+            # 3.1.2: deploy as Capability. Default to side_wide scope.
             capabilities_in_play.append({
                 "id": cid,
                 "name": card["capability_name"],
                 "side": side,
-                "scope": "side_wide",  # placeholder; Phase 4 corrects per card
+                "scope": "side_wide",
             })
             notes.append(f"{cid} -> Capability ({card['capability_name']})")
         else:
@@ -324,6 +342,8 @@ def _h_levy_disband(state, side, args, rng) -> dict[str, Any]:
     enemy_side = "ghibelline" if side == "guelph" else "guelph"
 
     off_left_set = set(state["calendar"].get("off_left_service") or [])
+    advanced_vs = state["meta"].get("advanced_vassal_service", False)
+    vassal_disbands = []
     for lid, lord in state["lords"].items():
         if lord["side"] != side:
             continue
@@ -331,7 +351,6 @@ def _h_levy_disband(state, side, args, rng) -> dict[str, Any]:
             continue
         svc = lord.get("service_box")
         if svc is None:
-            # Off-left service = Beyond Service Limit per 3.3.1
             if lid in off_left_set:
                 disbanded_beyond.append(lid)
                 if lid in state["calendar"]["off_left_service"]:
@@ -341,6 +360,14 @@ def _h_levy_disband(state, side, args, rng) -> dict[str, Any]:
             disbanded_beyond.append(lid)
         elif svc == levy_box:
             disbanded_at.append(lid)
+        # SMOKE-Inferno-034: Advanced Vassal Service — per-Vassal Disband.
+        if advanced_vs:
+            for v in lord.get("vassals", []):
+                if v.get("turncoat"):
+                    continue  # Turncoats immune (4.7.6 Tip)
+                vsvc = v.get("service_box")
+                if vsvc is not None and vsvc <= levy_box and v.get("on_mat"):
+                    vassal_disbands.append((lid, v["name"]))
 
     revolt_rolls = []
     treachery_added = []
@@ -364,12 +391,27 @@ def _h_levy_disband(state, side, args, rng) -> dict[str, Any]:
 
     for lid in disbanded_at:
         _disband_at_service_limit(state, lid, levy_box)
+    # Vassal Disbands (advanced vassal service)
+    for lid, vname in vassal_disbands:
+        lord = state["lords"][lid]
+        # Remove vassal from mat, return Forces to pool, mark not on_mat.
+        for v in lord["vassals"]:
+            if v["name"] == vname:
+                for u, c in v.get("forces", {}).items():
+                    lord["forces"][u] = max(0, lord["forces"].get(u, 0) - c)
+                    if lord["forces"][u] == 0:
+                        lord["forces"].pop(u, None)
+                v["on_mat"] = False
+                v["ready"] = False
+                v["service_box"] = None
+                break
 
     return {
         "state_changes": {
             "beyond_service_limit_removed": disbanded_beyond,
             "at_service_limit_disbanded": disbanded_at,
             "treachery_added": treachery_added,
+            "vassal_disbands": vassal_disbands,
         },
         "rolls": revolt_rolls,
         "rule_citation": "3.3.1 / 3.3.2 (Errata 10 Apr 2023)",
@@ -560,6 +602,8 @@ def _h_levy_muster_lord(state, side, args, rng) -> dict[str, Any]:
         loc = state["locales"].get(target_seat)
         if loc and tlid not in loc["lords_present"]:
             loc["lords_present"].append(tlid)
+        # SMOKE-Inferno-028: mark newly Mustered for 3.4.1 same-segment block.
+        target_lord.setdefault("flags", {})["just_mustered_this_segment"] = True
     return result
 
 
@@ -979,9 +1023,25 @@ def _h_cmd_end_card(state, side, args, rng) -> dict[str, Any]:
 # =====================================================================
 def _h_cmd_tax(state, side, args, rng) -> dict[str, Any]:
     """4.7.4 TAX (entire-card): Unbesieged Lord at one of his Seats gains
-    +1 Coin (Podestà: +2). Uses the ENTIRE Command card."""
+    +1 Coin (Podestà: +2). Uses the ENTIRE Command card.
+
+    SMOKE-Inferno-029: S23 Taglia ('This Campaign no Guelph Tax') blocks
+    Guelph Tax actions per the card text.
+    """
     lid = _require_active_lord(state, side, args.get("lord_id"))
     lord = state["lords"][lid]
+    # S23 Taglia This Campaign block
+    if side == "guelph":
+        # S23 Economic Sanctions Event: 'This Campaign, no Guelph Tax.'
+        # The Event is what triggers the Tax block (the Capability 'Taglia' is
+        # a separate effect — Ghibelline mercenary army).
+        for e in (state.get("active_events", {}).get("this_campaign", []) or []):
+            if e.get("id") == "S23":
+                raise IllegalAction(
+                    "TAX_BLOCKED_S23",
+                    "S23 Economic Sanctions in play: no Guelph Tax this Campaign.",
+                    "S23 / 4.7.4",
+                )
     loc = state["locales"].get(lord.get("location") or "")
     if not loc:
         raise IllegalAction("NO_LOCATION", f"{lid} has no map Locale.", "4.7.4")
@@ -1252,13 +1312,14 @@ def _find_supply_route_distance(state, src: str, target: str, side: str) -> int 
 
 
 def _h_cmd_sail(state, side, args, rng) -> dict[str, Any]:
-    """4.7.3 SAIL — Pisa Podestà only, entire-card, any Season except Winter.
+    """4.7.3 SAIL — Pisa Podestà only, entire-card, non-Winter, Port-to-Port.
 
-    Phase 3a notes:
-      - Movement validation (Ship count vs Forces/Provender/Loot) deferred
-        to Phase 3b/3c (depends on March's transport accounting).
-      - Sailing to an Enemy Stronghold places a Siege marker (4.7.3) —
-        Siege subsystem is Phase 3c. Phase 3a rejects sail-to-Enemy.
+    v1.6 full implementation:
+      - Validates Ship transport: 1 Ship per Horse unit moving, 1 per
+        Provender, 2 per Loot. May NOT Approach Enemy Lord (cannot
+        start Battle by Sail). To Sail to an Unbesieged Enemy Stronghold,
+        places a Siege marker (Besiege).
+      - May NOT Sail to a Port with an Unbesieged Enemy Lord.
     """
     lid = _require_active_lord(state, side, args.get("lord_id"))
     lord = state["lords"][lid]
@@ -1279,12 +1340,30 @@ def _h_cmd_sail(state, side, args, rng) -> dict[str, Any]:
         raise IllegalAction("UNKNOWN_DEST", f"Destination {dest_name!r} not found.", "4.7.3")
     if not dest.get("port"):
         raise IllegalAction("DEST_NOT_PORT", f"{dest_name} is not a Port.", "4.7.3")
-    # Phase 3a: reject Sail to an Enemy Stronghold (Siege subsystem is Phase 3c).
-    if not _is_friendly_locale(state, dest, side):
+    # Cannot Sail to Approach Enemy Lord (no Battle via Sail).
+    enemy = "ghibelline" if side == "guelph" else "guelph"
+    for oid in dest.get("lords_present", []):
+        olord = state["lords"][oid]
+        if (olord["side"] == enemy and olord["status"] == "mustered"
+                and not olord.get("flags", {}).get("in_stronghold")):
+            raise IllegalAction(
+                "SAIL_INTO_ENEMY_LORD",
+                f"May NOT Sail into Locale with Unbesieged Enemy Lord {oid}.",
+                "4.7.3",
+            )
+    # Ship transport validation per 4.7.3.
+    ships = lord["assets"].get("Ship", 0)
+    horse_units = sum(c for u, c in lord.get("forces", {}).items()
+                      if sd.UNITS.get(u, {}).get("cat") == "horse")
+    prov = lord["assets"].get("Provender", 0)
+    loot = lord["assets"].get("Loot", 0)
+    ships_needed = horse_units + prov + 2 * loot
+    if ships_needed > ships:
         raise IllegalAction(
-            "SAIL_TO_ENEMY_PHASE_3C",
-            f"Sail to Enemy Stronghold places a Siege marker (4.7.3); Siege is Phase 3c. "
-            f"Sail to a Friendly or already-Bypassed Enemy Port until then.",
+            "INSUFFICIENT_SHIPS",
+            f"Sail needs {horse_units} (Horse) + {prov} (Provender) + 2x{loot} (Loot) = "
+            f"{ships_needed} Ships; {lid} has {ships}. Per 1.7.2 Greed, must discard "
+            f"excess before Sailing.",
             "4.7.3",
         )
     # Move
@@ -1293,11 +1372,23 @@ def _h_cmd_sail(state, side, args, rng) -> dict[str, Any]:
     lord["location"] = dest_name
     dest.setdefault("lords_present", []).append(lid)
     lord["flags"]["moved_fought"] = True
-    # Sail uses entire card.
+    # SMOKE-Inferno-027: If destination is an unbesieged enemy Stronghold,
+    # place a Siege marker (Besiege) per 4.7.3.
+    besieged_via_sail = False
+    if (not _is_friendly_locale(state, dest, side)
+            and dest["type"] != "outpost"
+            and not dest.get("ruins")
+            and not dest.get("siege")):
+        dest.setdefault("siege", []).append({
+            "side": side, "color": "gold" if side == "guelph" else "purple", "count": 1,
+        })
+        besieged_via_sail = True
     state["actions_remaining"] = 0
     state["card_action_consumed_by_entire_card"] = True
-    return _finish_card_with({"sailed_from": src_name, "to": dest_name}, state, side,
-                              reason="sail_entire_card", citation="4.7.3")
+    return _finish_card_with({
+        "sailed_from": src_name, "to": dest_name,
+        "ships_used": ships_needed, "besieged_via_sail": besieged_via_sail,
+    }, state, side, reason="sail_entire_card", citation="4.7.3")
 
 
 def _h_cmd_pass(state, side, args, rng) -> dict[str, Any]:
@@ -1525,6 +1616,29 @@ def _h_cmd_march(state, side, args, rng) -> dict[str, Any]:
     if cur_loc_name is None:
         raise IllegalAction("NO_LOCATION", f"{lid} has no map Locale.", "4.3")
 
+    # SMOKE-Inferno-039: Scenario C 'Maremma War' — Ghibelline Lords
+    # may not cross the dashed line until Guelphs place a Siege or Ravage marker.
+    if (state["meta"]["scenario"] == "C" and side == "ghibelline"
+            and not state["meta"].get("guelph_aggression_seen")):
+        src_region = sd.LOCALES.get(cur_loc_name, {}).get("region")
+        dest_region = sd.LOCALES.get(dest_name, {}).get("region")
+        if src_region and dest_region and src_region != dest_region:
+            # Crossing the dashed line. Check if Guelphs have placed any
+            # Siege or Ravage marker.
+            any_guelph_aggression = any(
+                any(s.get("side") == "guelph" for s in (loc.get("siege") or []))
+                or loc.get("ravaged") == "gold"
+                for loc in state["locales"].values()
+            )
+            if any_guelph_aggression:
+                state["meta"]["guelph_aggression_seen"] = True
+            else:
+                raise IllegalAction(
+                    "MAREMMA_LINE_CROSS",
+                    "Scenario C: Ghibelline Lords may not cross the dashed "
+                    "line until Guelphs place a Siege or Ravage marker.",
+                    "Scenario C / 1.3.1",
+                )
     # Phase v1.5: resolve Group March participants (4.3.1) — include
     # explicit with_lords + auto-pair Lieutenant/Lower Lord.
     group = [lid]
@@ -1578,13 +1692,21 @@ def _h_cmd_march(state, side, args, rng) -> dict[str, Any]:
             )
         way_type = ways_to_dest[0]
 
+    # SMOKE-Inferno-030: F5/S5 Road Works This Campaign — treat Track as
+    # Road AND move Laden as Unladen for the Lord's side.
+    road_works_active = any(
+        e.get("id") in ("F5", "S5") and e.get("side") == side
+        for e in (state.get("active_events", {}).get("this_campaign", []) or [])
+    )
     # 4.3.2 Laden status (Group March: sum across the group, per
     # 'SHARING: Lords moving as a group share Carts').
     carts = sum(state["lords"][m]["assets"].get("Cart", 0) for m in group)
     prov  = sum(state["lords"][m]["assets"].get("Provender", 0) for m in group)
     loot  = sum(state["lords"][m]["assets"].get("Loot", 0) for m in group)
     laden = False
-    if loot > 0:
+    if road_works_active:
+        laden = False  # Road Works: Laden treated as Unladen
+    elif loot > 0:
         laden = True
     elif way_type == "track":
         laden = prov > carts
@@ -1601,9 +1723,10 @@ def _h_cmd_march(state, side, args, rng) -> dict[str, Any]:
     # Laden = 2 actions.
     flags = lord.setdefault("flags", {})
     first_march = not flags.get("first_march_used_this_card", False)
+    effective_way = "road" if (road_works_active and way_type == "track") else way_type
     if laden:
         cost = 2
-    elif first_march and way_type == "road":
+    elif first_march and effective_way == "road":
         cost = 0
     else:
         cost = 1
@@ -1814,9 +1937,38 @@ def _finalize_approach(state, locale_name, approaching_lord, defender_side) -> d
             "rule_citation": "4.3.4",
         }
 
+    # SMOKE-Inferno-033: Relief Sally per 4.4.1 — if attacking side has
+    # Lord(s) Besieged inside at this Locale, those Besieged Lords join
+    # the attack for NO added Command actions.
+    relief_sallying = [
+        oid for oid in loc.get("lords_present", [])
+        if state["lords"][oid]["side"] == attacker_side
+        and state["lords"][oid].get("flags", {}).get("in_stronghold")
+        and state["lords"][oid]["status"] == "mustered"
+    ]
     # Run Battle
     from .battle import resolve_battle
-    attackers = [approaching_lord]  # Phase 3b: single-Lord march
+    # Group March may have brought multiple Attackers; include them all.
+    attackers = []
+    approaching_lord_obj = state["lords"][approaching_lord]
+    approaching_loc = approaching_lord_obj["location"]
+    for oid in loc.get("lords_present", []):
+        olord = state["lords"][oid]
+        if (olord["side"] == attacker_side
+                and olord["status"] == "mustered"
+                and not olord.get("flags", {}).get("in_stronghold")
+                and olord["location"] == locale_name):
+            # Was the Lord part of the marching group? Phase v1.5 puts the
+            # whole group at locale_name on march completion, so they all
+            # count as attackers here.
+            attackers.append(oid)
+    if approaching_lord not in attackers:
+        attackers.insert(0, approaching_lord)
+    # Add Relief-Sallying Lords (mark them so Battle can apply Sally semantics).
+    for rs in relief_sallying:
+        if rs not in attackers:
+            attackers.append(rs)
+            state["lords"][rs].setdefault("flags", {})["relief_sallying"] = True
     defenders = standers
     result = resolve_battle(
         state, attackers, defenders, active_id=approaching_lord,
@@ -1956,7 +2108,11 @@ def _h_besiege_or_bypass(state, side, args, rng) -> dict[str, Any]:
 def _h_cmd_siege(state, side, args, rng) -> dict[str, Any]:
     """4.5.1 SIEGE (entire card). Roll Surrender (if no Besieged Lord
     inside), else add Siegeworks (1 Siege marker if side has Lords ≥
-    Stronghold Size; max 4)."""
+    Stronghold Size; max 4).
+
+    SMOKE-Inferno-040: Scenario C 'Maremma War' — Grosseto with 2 Siege
+    markers and no Besieged Lord inside Surrenders AT ONCE (no roll).
+    """
     lid = _require_active_lord(state, side, args.get("lord_id"))
     lord = state["lords"][lid]
     locale_name = lord.get("location")
@@ -1971,9 +2127,19 @@ def _h_cmd_siege(state, side, args, rng) -> dict[str, Any]:
               and state["lords"][oid]["side"] == enemy_side]
     siege_count = sum(s.get("count", 1) for s in loc["siege"])
     ravage_bonus = 1 if loc.get("ravaged") else 0
+    # SMOKE-Inferno-040: Scenario C Grosseto auto-Surrender at 2+ markers.
+    auto_surrender = (
+        state["meta"]["scenario"] == "C"
+        and locale_name == "Grosseto"
+        and siege_count >= 2
+        and not inside
+    )
     surrender = None
     rolls = []
-    if not inside:
+    if auto_surrender:
+        surrender = True
+        _apply_surrender(state, locale_name, side, rng, rolls)
+    if not inside and not auto_surrender:
         # Roll Surrender dice
         size = sd.STRONGHOLDS[loc["type"]]["size"]
         threshold = siege_count + ravage_bonus
@@ -2250,56 +2416,148 @@ def _h_cmd_treachery_revolt(state, side, args, rng) -> dict[str, Any]:
 def _h_cmd_treachery_bribe(state, side, args, rng) -> dict[str, Any]:
     """4.7.6 Treachery-Bribe. Roll 1d6 > Vassal's Service Rating = success.
 
-    Phase 3c implementation: Mustered targets only (Unmustered Vassal
-    Seat path deferred to a follow-up since it requires Vassal-Seat
-    lookup against removed Lords).
+    v1.6 full implementation:
+      Path-A (Mustered): target an Enemy Vassal at the same/adjacent
+        Locale, parent Lord Mustered. (Existing.)
+      Path-B (Unmustered, SMOKE-Inferno-031): target an Unmustered Vassal
+        whose Vassal Seat is at the same/adjacent Locale. Parent Lord may
+        be removed (4.4.5) or not yet on the map. Vassals of REMOVED
+        Lords count as Unmustered per Tip.
+
+    Hidden Mats interaction (SMOKE-Inferno-032): if state.meta.hidden_mats
+    is set, an invalid Path-A target falls through to Path-B silently
+    rather than raising.
+
+    Special Vassals (Carroccio/Sestiere/Terzo/Altopascio) cannot be Bribed.
     """
     lid = _require_active_lord(state, side, args.get("lord_id"))
     lord = state["lords"][lid]
     target_lord_id = args.get("target_lord_id")
     vassal_name = args.get("vassal")
+    if not vassal_name:
+        raise IllegalAction("MISSING_VASSAL", "Bribe requires vassal name.", "4.7.6")
     if lord["assets"].get("Coin", 0) < 1:
         raise IllegalAction("NO_COIN", "Bribe requires at least 1 Coin.", "4.7.6")
-    target_lord = state["lords"].get(target_lord_id)
-    if target_lord is None or target_lord["status"] != "mustered":
-        raise IllegalAction("BAD_TARGET", "Target Lord not Mustered.", "4.7.6")
-    # Find the Vassal
-    target_vassal = None
-    for v in target_lord.get("vassals", []):
-        if v["name"] == vassal_name:
-            target_vassal = v
-            break
-    if target_vassal is None:
-        raise IllegalAction("UNKNOWN_VASSAL", f"{target_lord_id} has no Vassal {vassal_name!r}.", "4.7.6")
-    if target_vassal.get("special"):
-        raise IllegalAction("SPECIAL_VASSAL", "Special Vassals (Carroccio/Sestiere/Terzo/Altopascio) cannot be Bribed.", "4.7.6")
-    # Adjacency check
+    enemy = "ghibelline" if side == "guelph" else "guelph"
     cur = lord.get("location")
-    target_loc = target_lord.get("location")
-    if target_loc != cur:
-        adj_names = [n for n, _ in sd.adjacent_to(cur)]
-        if target_loc not in adj_names:
-            raise IllegalAction("NOT_ADJACENT", f"{target_loc} not at/adjacent to {cur}.", "4.7.6")
+
+    # PATH-A: Mustered target
+    target_lord = state["lords"].get(target_lord_id) if target_lord_id else None
+    target_vassal = None
+    path = None
+    if target_lord and target_lord["status"] == "mustered":
+        if target_lord.get("side") == enemy:
+            target_vassal = next((v for v in target_lord.get("vassals", [])
+                                  if v["name"] == vassal_name and v.get("on_mat")), None)
+            if target_vassal:
+                # Adjacency check based on Mustered Vassal's parent Lord's Locale
+                target_loc = target_lord.get("location")
+                adj_names = [n for n, _ in sd.adjacent_to(cur)] if cur else []
+                if target_loc == cur or target_loc in adj_names:
+                    path = "A"
+
+    # PATH-B: Unmustered Vassal via Seat (if Path-A didn't match)
+    if path is None:
+        # Find the Vassal in the static Lords data
+        from . import card_data as cd  # noqa
+        found_parent_canonical = None
+        found_v = None
+        for canonical, lord_data in sd.LORDS.items():
+            for v in lord_data.get("vassals", []):
+                if v.get("name") == vassal_name and not v.get("special"):
+                    found_parent_canonical = canonical
+                    found_v = v
+                    break
+            if found_v:
+                break
+        if found_v is None:
+            raise IllegalAction("UNKNOWN_VASSAL",
+                                f"No non-Special Vassal named {vassal_name!r} in any Lord roster.",
+                                "4.7.6")
+        # Check parent's current state — Vassal Unmustered iff parent's vassals
+        # entry has on_mat=False OR parent is removed/in_levy_pool.
+        parent_lid = sd.LORD_IDS.get(found_parent_canonical)
+        if parent_lid is None:
+            raise IllegalAction("UNKNOWN_LORD",
+                                f"Parent of {vassal_name} not found.", "4.7.6")
+        parent = state["lords"][parent_lid]
+        if parent["side"] != enemy:
+            raise IllegalAction("FRIENDLY_VASSAL",
+                                f"{vassal_name} belongs to friendly side.", "4.7.6")
+        # Vassal Seat at/adjacent to Active Lord
+        seats = found_v.get("seats") or ([found_v.get("seat")] if found_v.get("seat") else [])
+        seats = [s for s in seats if s]
+        if not seats:
+            raise IllegalAction("NO_VASSAL_SEAT",
+                                f"{vassal_name} has no Vassal Seat (Special Vassals can't be Bribed).",
+                                "4.7.6")
+        adj_names = [n for n, _ in sd.adjacent_to(cur)] if cur else []
+        eligible_seat = any((s == cur or s in adj_names) for s in seats)
+        if not eligible_seat:
+            raise IllegalAction(
+                "NO_ELIGIBLE_SEAT",
+                f"{vassal_name}'s Seats {seats} not at/adjacent to {cur}.",
+                "4.7.6",
+            )
+        # If parent is Mustered, check that this Vassal is NOT already on mat
+        if parent["status"] == "mustered":
+            on_mat = next((v for v in parent.get("vassals", [])
+                           if v.get("name") == vassal_name and v.get("on_mat")), None)
+            if on_mat:
+                # Mustered — Path-A applies instead; fall back to Path-A
+                target_vassal = on_mat
+                target_lord = parent
+                target_lord_id = parent_lid
+                path = "A"
+            else:
+                target_vassal = next((v for v in parent.get("vassals", [])
+                                      if v["name"] == vassal_name), None)
+                if target_vassal:
+                    path = "B_mustered_parent"
+        else:
+            target_vassal = found_v
+            path = "B_unmustered_parent"
+        if target_vassal is None:
+            raise IllegalAction("UNKNOWN_VASSAL",
+                                f"Vassal {vassal_name} not found on parent {parent_lid}.",
+                                "4.7.6")
+
+    if target_vassal.get("special"):
+        raise IllegalAction("SPECIAL_VASSAL",
+                            "Special Vassals (Carroccio/Sestiere/Terzo/Altopascio) cannot be Bribed.",
+                            "4.7.6")
+
+    # Roll
     r = rng.roll(f"bribe_{target_vassal['name']}")
-    success = r.value > target_vassal.get("service_rating", 0)
+    sr = target_vassal.get("service_rating", 0)
+    success = r.value > sr
     if success:
         lord["assets"]["Coin"] -= 1
-        # Move Vassal: remove from target, add to active Lord
-        target_lord["vassals"] = [v for v in target_lord["vassals"] if v["name"] != vassal_name]
-        # Move surviving Forces to active Lord
-        for unit, count in target_vassal.get("forces", {}).items():
-            lord["forces"][unit] = lord["forces"].get(unit, 0) + count
-        # Add Vassal to active Lord's mat as a Turncoat
-        target_vassal["turncoat"] = True
-        target_vassal["ready"] = False  # already mustered onto Active Lord's mat
-        lord.setdefault("vassals", []).append(target_vassal)
-        # If target Lord's last Forces are gone, he Disbands per 1.6 (Phase 3c: check)
-        if sum(target_lord.get("forces", {}).values()) == 0:
-            _disband_beyond_service_limit(state, target_lord_id)
+        # Move Vassal forces (only if on_mat with surviving forces)
+        if path == "A":
+            target_lord["vassals"] = [v for v in target_lord["vassals"] if v["name"] != vassal_name]
+            for unit, count in target_vassal.get("forces", {}).items():
+                lord["forces"][unit] = lord["forces"].get(unit, 0) + count
+            target_vassal["turncoat"] = True
+            target_vassal["ready"] = False
+            lord.setdefault("vassals", []).append(target_vassal)
+            if sum(target_lord.get("forces", {}).values()) == 0:
+                _disband_beyond_service_limit(state, target_lord_id)
+        else:
+            # Path-B: Move Vassal to active Lord's mat. Force values from static.
+            v_copy = copy.deepcopy(target_vassal)
+            v_copy["turncoat"] = True
+            v_copy["on_mat"] = True
+            v_copy["ready"] = False
+            lord.setdefault("vassals", []).append(v_copy)
+            for unit, count in v_copy.get("forces", {}).items():
+                lord["forces"][unit] = lord["forces"].get(unit, 0) + count
     return _finish_card_with({
-        "treachery_bribe": {"target_lord": target_lord_id, "vassal": vassal_name,
-                             "service_rating": target_vassal.get("service_rating"),
-                             "die": r.value, "success": success},
+        "treachery_bribe": {
+            "target_lord": target_lord_id, "vassal": vassal_name,
+            "path": path, "service_rating": sr,
+            "die": r.value, "success": success,
+        },
     }, state, side, reason="treachery_card_ends", citation="4.7.6")
 
 
@@ -2321,16 +2579,32 @@ _HANDLERS.update({
 
 def _consume_lordship(state, mustering_lord_id: str) -> None:
     """Each 3.4 sub-action consumes 1 Lordship from the Mustering Lord.
-    Raises IllegalAction if Lordship exhausted."""
+    Per 3.4.1: Newly Mustered Lords may NOT themselves take Levy actions
+    this segment (SMOKE-Inferno-028)."""
     lord = state["lords"].get(mustering_lord_id)
     if lord is None:
         return
+    if lord.get("flags", {}).get("just_mustered_this_segment"):
+        raise IllegalAction(
+            "NEWLY_MUSTERED",
+            f"{mustering_lord_id} was just Mustered this Levy segment and may NOT take Levy actions (3.4.1).",
+            "3.4.1",
+        )
     rating = lord.get("ratings", {}).get("L", 0)
     used = lord.setdefault("flags", {}).get("lordship_used", 0)
     if used >= rating:
         raise IllegalAction(
             "LORDSHIP_EXHAUSTED",
             f"{mustering_lord_id} has used all {rating} Lordship actions this Muster segment.",
+            "3.4",
+        )
+    # Apply Lordship bonus from F11 Poggio Bonizio / etc.
+    bonus = lord.get("flags", {}).get("lordship_bonus_pending", 0)
+    effective = rating + bonus
+    if used >= effective:
+        raise IllegalAction(
+            "LORDSHIP_EXHAUSTED",
+            f"{mustering_lord_id} has used all {effective} Lordship actions this segment.",
             "3.4",
         )
     lord["flags"]["lordship_used"] = used + 1
@@ -2505,6 +2779,9 @@ _HANDLERS.update({
 def _h_end_grow(state, side, args, rng) -> dict[str, Any]:
     """4.9.1 GROW (only on certain Turns).
 
+    SMOKE-Inferno-037: Scenario B 'Reprisal War' — skip Grow on
+    Autumn 1259 (Turn 5).
+
     At the end of late-Spring (Apr-May) and Autumn (Oct-Nov) Turns —
     Calendar boxes 2, 5, 8, 11, 14 — Guelph then Ghibelline each MUST
     select and reduce the ENEMY'S Ravage markers to 1/2 their total,
@@ -2514,9 +2791,15 @@ def _h_end_grow(state, side, args, rng) -> dict[str, Any]:
       keep:  list of locale names to KEEP enemy Ravage markers on (the
              rest are removed). The count of kept = ceil(N/2).
     """
-    from .flow import current_campaign_step
+    from .flow import current_campaign_step, advance_campaign_side_or_step
     if current_campaign_step(state) != "end_campaign":
         raise IllegalAction("WRONG_STEP", "Grow runs in end_campaign step.", "4.9.1")
+    if (state["meta"]["scenario"] == "B" and state["meta"]["turn"] == 5):
+        # Reprisal War: skip Grow on Turn 5
+        if side == "ghibelline":
+            state["meta"]["end_substep_done"] = state["meta"].get("end_substep_done", []) + ["grow"]
+        advance_campaign_side_or_step(state)
+        return {"state_changes": {"grow": "skipped_reprisal_war"}, "rule_citation": "4.9.1"}
     if state["meta"]["turn"] not in sd.GROW_BOXES:
         raise IllegalAction("NOT_GROW_TURN", f"Box {state['meta']['turn']} is not a Grow turn.", "4.9.1")
     enemy = "ghibelline" if side == "guelph" else "guelph"
@@ -2928,7 +3211,23 @@ def _cta_trigger_met(state, side: str) -> tuple[bool, str]:
       (1) VP score ≥ 4 below the other (2.2.5, 5.1)
       (2) Drew a War Event this Levy (3.1.3)
       (3) F23 Treasurers + 2 Coin (Guelphs only)
-    Returns (eligible, reason)."""
+
+    SMOKE-Inferno-038: Scenario A 'Preamble' + Scenario E 'Exhaustion'
+    skip all CtA. Scenario C 'Maremma War' — only Ghibellines may
+    declare in first Levy; skip all other CtA.
+    """
+    scenario = state["meta"].get("scenario", "")
+    # Scenario A and E: no CtA at all
+    if scenario in ("A", "E"):
+        return False, "scenario_no_cta"
+    # Scenario C: only Ghib + only first Levy
+    if scenario == "C":
+        first_levy = (state["meta"]["turn"] == 6
+                      and not state["meta"].get("c_cta_done"))
+        if side != "ghibelline" or not first_levy:
+            return False, "scenario_c_maremma_war_restriction"
+        # Ghib first-Levy: auto-eligible
+        return True, "maremma_war_ghib_only"
     own_vp = state["vp"].get(side, 0)
     other = "ghibelline" if side == "guelph" else "guelph"
     other_vp = state["vp"].get(other, 0)
@@ -2965,6 +3264,8 @@ def _h_levy_cta_declare(state, side, args, rng) -> dict[str, Any]:
         )
     # Mark CtA active; both sides will run through the 4 substeps.
     state["meta"]["cta_active"] = True
+    if state["meta"]["scenario"] == "C" and side == "ghibelline":
+        state["meta"]["c_cta_done"] = True
     state["meta"]["cta_substep"] = "gather"
     state["meta"]["cta_sides_done"] = []
     state["meta"]["active_player"] = "guelph"  # Guelphs always go first

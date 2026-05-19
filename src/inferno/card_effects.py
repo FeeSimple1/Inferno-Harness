@@ -1178,7 +1178,17 @@ def S22_event(state, side, args, rng):
 
 @register_event("S23")
 def S23_event(state, side, args, rng):
-    return _manual("S23", "Economic Sanctions — flagged.")
+    """S23 ECONOMIC SANCTIONS — This Campaign, no Guelph Tax.
+
+    Per AoW Reference: 'This Campaign, no Guelph Tax.' The Capability
+    on this card (Taglia) will not be available this Turn.
+    Implemented by registering an active_event for this_campaign.
+    """
+    state.setdefault("active_events", {}).setdefault("this_campaign", []).append({
+        "id": "S23", "side": "ghibelline", "name": "Economic Sanctions",
+        "effect": "no_guelph_tax_this_campaign",
+    })
+    return {"applied": True, "flag_set": "no_guelph_tax_this_campaign"}
 
 
 @register_event("S24")
