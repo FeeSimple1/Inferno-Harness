@@ -125,12 +125,23 @@ def _enum_pay(state, side) -> list[dict[str, Any]]:
 
 
 def _enum_disband(state, side) -> list[dict[str, Any]]:
+    """SMOKE-Inferno-026 (Tier-2 sweep): a Lord with service_box=None
+    is either off-left (Beyond Service Limit; disbandable) or off-right
+    (well-served, NOT disbandable). The check disambiguates via the
+    off_*_service lists rather than treating None == 0."""
     levy_box = state["calendar"]["levy_box"]
-    disbandable = [
-        lid for lid, l in state["lords"].items()
-        if l["side"] == side and l["status"] == "mustered"
-        and (l.get("service_box") or 0) <= levy_box
-    ]
+    off_left_set = set(state["calendar"].get("off_left_service") or [])
+    disbandable = []
+    for lid, l in state["lords"].items():
+        if l["side"] != side or l["status"] != "mustered":
+            continue
+        svc = l.get("service_box")
+        if svc is None:
+            if lid in off_left_set:
+                disbandable.append(lid)  # off-left = Beyond Service
+            # off-right or simply unset: not disbandable
+        elif svc <= levy_box:
+            disbandable.append(lid)
     moves: list[dict[str, Any]] = []
     if disbandable:
         moves.append({

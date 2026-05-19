@@ -103,15 +103,15 @@ def _build_rng(state: dict[str, Any]) -> HarnessRNG:
 def _h_levy_aow_draw(state, side: str, args, rng) -> dict[str, Any]:
     """Per 3.1.2 / 3.1.3: each side draws 2 AoW cards.
 
-    First Levy: deploy each as a Capability (lower half).
-    Later Levy: implement each as an Event (upper half).
-
-    Per BRIEF Phase 4: Immediate Events are now executed via
-    apply_event_effect(); Held / This-Levy / This-Campaign Events are
-    routed appropriately. Cards with Battle/Storm in-round modifiers
-    return manual-application flags for the LLM consumer.
+    SMOKE-Inferno-025 (Tier-2 sweep): per 3.1.1, the AoW deck is
+    re-shuffled at the start of each Levy from the discard pile,
+    excluding Held Events and Capabilities currently in play. The
+    Guelph deck went empty in Scenario F long runs prior to this fix.
     """
     _require_step(state, "3.1")
+    # Phase v1.5 SMOKE-025: reshuffle AoW deck once per Levy (idempotent
+    # within the Levy via aow_deck_reshuffled_this_levy flag).
+    _maybe_reshuffle_aow_deck(state, side)
     # Exhaustion rule (scenario F special): roll at start of each Levy
     # from Turn 9 onward.
     _maybe_exhaustion_roll(state, rng)
@@ -323,6 +323,7 @@ def _h_levy_disband(state, side, args, rng) -> dict[str, Any]:
     disbanded_at = []
     enemy_side = "ghibelline" if side == "guelph" else "guelph"
 
+    off_left_set = set(state["calendar"].get("off_left_service") or [])
     for lid, lord in state["lords"].items():
         if lord["side"] != side:
             continue
@@ -330,6 +331,11 @@ def _h_levy_disband(state, side, args, rng) -> dict[str, Any]:
             continue
         svc = lord.get("service_box")
         if svc is None:
+            # Off-left service = Beyond Service Limit per 3.3.1
+            if lid in off_left_set:
+                disbanded_beyond.append(lid)
+                if lid in state["calendar"]["off_left_service"]:
+                    state["calendar"]["off_left_service"].remove(lid)
             continue
         if svc < levy_box:
             disbanded_beyond.append(lid)
@@ -1088,31 +1094,161 @@ def _h_cmd_ravage(state, side, args, rng) -> dict[str, Any]:
 def _h_cmd_supply(state, side, args, rng) -> dict[str, Any]:
     """4.6 SUPPLY (1 action): add Provender from a Source via Transport.
 
-    Phase 3a simplification: Source = the Lord's OWN Seat at a Stronghold
-    he occupies (covers the trivial in-Seat case). Routed Supply via a
-    chain of Locales + Carts is Phase 3b work (depends on path-finding).
+    Phase v1.5 full implementation:
+      - Source = Active Lord's OWN SEAT at unruined Stronghold/Outpost
+        (or Pisa-with-Ships at a Port).
+      - Route = unbroken chain of Locales/Ways from Lord to Source. May
+        not include any Locale with Enemy Stronghold/Lord UNLESS that
+        Stronghold/Lord is Besieged or Bypassed. Ruins/Ravaged do not block.
+      - Transport = >=1 Cart per Provender per intervening Way. At own
+        Seat or via Ships at Port: no Carts needed.
+      - Max from each Stronghold Seat = Stronghold Size; Outpost = 1;
+        Ship-Port = 1 per Ship (Pisa only, non-Winter).
+      - Stores & Well Water (F1/S1) Capability: up to 4 Provender per
+        Seat; allows Supply while Besieged at own Seat.
+
+    args:
+      lord_id:     Active Lord
+      source:      Locale name for Source (default: Active Lord's Locale
+                   if his own Seat, else first eligible)
+      provender:   Amount to add (default: max allowed by Source + Transport)
     """
     lid = _require_active_lord(state, side, args.get("lord_id"))
     lord = state["lords"][lid]
     loc_name = lord.get("location")
-    if loc_name not in lord.get("seats", []):
+    if not loc_name:
+        raise IllegalAction("NO_LOCATION", f"{lid} has no map Locale.", "4.6")
+    # Determine Source: first try args.source, else Lord's Locale if his Seat
+    source = args.get("source") or loc_name
+    if source not in lord.get("seats", []):
+        # Maybe Pisa via Ships at Port
+        is_pisa_via_ships = (
+            lord["name"] == "Pisa Podestà"
+            and state["locales"].get(source, {}).get("port")
+            and lord["assets"].get("Ship", 0) > 0
+        )
+        if not is_pisa_via_ships:
+            raise IllegalAction(
+                "BAD_SOURCE",
+                f"Source {source!r} must be Lord's Seat (or Pisa-with-Ships at a Port).",
+                "4.6.1",
+            )
+    source_loc = state["locales"].get(source)
+    if not source_loc:
+        raise IllegalAction("UNKNOWN_SOURCE", f"Source {source} not found.", "4.6.1")
+    if source_loc.get("ruins") and source_loc["type"] != "outpost":
+        raise IllegalAction("SOURCE_RUINED", f"Ruined Stronghold Seat cannot be a Source.", "4.6.1")
+
+    # Find the route from lord_loc to source (BFS), with route restrictions
+    from .battle import _lord_has_capability
+    enemy = "ghibelline" if side == "guelph" else "guelph"
+    way_count = _find_supply_route_distance(state, loc_name, source, side)
+    if way_count is None:
         raise IllegalAction(
-            "SUPPLY_PATH_NOT_PHASE_3A",
-            f"Phase 3a Supply requires Lord at his own Seat (no routed Supply yet); {lid} is at {loc_name!r}.",
+            "NO_SUPPLY_ROUTE",
+            f"No valid Supply Route from {loc_name} to {source}.",
             "4.6.1",
         )
-    loc = state["locales"].get(loc_name)
-    if not loc:
-        raise IllegalAction("NO_LOCATION", f"{lid} has no map Locale.", "4.6")
-    if loc.get("ruins"):
-        raise IllegalAction("SOURCE_RUINED", f"Ruined Seat cannot be a Source.", "4.6.1")
-    # Size determines max Provender from this Source:
-    #   Castle=1, Town=2, City=3, Outpost=1.
+
+    # SMOKE-Inferno-026: Stores & Well Water allows Supply while Besieged at own Seat.
+    at_own_seat = (loc_name == source) and (source in lord.get("seats", []))
+    cur_loc = state["locales"][loc_name]
+    if cur_loc.get("siege") and not (
+        at_own_seat and _lord_has_capability(state, lid, "Stores & Well Water")
+    ):
+        raise IllegalAction(
+            "SUPPLIER_BESIEGED",
+            f"{lid} Besieged at {loc_name}; cannot Supply (unless Stores & Well Water at own Seat).",
+            "4.6",
+        )
+
+    # Max Provender from this Source:
+    #   Stores & Well Water: 4 per Seat
+    #   Else: Castle=1, Town=2, City=3, Outpost=1
     size_map = {"castle": 1, "town": 2, "city": 3, "outpost": 1}
-    add = size_map.get(loc["type"], 1)
-    lord["assets"]["Provender"] = min(lord["assets"].get("Provender", 0) + add, 16)
+    if _lord_has_capability(state, lid, "Stores & Well Water"):
+        max_from_source = 4
+    else:
+        max_from_source = size_map.get(source_loc["type"], 1)
+
+    # Transport requirement: 1 Cart per Provender per Way (no Carts at own Seat or Pisa-Ships-Port)
+    carts_avail = lord["assets"].get("Cart", 0)
+    requested = int(args.get("provender", max_from_source))
+    requested = max(1, min(requested, max_from_source))
+    if way_count == 0:
+        carts_needed = 0
+    elif (lord["name"] == "Pisa Podestà"
+          and source_loc.get("port")
+          and lord["assets"].get("Ship", 0) > 0):
+        # Pisa Sail-Supply via Ship-Port: no Carts but limited by Ships
+        max_ship_supply = lord["assets"]["Ship"]
+        requested = min(requested, max_ship_supply)
+        carts_needed = 0
+    else:
+        carts_needed = way_count * requested
+        if carts_avail < carts_needed:
+            # Try shrinking requested
+            requested = max(0, carts_avail // way_count) if way_count > 0 else 0
+            carts_needed = way_count * requested
+        if requested == 0:
+            raise IllegalAction(
+                "INSUFFICIENT_CARTS",
+                f"Need {way_count} Carts per Provender; {lid} has {carts_avail}.",
+                "4.6.1",
+            )
+    lord["assets"]["Provender"] = min(lord["assets"].get("Provender", 0) + requested, 16)
     state["actions_remaining"] -= 1
-    return _maybe_end_card({"supply_added": add, "from": loc_name}, state, side, citation="4.6.2")
+    return _maybe_end_card({
+        "supply_added": requested, "from": source,
+        "way_count": way_count, "carts_required": carts_needed,
+    }, state, side, citation="4.6.2")
+
+
+def _find_supply_route_distance(state, src: str, target: str, side: str) -> int | None:
+    """BFS shortest path from src to target avoiding Locales with un-Besieged/
+    un-Bypassed enemy Strongholds or enemy Lords. Returns # of Ways
+    crossed (= len(path) - 1), or None if unreachable.
+    """
+    if src == target:
+        return 0
+    from collections import deque
+    enemy = "ghibelline" if side == "guelph" else "guelph"
+
+    def passable(loc_name: str) -> bool:
+        loc = state["locales"].get(loc_name, {})
+        # Enemy Lord present (un-Besieged)?
+        for oid in loc.get("lords_present", []):
+            olord = state["lords"].get(oid, {})
+            if olord.get("side") == enemy and olord.get("status") == "mustered":
+                # Allowed if Besieged or Bypassed
+                if olord.get("flags", {}).get("in_stronghold"):
+                    continue
+                if loc.get("bypass"):
+                    continue
+                return False
+        # Enemy Stronghold present? un-Ruined enemy stronghold blocks UNLESS Besieged/Bypassed.
+        if (loc.get("type") != "outpost"
+                and not loc.get("ruins")
+                and not _is_friendly_locale(state, loc, side)):
+            if not loc.get("siege") and not loc.get("bypass"):
+                return False
+        return True
+
+    queue = deque([(src, 0)])
+    seen = {src}
+    while queue:
+        cur, d = queue.popleft()
+        for nbr, _w in sd.adjacent_to(cur):
+            if nbr in seen:
+                continue
+            if nbr == target:
+                # Target itself doesn't need passable (it's the Source).
+                return d + 1
+            if not passable(nbr):
+                continue
+            seen.add(nbr)
+            queue.append((nbr, d + 1))
+    return None
 
 
 def _h_cmd_sail(state, side, args, rng) -> dict[str, Any]:
@@ -1358,25 +1494,25 @@ _HANDLERS.update({
 # CAMPAIGN — March (4.3) and Approach decisions (4.3.4)
 # =====================================================================
 def _h_cmd_march(state, side, args, rng) -> dict[str, Any]:
-    """4.3 March: move one or a group of Lords across one Way to an
-    adjacent Locale.
+    """4.3 March: move one or a group of Lords across one Way.
 
-    Phase 3b scope:
-      - Single-Lord March (no Group March yet — that's 4.3.1 with
-        Commander/Lieutenant; Lieutenants are Phase 3b followup).
-      - Laden / Speed (4.3.2 / 4.3.3): Road first-March-of-card is 0
-        actions Unladen; otherwise 1 action; 2 actions if Laden or via
-        Track when Loot is held.
-      - Approach detection (4.3.4) when entering Enemy Lord's Locale:
-        creates pending decisions for each Inactive Enemy Lord.
-      - Besiege/Bypass (4.3.5) and Battle resolution happen via the
-        approach_response action below; resolve_battle is invoked from
-        there once all responders Stand.
+    Phase v1.5 supports Group March (4.3.1):
+      - args.with_lords (optional): additional Lord IDs to move with the
+        active Lord. All must be at the same starting Locale.
+      - Lieutenant + Lower Lord MUST move together (4.1.3): if active or
+        with_lords includes a Lieutenant, the Lower Lord auto-joins; if
+        it includes a Lower Lord, the Lieutenant auto-joins.
+      - Laden status computed across the group (shared Carts per 4.3.2).
+      - Cost: max of per-Lord costs (typically 1; the group is bottlenecked
+        by the slowest Lord's Laden/Speed status).
+
+    Approach (4.3.4) detection considers the entire group.
 
     args:
-      lord_id:      Marching Lord
+      lord_id:      Active Marching Lord
       destination:  target Locale name
-      way_type:     'road' or 'track' (default: pick first available)
+      way_type:     'road' or 'track'
+      with_lords:   optional list of additional Lord IDs marching together
     """
     lid = _require_active_lord(state, side, args.get("lord_id"))
     lord = state["lords"][lid]
@@ -1389,8 +1525,38 @@ def _h_cmd_march(state, side, args, rng) -> dict[str, Any]:
     if cur_loc_name is None:
         raise IllegalAction("NO_LOCATION", f"{lid} has no map Locale.", "4.3")
 
+    # Phase v1.5: resolve Group March participants (4.3.1) — include
+    # explicit with_lords + auto-pair Lieutenant/Lower Lord.
+    group = [lid]
+    requested = list(args.get("with_lords", []) or [])
+    for olid in requested:
+        if olid != lid and olid in state["lords"]:
+            ol = state["lords"][olid]
+            if (ol["side"] == side
+                    and ol["status"] == "mustered"
+                    and ol.get("location") == cur_loc_name):
+                if olid not in group:
+                    group.append(olid)
+            else:
+                raise IllegalAction(
+                    "GROUP_INVALID",
+                    f"{olid} not eligible for Group March (not same Locale or not Mustered).",
+                    "4.3.1",
+                )
+    # Auto-pair Lieutenant + Lower Lord (4.1.3)
+    for member_id in list(group):
+        m = state["lords"][member_id]
+        lower = m.get("flags", {}).get("has_lower_lord")
+        upper = m.get("flags", {}).get("lower_lord_of")
+        if lower and lower not in group:
+            ll = state["lords"].get(lower)
+            if ll and ll.get("location") == cur_loc_name:
+                group.append(lower)
+        if upper and upper not in group:
+            ul = state["lords"].get(upper)
+            if ul and ul.get("location") == cur_loc_name:
+                group.append(upper)
     # SMOKE-Inferno-008: validate way_type matches Lord's actual adjacency.
-    # Parallel Ways pattern (CROSS_PROJECT_LESSONS §1 / SMOKE-047 in Nevsky).
     adjacencies = sd.adjacent_to(cur_loc_name)
     way_type = args.get("way_type")
     if way_type:
@@ -1412,12 +1578,11 @@ def _h_cmd_march(state, side, args, rng) -> dict[str, Any]:
             )
         way_type = ways_to_dest[0]
 
-    # 4.3.2 Laden status (simplified for Phase 3b):
-    #   Laden if: Loot > 0 on any Way; OR Provender > carts (and <= 2x) on Track,
-    #   or Provender > carts with Loot on Road.
-    carts = lord["assets"].get("Cart", 0)
-    prov = lord["assets"].get("Provender", 0)
-    loot = lord["assets"].get("Loot", 0)
+    # 4.3.2 Laden status (Group March: sum across the group, per
+    # 'SHARING: Lords moving as a group share Carts').
+    carts = sum(state["lords"][m]["assets"].get("Cart", 0) for m in group)
+    prov  = sum(state["lords"][m]["assets"].get("Provender", 0) for m in group)
+    loot  = sum(state["lords"][m]["assets"].get("Loot", 0) for m in group)
     laden = False
     if loot > 0:
         laden = True
@@ -1451,14 +1616,16 @@ def _h_cmd_march(state, side, args, rng) -> dict[str, Any]:
     # Mark first-March-used-this-card
     flags["first_march_used_this_card"] = True
 
-    # Move the Lord
+    # Move all group members
     src = state["locales"][cur_loc_name]
     dest = state["locales"][dest_name]
-    if lid in src.get("lords_present", []):
-        src["lords_present"].remove(lid)
-    dest.setdefault("lords_present", []).append(lid)
-    lord["location"] = dest_name
-    flags["moved_fought"] = True
+    for member_id in group:
+        ml = state["lords"][member_id]
+        if member_id in src.get("lords_present", []):
+            src["lords_present"].remove(member_id)
+        dest.setdefault("lords_present", []).append(member_id)
+        ml["location"] = dest_name
+        ml.setdefault("flags", {})["moved_fought"] = True
     state["actions_remaining"] -= cost
 
     # 4.3.4 Approach? Inactive Lords on the other side at this Locale.
@@ -1501,6 +1668,7 @@ def _h_cmd_march(state, side, args, rng) -> dict[str, Any]:
     return _maybe_end_card({
         "marched_from": cur_loc_name, "to": dest_name, "way_type": way_type,
         "cost": cost, "laden": laden, "approach_triggered": False,
+        "group": group,
     }, state, side, citation="4.3")
 
 
@@ -1892,28 +2060,93 @@ def _h_cmd_storm(state, side, args, rng) -> dict[str, Any]:
 
 
 def _apply_sack(state, locale_name, side, storm_result, rng):
-    """Per 4.5.2 SACK: Ruins, Spoils, Knights' Quarter, Revolt+Treachery."""
+    """Per 4.5.2 SACK: full Spoils per 11.3 + Ruins + Revolt/Treachery + Knights' Quarter.
+
+    Spoils awarded to Besiegers (size=Value):
+      - Loot count = Value
+      - Provender count = Value
+      - Coin count = Value
+      - All non-Ship Assets of losing inside Lords
+      - Carroccio capture if losing Lords had one (+2 VP)
+    """
     loc = state["locales"][locale_name]
     size = sd.STRONGHOLDS[loc["type"]]["size"]
     enemy = "ghibelline" if side == "guelph" else "guelph"
-    # Remove markers
+
+    # Identify inside-defeated Lords and Besieging Lords (winners)
+    inside_losers = [
+        oid for oid in loc.get("lords_present", [])
+        if state["lords"][oid].get("flags", {}).get("in_stronghold")
+        and state["lords"][oid]["side"] == enemy
+    ]
+    winners = [
+        oid for oid in loc.get("lords_present", [])
+        if state["lords"][oid]["side"] == side
+        and not state["lords"][oid].get("flags", {}).get("in_stronghold")
+    ]
+
+    spoils_log: dict[str, Any] = {"loot": size, "provender": size, "coin": size,
+                                   "from_inside": [], "carroccio_captured": 0}
+
+    # Award Loot, Provender, Coin = Value each, distributed to winners
+    for asset, count in (("Loot", size), ("Provender", size), ("Coin", size)):
+        i = 0
+        for _ in range(count):
+            if not winners:
+                break
+            recv = state["lords"][winners[i % len(winners)]]
+            recv["assets"][asset] = recv["assets"].get(asset, 0) + 1
+            i += 1
+
+    # Take all non-Ship Assets from inside Lords
+    for ilid in inside_losers:
+        ilord = state["lords"][ilid]
+        transferred: dict[str, int] = {}
+        for a, c in list(ilord.get("assets", {}).items()):
+            if a == "Ship":
+                continue
+            if c > 0:
+                transferred[a] = c
+                ilord["assets"][a] = 0
+        # Distribute to winners
+        i = 0
+        for a, n in transferred.items():
+            for _ in range(n):
+                if not winners:
+                    break
+                recv = state["lords"][winners[i % len(winners)]]
+                recv["assets"][a] = recv["assets"].get(a, 0) + 1
+                i += 1
+        spoils_log["from_inside"].append({"lord_id": ilid, "transferred": transferred})
+
+        # Carroccio capture (+2 VP)
+        carroccio = next((v for v in ilord.get("vassals", [])
+                          if v.get("name") == "Carroccio" and v.get("on_mat")), None)
+        if carroccio:
+            state["vp"][side] = min(state["vp"].get(side, 0) + 2, 17.5)
+            ilord["vassals"] = [v for v in ilord["vassals"] if v.get("name") != "Carroccio"]
+            spoils_log["carroccio_captured"] += 1
+
+    # Now do the Ruin/Allegiance/marker stuff
     loc["siege"] = []
     loc["current_allegiance"] = [m for m in loc.get("current_allegiance", []) if m.get("side") != enemy]
     loc["walls_plus_one"] = None
-    # Place Ruins in opposite color of PRINTED Allegiance
     ruins_color = "purple" if loc["allegiance"] == "guelph" else "gold"
     loc["ruins"] = ruins_color
-    # Adjust VP: +1/2 to side whose color the Ruins is
     ruins_side = "guelph" if loc["allegiance"] == "ghibelline" else "ghibelline"
     state["vp"][ruins_side] = min(state["vp"].get(ruins_side, 0) + 0.5, 17.5)
-    # Remove the removed Lords inside per 4.4.5 (already in storm_result)
+
+    # Remove the removed Lords inside per 4.4.5
     for removed_lid in storm_result.get("removed_lords", []):
         if removed_lid in state["lords"]:
             _disband_beyond_service_limit(state, removed_lid)
+
     # Revolt + Treachery # = Value
     for _ in range(size):
         r = rng.roll(f"revolt_sack_{locale_name}")
         _add_treachery_to_enemy(state, "<sack>", side)
+
+    return spoils_log
 
 
 def _h_cmd_sally(state, side, args, rng) -> dict[str, Any]:
@@ -2434,14 +2667,17 @@ def _h_end_ransom(state, side, args, rng) -> dict[str, Any]:
 
 def _h_end_game_check(state, side, args, rng) -> dict[str, Any]:
     """4.9.3 Game End check: if this was the scenario's last 60-Day Turn,
-    the game ends. Otherwise proceed."""
+    the game ends. Applies scenario-specific VP modifiers:
+      - Scenario E 'Resistance': double Guelph VP except from Ravaged.
+      - Scenario C 'Alliance Treaty' (S22 Manfredi in play): +3 Ghib VP.
+    """
     from .flow import current_campaign_step, advance_campaign_step
     if current_campaign_step(state) != "end_campaign":
         raise IllegalAction("WRONG_STEP", "Game-end check in end_campaign.", "4.9.3")
     cal = state["calendar"]
     if cal.get("end_box") and state["meta"]["turn"] >= cal["end_box"] - 1:
-        # Game ends — winner by VP
-        g, h = state["vp"].get("guelph", 0), state["vp"].get("ghibelline", 0)
+        # Apply scenario-end VP modifiers per 5.1 + scenario rules.
+        g, h = _compute_final_vp(state)
         winner = None
         if g > h:
             winner = "guelph"
@@ -2450,6 +2686,9 @@ def _h_end_game_check(state, side, args, rng) -> dict[str, Any]:
         state["meta"]["phase"] = "victory"
         state["meta"]["game_over"] = True
         state["meta"]["winner"] = winner
+        # Persist final VP to state.vp
+        state["vp"]["guelph"] = g
+        state["vp"]["ghibelline"] = h
         return {
             "state_changes": {"game_ended": True, "winner": winner, "vp_g": g, "vp_h": h},
             "rule_citation": "4.9.3 / 5.3",
@@ -2579,6 +2818,8 @@ def _h_end_reset(state, side, args, rng) -> dict[str, Any]:
         state["meta"]["active_player"] = "guelph"
         state["meta"]["end_substep_done"] = []
         state["meta"]["exhaustion_rolled_this_levy"] = False
+        state["meta"].pop("aow_reshuffled_this_levy_guelph", None)
+        state["meta"].pop("aow_reshuffled_this_levy_ghibelline", None)
         # Plan stacks reset for next Campaign
         state["plan_stacks"] = {"guelph": [], "ghibelline": []}
     else:
@@ -2670,3 +2911,501 @@ def _maybe_exhaustion_roll(state, rng) -> None:
             cal["end_box"] = 16
         else:
             cal["end_box"] = max(cal["end_box"] - 1, state["meta"]["turn"] + 1)
+
+
+# =====================================================================
+# Levy 3.5 — Full Call to Arms implementation (replaces skip-only stub)
+# =====================================================================
+LEADING_CITY = {"guelph": "Firenze", "ghibelline": "Siena"}
+COMUNE_LORD = {"guelph": "firenze_comune", "ghibelline": "siena_comune"}
+COMMANDER_LORD = {"guelph": "firenze", "ghibelline": "siena"}
+
+CTA_SUBSTEPS = ["gather", "commander_arms", "comune", "allies"]
+
+
+def _cta_trigger_met(state, side: str) -> tuple[bool, str]:
+    """Per 3.5: a side may declare CtA if any of:
+      (1) VP score ≥ 4 below the other (2.2.5, 5.1)
+      (2) Drew a War Event this Levy (3.1.3)
+      (3) F23 Treasurers + 2 Coin (Guelphs only)
+    Returns (eligible, reason)."""
+    own_vp = state["vp"].get(side, 0)
+    other = "ghibelline" if side == "guelph" else "guelph"
+    other_vp = state["vp"].get(other, 0)
+    if other_vp - own_vp >= 4:
+        return True, "vp_lag"
+    if side in state.get("war_declared_this_levy", []):
+        return True, "war_event"
+    # Treasurers: F23 in held + Guelph has 2 Coin
+    if side == "guelph":
+        held = state["decks"]["guelph"]["aow_held"]
+        if "F23" in held:
+            total_coin = sum(
+                l["assets"].get("Coin", 0) for l in state["lords"].values()
+                if l["side"] == "guelph" and l["status"] == "mustered"
+            )
+            if total_coin >= 2:
+                return True, "treasurers_available"
+    return False, "no_trigger"
+
+
+def _h_levy_cta_declare(state, side, args, rng) -> dict[str, Any]:
+    """3.5: declare Call to Arms for this side. If accepted, both sides
+    will go through the 4 sub-steps (Guelph first, then Ghibelline).
+    """
+    _require_step(state, "3.5")
+    eligible, reason = _cta_trigger_met(state, side)
+    if not eligible:
+        raise IllegalAction(
+            "CTA_NOT_ELIGIBLE",
+            f"{side} has no CtA trigger: VP={state['vp'].get(side)}, "
+            f"other VP={state['vp'].get('ghibelline' if side == 'guelph' else 'guelph')}, "
+            f"war_declared={state.get('war_declared_this_levy', [])}.",
+            "3.5",
+        )
+    # Mark CtA active; both sides will run through the 4 substeps.
+    state["meta"]["cta_active"] = True
+    state["meta"]["cta_substep"] = "gather"
+    state["meta"]["cta_sides_done"] = []
+    state["meta"]["active_player"] = "guelph"  # Guelphs always go first
+    return {
+        "state_changes": {"cta_declared_by": side, "trigger": reason},
+        "rule_citation": "3.5",
+    }
+
+
+def _advance_cta(state) -> None:
+    """Move to next CtA substep or next side, or exit 3.5."""
+    side = state["meta"]["active_player"]
+    cur_substep = state["meta"].get("cta_substep")
+    if cur_substep is None:
+        return
+    idx = CTA_SUBSTEPS.index(cur_substep)
+    if idx + 1 < len(CTA_SUBSTEPS):
+        state["meta"]["cta_substep"] = CTA_SUBSTEPS[idx + 1]
+        return
+    # Done with this side's CtA
+    done = set(state["meta"].get("cta_sides_done", []))
+    done.add(side)
+    state["meta"]["cta_sides_done"] = list(done)
+    other = "ghibelline" if side == "guelph" else "guelph"
+    if other not in done:
+        state["meta"]["active_player"] = other
+        state["meta"]["cta_substep"] = "gather"
+        return
+    # Both sides done — exit CtA and 3.5.
+    state["meta"]["cta_active"] = False
+    state["meta"]["cta_substep"] = None
+    state["meta"]["cta_sides_done"] = []
+    from .flow import advance_to_next_side_or_step
+    # Force advance past 3.5 → Campaign
+    state["meta"]["active_player"] = "ghibelline"  # so advance closes the step
+    advance_to_next_side_or_step(state)
+
+
+def _h_cta_step_skip(state, side, args, rng) -> dict[str, Any]:
+    """Skip the current CtA substep for this side."""
+    if not state["meta"].get("cta_active"):
+        raise IllegalAction("NO_CTA", "CtA not active.", "3.5")
+    sub = state["meta"].get("cta_substep")
+    _advance_cta(state)
+    return {"state_changes": {"skipped_cta_substep": sub}, "rule_citation": "3.5"}
+
+
+def _h_cta_gather_march(state, side, args, rng) -> dict[str, Any]:
+    """3.5.1 GATHER — free March (no Moved/Fought, no Feed). Each Lord
+    must end CLOSER to his Leading City. Phase 5: single-Lord per call.
+
+    args:
+      lord_id:    Lord doing the free march
+      destination: Locale name
+      way_type:   road/track
+    """
+    if state["meta"].get("cta_substep") != "gather":
+        raise IllegalAction("WRONG_CTA_STEP", "gather substep only.", "3.5.1")
+    lid = args.get("lord_id")
+    lord = _require_lord(state, lid, side)
+    if lord["status"] != "mustered":
+        raise IllegalAction("LORD_NOT_ON_MAP", f"{lid} not on map.", "3.5.1")
+    dest_name = args.get("destination")
+    if not dest_name or dest_name not in state["locales"]:
+        raise IllegalAction("BAD_DEST", f"Unknown destination {dest_name!r}.", "3.5.1")
+    cur_loc = lord.get("location")
+    if cur_loc is None:
+        raise IllegalAction("NO_LOCATION", f"{lid} has no Locale.", "3.5.1")
+    # Adjacency check
+    way_type = args.get("way_type")
+    adj = sd.adjacent_to(cur_loc)
+    if way_type:
+        if (dest_name, way_type) not in adj:
+            raise IllegalAction("BAD_WAY", f"No {way_type} from {cur_loc} to {dest_name}.", "3.5.1")
+    else:
+        ways = [w for n, w in adj if n == dest_name]
+        if not ways:
+            raise IllegalAction("NOT_ADJACENT", f"{cur_loc} not adjacent to {dest_name}.", "3.5.1")
+        way_type = ways[0]
+    # Closer-to-Leading-City check
+    leading = LEADING_CITY[side]
+    dist_before = _bfs_distance(cur_loc, leading)
+    dist_after = _bfs_distance(dest_name, leading)
+    if dist_after >= dist_before:
+        raise IllegalAction(
+            "NOT_CLOSER",
+            f"Gather March must end closer to {leading}; "
+            f"{cur_loc}->{dest_name} doesn't reduce distance ({dist_before}->{dist_after}).",
+            "3.5.1",
+        )
+    # May NOT enter Locale with Unbesieged/Unbypassed Enemy Lord or un-Ruined Enemy Stronghold
+    enemy = "ghibelline" if side == "guelph" else "guelph"
+    dest = state["locales"][dest_name]
+    for oid in dest.get("lords_present", []):
+        olord = state["lords"][oid]
+        if olord["side"] == enemy and not olord.get("flags", {}).get("in_stronghold"):
+            raise IllegalAction("ENEMY_LORD_AT_DEST", f"{oid} blocks Gather to {dest_name}.", "3.5.1")
+    # Enemy Stronghold check: friendly or Ruined OK
+    if dest["type"] != "outpost" and not dest.get("ruins"):
+        if not _is_friendly_locale(state, dest, side):
+            # If a Siege/Bypass already there, OK
+            if not dest.get("siege") and not dest.get("bypass"):
+                raise IllegalAction("ENEMY_STRONGHOLD", f"{dest_name} un-Ruined enemy stronghold.", "3.5.1")
+    # Move (NOT marked Moved/Fought; NO Feed)
+    src = state["locales"][cur_loc]
+    if lid in src.get("lords_present", []):
+        src["lords_present"].remove(lid)
+    dest.setdefault("lords_present", []).append(lid)
+    lord["location"] = dest_name
+    return {
+        "state_changes": {"gather_march_from": cur_loc, "to": dest_name,
+                          "distance_to_leading_city": dist_after},
+        "rule_citation": "3.5.1",
+    }
+
+
+def _bfs_distance(src: str, target: str) -> int:
+    """Locale-to-Locale shortest path (any way_type). Returns inf if no path."""
+    if src == target:
+        return 0
+    from collections import deque
+    seen = {src}
+    queue = deque([(src, 0)])
+    while queue:
+        cur, d = queue.popleft()
+        for nbr, _w in sd.adjacent_to(cur):
+            if nbr in seen:
+                continue
+            if nbr == target:
+                return d + 1
+            seen.add(nbr)
+            queue.append((nbr, d + 1))
+    return 999  # unreachable
+
+
+def _h_cta_commander_arms(state, side, args, rng) -> dict[str, Any]:
+    """3.5.2 COMMANDER TO ARMS: optionally Disband Commander (at Service
+    Limit semantics, with Comune if on map). Then optionally Muster
+    Commander inside Leading City from ANY Calendar box.
+
+    args:
+      mode: 'disband_and_remuster' | 'disband_only' | 'muster_only' | 'skip'
+    """
+    if state["meta"].get("cta_substep") != "commander_arms":
+        raise IllegalAction("WRONG_CTA_STEP", "commander_arms substep only.", "3.5.2")
+    commander_id = COMMANDER_LORD[side]
+    commander = state["lords"][commander_id]
+    mode = args.get("mode", "skip")
+    log = {"mode": mode}
+
+    if mode in ("disband_and_remuster", "disband_only"):
+        if commander["status"] == "mustered":
+            # Disband at Service Limit semantics
+            levy_box = state["calendar"]["levy_box"]
+            _disband_at_service_limit(state, commander_id, levy_box)
+            log["disbanded"] = True
+
+    if mode in ("disband_and_remuster", "muster_only"):
+        # Muster Commander at Leading City from ANY Calendar box
+        if commander["status"] == "on_calendar":
+            cur_box = commander.get("calendar_box")
+            cal_boxes = state["calendar"]["boxes"]
+            if cur_box and str(cur_box) in cal_boxes:
+                if commander_id in cal_boxes[str(cur_box)]["cylinders"]:
+                    cal_boxes[str(cur_box)]["cylinders"].remove(commander_id)
+            commander["status"] = "mustered"
+            commander["location"] = LEADING_CITY[side]
+            commander["calendar_box"] = None
+            sr = commander.get("ratings", {}).get("S", 0)
+            new_svc = min(state["meta"]["turn"] + sr, 16)
+            commander["service_box"] = new_svc
+            cal_boxes.setdefault(str(new_svc),
+                {"cylinders": [], "services": [], "victory": [], "markers": []})
+            cal_boxes[str(new_svc)]["services"].append(commander_id)
+            # Starting Forces/Assets/Vassals
+            canonical = commander["name"]
+            if canonical in sd.LORDS:
+                base = sd.LORDS[canonical]
+                commander["forces"] = copy.deepcopy(base.get("forces", {}))
+                commander["assets"] = copy.deepcopy(base.get("assets", {}))
+                # Vassals re-initialized
+                from .scenarios import _init_vassals_for
+                commander["vassals"] = _init_vassals_for(base)
+            # Wire into Locale
+            loc = state["locales"][LEADING_CITY[side]]
+            if commander_id not in loc["lords_present"]:
+                loc["lords_present"].append(commander_id)
+            log["mustered_at"] = LEADING_CITY[side]
+    _advance_cta(state)
+    return {"state_changes": log, "rule_citation": "3.5.2"}
+
+
+def _h_cta_comune_setup(state, side, args, rng) -> dict[str, Any]:
+    """3.5.3 COMUNE: bring out the Comune mat with its Assets and Special
+    Vassals; stack the Comune cylinder under the Commander. Comune must
+    end up with at least Carroccio + 1 Sestiere/Terzo.
+
+    args:
+      muster_special_vassals: list of vassal names (e.g. ["Carroccio",
+                              "Sixth of Porta San Piero"])
+    """
+    if state["meta"].get("cta_substep") != "comune":
+        raise IllegalAction("WRONG_CTA_STEP", "comune substep only.", "3.5.3")
+    commander_id = COMMANDER_LORD[side]
+    commander = state["lords"][commander_id]
+    if (commander["status"] != "mustered"
+            or commander.get("location") != LEADING_CITY[side]):
+        # Comune step skipped — Commander must be inside Leading City
+        _advance_cta(state)
+        return {"state_changes": {"comune": "skipped_no_commander_in_leading"},
+                "rule_citation": "3.5.3"}
+    comune_id = COMUNE_LORD[side]
+    comune = state["lords"][comune_id]
+    if comune["status"] == "removed":
+        _advance_cta(state)
+        return {"state_changes": {"comune": "skipped_removed"}, "rule_citation": "3.5.3"}
+    # Bring out Comune mat with starting Assets
+    canonical = comune["name"]
+    base = sd.LORDS.get(canonical, {})
+    comune["status"] = "mustered"
+    comune["location"] = LEADING_CITY[side]
+    comune["assets"] = copy.deepcopy(base.get("assets", {}))
+    # Wire into Locale
+    loc = state["locales"][LEADING_CITY[side]]
+    if comune_id not in loc["lords_present"]:
+        loc["lords_present"].append(comune_id)
+    # Initialize Vassal list (all Special Vassals, all not on_mat yet)
+    from .scenarios import _init_vassals_for
+    comune["vassals"] = _init_vassals_for(base)
+    # Mark Special Vassals from arg list as on_mat (auto-muster path).
+    requested = set(args.get("muster_special_vassals", []) or [])
+    if not requested:
+        # Default: Carroccio + one Sestiere/Terzo (the minimum)
+        requested = {"Carroccio"}
+        for v in comune["vassals"]:
+            if v.get("special") and "Sixth" in v.get("name", "") or "Terzo" in v.get("name", ""):
+                requested.add(v["name"])
+                break
+    mustered_vassals = []
+    for v in comune["vassals"]:
+        if v["name"] in requested and v.get("special"):
+            v["on_mat"] = True
+            v["ready"] = True
+            # Add Forces
+            for u, c in v.get("forces", {}).items():
+                comune["forces"][u] = comune["forces"].get(u, 0) + c
+            mustered_vassals.append(v["name"])
+    # Validate: must include Carroccio + at least one Sestiere/Terzo
+    has_carroccio = "Carroccio" in mustered_vassals
+    has_sub = any(("Sixth" in n) or ("Terzo" in n) for n in mustered_vassals)
+    if not (has_carroccio and has_sub):
+        # Roll back — Comune cannot be set with insufficient Special Vassals
+        comune["status"] = "in_levy_pool"
+        comune["location"] = None
+        comune["vassals"] = []
+        comune["forces"] = {}
+        comune["assets"] = {}
+        if comune_id in loc["lords_present"]:
+            loc["lords_present"].remove(comune_id)
+        raise IllegalAction(
+            "COMUNE_MIN_NOT_MET",
+            "Comune must include Carroccio + at least one Sestiere/Terzo.",
+            "3.5.3",
+        )
+    _advance_cta(state)
+    return {
+        "state_changes": {"comune_setup": True, "mustered_vassals": mustered_vassals},
+        "rule_citation": "3.5.3",
+    }
+
+
+def _h_cta_allies(state, side, args, rng) -> dict[str, Any]:
+    """3.5.4 ALLIES: EITHER (not both):
+      mode='extra_muster': conduct extra Muster segment for one Lord
+                           (= his Lordship in Levy actions, per 3.4).
+      mode='auto_muster':  Muster any one non-Commander Lord automatically
+                           (no Fealty roll, no Levy action).
+
+    args:
+      mode:            "extra_muster" | "auto_muster"
+      target_lord_id:  Lord ID (for auto_muster) or the Mustered Lord
+                       getting the extra segment.
+      target_seat:     for auto_muster, which Seat to place at.
+    """
+    if state["meta"].get("cta_substep") != "allies":
+        raise IllegalAction("WRONG_CTA_STEP", "allies substep only.", "3.5.4")
+    mode = args.get("mode", "skip")
+    target = args.get("target_lord_id")
+    log = {"mode": mode}
+    if mode == "auto_muster":
+        if not target or target not in state["lords"]:
+            raise IllegalAction("MISSING_TARGET", "auto_muster needs target_lord_id.", "3.5.4")
+        tlord = state["lords"][target]
+        if tlord["side"] != side:
+            raise IllegalAction("WRONG_SIDE", f"{target} not on {side}.", "3.5.4")
+        if tlord.get("commander"):
+            raise IllegalAction("COMMANDER_NOT_ELIGIBLE", "Auto-Muster excludes Commander.", "3.5.4")
+        if tlord["status"] != "on_calendar":
+            raise IllegalAction("NOT_ON_CALENDAR", f"{target} not on Calendar.", "3.5.4")
+        seat = args.get("target_seat")
+        if seat not in tlord.get("seats", []):
+            raise IllegalAction("BAD_SEAT", f"{target}'s seats: {tlord.get('seats')}.", "3.5.4")
+        # Auto-Muster (no Fealty roll, no action cost)
+        cur_box = tlord.get("calendar_box")
+        cal_boxes = state["calendar"]["boxes"]
+        if cur_box and str(cur_box) in cal_boxes:
+            if target in cal_boxes[str(cur_box)]["cylinders"]:
+                cal_boxes[str(cur_box)]["cylinders"].remove(target)
+        tlord["status"] = "mustered"
+        tlord["location"] = seat
+        tlord["calendar_box"] = None
+        sr = tlord.get("ratings", {}).get("S", 0)
+        new_svc = min(state["meta"]["turn"] + sr, 16)
+        tlord["service_box"] = new_svc
+        cal_boxes.setdefault(str(new_svc),
+            {"cylinders": [], "services": [], "victory": [], "markers": []})
+        cal_boxes[str(new_svc)]["services"].append(target)
+        canonical = tlord["name"]
+        base = sd.LORDS.get(canonical, {})
+        tlord["forces"] = copy.deepcopy(base.get("forces", {}))
+        tlord["assets"] = copy.deepcopy(base.get("assets", {}))
+        from .scenarios import _init_vassals_for
+        tlord["vassals"] = _init_vassals_for(base)
+        loc = state["locales"][seat]
+        if target not in loc["lords_present"]:
+            loc["lords_present"].append(target)
+        log["auto_mustered"] = target
+    elif mode == "extra_muster":
+        # Grant the named Lord an extra Lordship segment by resetting
+        # his lordship_used counter (Phase 5 will respect this).
+        if not target or target not in state["lords"]:
+            raise IllegalAction("MISSING_TARGET", "extra_muster needs target_lord_id.", "3.5.4")
+        tlord = state["lords"][target]
+        if tlord["side"] != side:
+            raise IllegalAction("WRONG_SIDE", f"{target} not on {side}.", "3.5.4")
+        if tlord["status"] != "mustered":
+            raise IllegalAction("NOT_MUSTERED", f"{target} not Mustered.", "3.5.4")
+        tlord.setdefault("flags", {})["lordship_used"] = 0
+        log["extra_segment_for"] = target
+    # else: skip
+    _advance_cta(state)
+    return {"state_changes": log, "rule_citation": "3.5.4"}
+
+
+# Register CtA handlers
+_HANDLERS.update({
+    "levy_cta_declare":     _h_levy_cta_declare,
+    "cta_step_skip":        _h_cta_step_skip,
+    "cta_gather_march":     _h_cta_gather_march,
+    "cta_commander_arms":   _h_cta_commander_arms,
+    "cta_comune_setup":     _h_cta_comune_setup,
+    "cta_allies":           _h_cta_allies,
+})
+
+
+
+def _compute_final_vp(state) -> tuple[float, float]:
+    """Recompute end-game VP from map markers per 5.1, applying:
+      - Scenario E 'Resistance': double Guelph VP except Ravaged.
+      - Scenario C 'Alliance Treaty' if S22 Manfredi Capability in play:
+        +3 Ghibelline VP.
+    """
+    scenario = state["meta"].get("scenario", "")
+    vp = {"guelph": 0.0, "ghibelline": 0.0}
+    # Allegiance markers (+1 each)
+    for loc in state["locales"].values():
+        for m in loc.get("current_allegiance", []) or []:
+            s = m.get("side")
+            v = m.get("value", 1)
+            if s in vp:
+                vp[s] += v
+        # Ruins (+1/2 in opposite of printed)
+        if loc.get("ruins"):
+            ruins_color = loc["ruins"]
+            ruins_side = "guelph" if ruins_color == "gold" else "ghibelline"
+            vp[ruins_side] += 0.5
+        # Ravaged (+1/2 in opposite of printed)
+        if loc.get("ravaged"):
+            rv_color = loc["ravaged"]
+            rv_side = "guelph" if rv_color == "gold" else "ghibelline"
+            vp[rv_side] = vp[rv_side]  # accumulate as separate ravaged bucket below
+    # Need separate Ravaged tally for scenario-E doubling exclusion.
+    ravaged_vp = {"guelph": 0.0, "ghibelline": 0.0}
+    for loc in state["locales"].values():
+        if loc.get("ravaged"):
+            rv_color = loc["ravaged"]
+            rv_side = "guelph" if rv_color == "gold" else "ghibelline"
+            ravaged_vp[rv_side] += 0.5
+    # Subtract ravaged from accumulator we built above (we didn't actually
+    # add it twice — re-do clean):
+    vp = {"guelph": 0.0, "ghibelline": 0.0}
+    for loc in state["locales"].values():
+        for m in loc.get("current_allegiance", []) or []:
+            s = m.get("side")
+            v = m.get("value", 1)
+            if s in vp:
+                vp[s] += v
+        if loc.get("ruins"):
+            rs = "guelph" if loc["ruins"] == "gold" else "ghibelline"
+            vp[rs] += 0.5
+    # Captured Carroccio +2 each
+    for sd_side in ("guelph", "ghibelline"):
+        captured = state.get("captured_knights", {}).get(sd_side, {})
+        # The Carroccio model: vp_if_captured stored in state.captured_carroccio[side]
+        # Phase 3 stored Carroccio capture inline by adjusting VP. Here we additionally
+        # track via the captured_carroccio_for_side dict if present.
+        cc = state.get("captured_carroccio_for_side", {}).get(sd_side, 0)
+        vp[sd_side] += cc * 2
+    # Scenario E 'Resistance': double Guelph VP except Ravaged.
+    if scenario == "E":
+        vp["guelph"] *= 2
+    # Add Ravaged (not doubled)
+    for s in vp:
+        vp[s] += ravaged_vp[s]
+    # Scenario C 'Alliance Treaty': +3 Ghib if S22 Manfredi Capability in play.
+    if scenario == "C":
+        if any(c.get("id") == "S22" for c in state.get("capabilities_in_play", [])):
+            vp["ghibelline"] += 3
+    # Clamp
+    vp["guelph"] = max(0, min(vp["guelph"], 17.5))
+    vp["ghibelline"] = max(0, min(vp["ghibelline"], 17.5))
+    return vp["guelph"], vp["ghibelline"]
+
+
+
+def _maybe_reshuffle_aow_deck(state, side: str) -> None:
+    """3.1.1: at start of each Levy, shuffle unused AoW cards into a
+    fresh draw deck for this side. Exclude Held Events and Capabilities
+    in play. The flag is per-side-per-Levy and cleared on next Levy entry.
+    """
+    flag = f"aow_reshuffled_this_levy_{side}"
+    if state["meta"].get(flag):
+        return
+    deck = state["decks"][side]
+    held = set(deck.get("aow_held") or [])
+    in_play = {c["id"] for c in state.get("capabilities_in_play", [])
+               if c.get("side") == side}
+    from . import card_data as cd
+    all_side_cards = {c["id"] for c in
+                      (cd.GUELPH_CARDS if side == "guelph" else cd.GHIBELLINE_CARDS)}
+    available = sorted(all_side_cards - held - in_play)
+    deck["aow_deck"] = available
+    deck["aow_discard"] = []
+    state["meta"][flag] = True

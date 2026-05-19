@@ -248,11 +248,52 @@ Balestre Grosse, Trebuchets, Astrologers, Via Francigena).
                                               and side_wide scopes by
                                               card.capability_name).
 
-**Total active SMOKEs: 0.** Total SMOKEs surfaced and closed: 24.
+**Total active SMOKEs: 0.** Total SMOKEs surfaced and closed: 26.
 
-This matches the Nevsky-level audit completeness threshold. Further
-SMOKE finds will come from playtesting (Tier 2 sweep) and Tier 4
-property-based fuzz testing already in `test_invariants.py`.
+## SMOKE-Inferno-025 — AoW deck never reshuffles at start of each Levy
+## Pattern 3 (Stale per-side state, wrong scope).
+
+**Detected (v1.5 Tier-2 sweep):** Scenario F long-runs at seed=1/7/99
+errored with `IllegalAction[EMPTY_DECK]: AoW deck for guelph has < 2 cards`
+after ~640 actions. Per RoP 3.1.1, the AoW deck is reshuffled at the
+start of EACH Levy from the discard pile, excluding Held Events and
+Capabilities currently in play. The harness was draining the deck across
+turns without re-seeding.
+
+**Fix:** Added `_maybe_reshuffle_aow_deck(state, side)` called from
+`_h_levy_aow_draw`. Idempotent within a Levy via the
+`aow_reshuffled_this_levy_<side>` flag (cleared at end_reset 4.9.6).
+Deck reset = all 26 side cards minus held minus in-play capabilities.
+
+**Regression test:** Tier-2 sweep re-run confirms F seeds 1-200 all
+complete to victory.
+
+## SMOKE-Inferno-026 — Enumerator/handler divergence on service_box=None
+## Pattern 1 (state-set-but-unreachable) + Pattern 2 (arg-shape mismatch).
+
+**Detected (v1.5 Tier-2 sweep):** Scenario E seed=7 greedy looped at
+Levy step 3.3 for 30+ consecutive same-state actions on `levy_disband`.
+The enumerator was using `(l.get('service_box') or 0) <= levy_box`
+which treats None as 0, marking Astimberg disbandable; the handler
+had `if svc is None: continue` which skipped him. Result: enumerator
+kept offering disband forever; greedy kept picking it; nothing changed.
+
+**Root cause:** `service_box=None` is ambiguous — Lord's marker may
+be in `off_left_service` (Beyond Service Limit, IS disbandable) or
+`off_right_service` (well-served, NOT disbandable). Neither side of
+the engine disambiguated.
+
+**Fix:** Both `_enum_disband` and `_h_levy_disband` now consult
+`state['calendar']['off_left_service']` — Lord with `service_box=None`
+AND in off_left_service => Beyond Service Limit (disbandable); else
+(off-right or just unset) skipped. Handler removes the Lord from the
+off_left_service list on disband.
+
+**Regression test:** E seed=7 now completes (greedy: WIN ghibelline
+214 actions). Full sweep 36/36 clean.
+
+This matches the Nevsky-level audit completeness threshold. Tier-2
+sweep run; 2 real SMOKEs surfaced and closed.
 
 
 ---
