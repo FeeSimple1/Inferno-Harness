@@ -1160,50 +1160,13 @@ def S18_event(state, side, args, rng):
         if not cortona_ghib:
             return {"applied": False,
                     "reason": "Cortona must have Ghibelline Allegiance to roll Revolt."}
-        from . import static_data as sd
-        target_name = args.get("target_locale")
-        target = state["locales"].get(target_name)
-        if not target:
-            return _manual("S18", "Provide target_locale (eligible Enemy Stronghold) for revolt_roll.")
-        # 1.4.1 eligibility
-        if target.get("ruins") or target.get("type") == "outpost":
-            return {"applied": False, "reason": "Ruins/Outposts never Revolt."}
-        if any(m.get("side") == "ghibelline" for m in target.get("current_allegiance", []) or []):
-            return {"applied": False, "reason": "Target is already Ghibelline."}
-        danger = [target_name] + [n for n, _ in sd.adjacent_to(target_name)]
-        for loc_n in danger:
-            l = state["locales"].get(loc_n)
-            if not l:
-                continue
-            for oid in l.get("lords_present", []):
-                if (state["lords"][oid]["side"] == "guelph"
-                        and state["lords"][oid]["status"] == "mustered"):
-                    return {"applied": False,
-                            "reason": f"Enemy Lord {oid} at/adjacent to {target_name}."}
-        # 1.4.2: within 1 Locale of a Ghibelline cylinder or marker
-        within1 = _locales_within(state, target_name, 1)
-        has_ghib_presence = False
-        for loc_n in within1:
-            l = state["locales"].get(loc_n, {})
-            if any(m.get("side") == "ghibelline" for m in l.get("current_allegiance", []) or []):
-                has_ghib_presence = True
-            for oid in l.get("lords_present", []):
-                if state["lords"][oid]["side"] == "ghibelline":
-                    has_ghib_presence = True
-        rp = rng.roll("s18_revolt_purple")
-        rg = rng.roll("s18_revolt_gold")
-        if not has_ghib_presence:
-            return {"applied": False, "reason": "No Ghibelline cylinder/marker within 1 Locale.",
-                    "rolls": [rp.value, rg.value]}
-        size = sd.STRONGHOLDS[target["type"]]["size"]
-        target["current_allegiance"] = [m for m in target.get("current_allegiance", [])
-                                        if m.get("side") != "guelph"]
-        for _ in range(size):
-            target["current_allegiance"].append({"side": "ghibelline", "value": 1})
-        state["vp"]["ghibelline"] = min(state["vp"].get("ghibelline", 0) + size, 17.5)
-        state["vp"]["guelph"] = max(state["vp"].get("guelph", 0) - size, 0)
-        return {"applied": True, "revolted": target_name, "size": size,
-                "rolls": [rp.value, rg.value]}
+        # S18: the Ghibellines roll once on the 'Revolt Against Guelphs' table
+        # (1.4.2). Decisions (Submission / fallback) park as pending_revolts;
+        # the consumer resolves via cmd_resolve_revolt.
+        from . import revolt as _rv
+        trig = _rv.trigger_revolts(state, losing_side="guelph", count=1,
+                                   rng=rng, context="s18_cortona")
+        return {"applied": True, "revolt_rolls": trig["revolt_rolls"]}
 
     return {"applied": False, "reason": "mode must be treachery_free, add_treachery, or revolt_roll."}
 

@@ -22,6 +22,7 @@ from typing import Any
 
 from . import card_data as cd
 from . import static_data as sd
+from . import revolt as _revolt
 from .flow import (
     advance_to_next_side_or_step,
     current_side,
@@ -62,7 +63,18 @@ def dispatch(state: dict[str, Any], action: dict[str, Any]) -> dict[str, Any]:
         name == "cmd_play_ambush"
         and side == state["meta"].get("approach_attacker_side")
     )
-    if side != current_side(state) and not ambush_exempt:
+    # Revolt/Exiles resolutions (1.4.2/1.4.4) are owned by the benefitting or
+    # losing side, which may not be the active player; exempt them when a
+    # matching pending decision exists.
+    revolt_exempt = (
+        name == "cmd_resolve_revolt"
+        and any(b.get("decision", {}).get("side") == side
+                for b in state.get("pending_revolts", []))
+    ) or (
+        name == "cmd_resolve_exiles"
+        and any(e.get("side") == side for e in state.get("pending_exiles", []))
+    )
+    if side != current_side(state) and not (ambush_exempt or revolt_exempt):
         raise IllegalAction(
             "WRONG_TURN",
             f"It's {current_side(state)}'s turn, not {side}'s.",
@@ -385,13 +397,13 @@ def _h_levy_disband(state, side, args, rng) -> dict[str, Any]:
         if lord.get("comune_of"):
             continue
         revolt_count = 3 if lord.get("podesta") else 1
+        # 1.4.2 Revolt Table rolls: the disbanding side (`side`) lost the Lord;
+        # `enemy_side` benefits and rolls. Decisions (if any) park as pending.
+        trig = _revolt.trigger_revolts(state, losing_side=side, count=revolt_count,
+                                       rng=rng, context=f"disband_{lid}")
+        revolt_rolls.extend(trig["revolt_rolls"])
+        # 1.4.3 Treachery cards (# = revolt_count); enemy's choice, auto-picked.
         for _ in range(revolt_count):
-            r = rng.roll(f"revolt_disband_{lid}")
-            revolt_rolls.append({"lord_id": lid, "die": r.value, "context": r.context})
-            # Add a Treachery card to enemy Command deck for this Lord
-            # (1.4.3). The choice of WHICH Treachery card is the enemy's;
-            # Phase 2 auto-picks the still-set-aside Treachery card belonging
-            # to the Disbanding Lord (if any), else any set-aside.
             t = _add_treachery_to_enemy(state, lid, enemy_side)
             if t:
                 treachery_added.append({"card": t, "to_side": enemy_side, "for_disband_of": lid})
@@ -500,6 +512,49 @@ def _disband_at_service_limit(state, lid: str, levy_box: int) -> None:
     lord["calendar_box"] = new_box
     boxes.setdefault(str(new_box), {"cylinders": [], "services": [], "victory": [], "markers": []})
     boxes[str(new_box)]["cylinders"].append(lid)
+
+
+def _h_cmd_resolve_revolt(state, side, args, rng) -> dict[str, Any]:
+    """Resolve the head pending Revolt decision (SUBMISSION / fallback) with a
+    player-chosen target Locale, then continue draining the batch."""
+    batches = state.get("pending_revolts", [])
+    head = next((b for b in batches if b.get("decision")), None)
+    if head is None:
+        raise IllegalAction("NO_PENDING_REVOLT", "No revolt decision awaiting a choice.", "1.4.2")
+    if head["decision"]["side"] != side:
+        raise IllegalAction("WRONG_SIDE",
+                            f"Revolt choice belongs to {head['decision']['side']}.", "1.4.2")
+    choice = args.get("choice")
+    gold, purple = head["rolls"][0]
+    res = _revolt.resolve_revolt(state, head["losing_side"], gold, purple, choice=choice)
+    if res["status"] == "illegal_choice":
+        raise IllegalAction("ILLEGAL_REVOLT_CHOICE", res["reason"], "1.4.2")
+    if res["status"] == "decision_required":
+        # choice was None and still ambiguous
+        raise IllegalAction("CHOICE_REQUIRED",
+                            f"Revolt requires a choice among {res['decision']['candidates']}.", "1.4.2")
+    head["rolls"].pop(0)
+    head.pop("decision", None)
+    if res.get("exiles_required"):
+        state.setdefault("pending_exiles", []).append(res["exiles_required"])
+    drained = _revolt.drain_revolts(state)
+    return {"state_changes": {"resolved_revolt": res.get("switch") or res.get("status"),
+                              **drained}, "rule_citation": "1.4.2"}
+
+
+def _h_cmd_resolve_exiles(state, side, args, rng) -> dict[str, Any]:
+    """Apply the head pending Exiles slides (1.4.4) chosen by the losing side."""
+    pend = state.get("pending_exiles", [])
+    head = next((e for e in pend if e["side"] == side), None)
+    if head is None:
+        raise IllegalAction("NO_PENDING_EXILES", f"No Exiles awaiting {side}.", "1.4.4")
+    slides = args.get("slides", [])
+    if len(slides) > head["count"]:
+        raise IllegalAction("TOO_MANY_SLIDES",
+                            f"Exiles allows at most {head['count']} slides.", "1.4.4")
+    result = _revolt.apply_exiles(state, side, slides)
+    pend.remove(head)
+    return {"state_changes": {"exiles": result}, "rule_citation": "1.4.4"}
 
 
 def _add_treachery_to_enemy(state, for_lord_id: str, enemy_side: str) -> str | None:
@@ -2237,11 +2292,11 @@ def _apply_surrender(state, locale_name, side, rng, rolls_log):
     state["vp"][enemy] = max(state["vp"].get(enemy, 0) - size, 0)
     # Remove all Siege markers
     loc["siege"] = []
-    # Revolt + Treachery # = Size
+    # Revolt + Treachery # = Size. `side` (besieger) benefits; `enemy` lost.
+    trig = _revolt.trigger_revolts(state, losing_side=enemy, count=size,
+                                   rng=rng, context=f"surrender_{locale_name}")
+    rolls_log.extend(trig["revolt_rolls"])
     for _ in range(size):
-        r = rng.roll(f"revolt_surrender_{locale_name}")
-        rolls_log.append({"context": r.context, "value": r.value})
-        # Add a Treachery card to side's Command deck
         _add_treachery_to_enemy(state, "<surrender>", side)
 
 
@@ -2356,9 +2411,10 @@ def _apply_sack(state, locale_name, side, storm_result, rng):
         if removed_lid in state["lords"]:
             _disband_beyond_service_limit(state, removed_lid)
 
-    # Revolt + Treachery # = Value
+    # Revolt + Treachery # = Value. `side` (attacker) benefits; `enemy` lost.
+    _revolt.trigger_revolts(state, losing_side=enemy, count=size,
+                            rng=rng, context=f"sack_{locale_name}")
     for _ in range(size):
-        r = rng.roll(f"revolt_sack_{locale_name}")
         _add_treachery_to_enemy(state, "<sack>", side)
 
     return spoils_log
@@ -3032,10 +3088,11 @@ def _h_end_ransom(state, side, args, rng) -> dict[str, Any]:
         # LANGUISH: enemy rolls Revolt OR adds Treachery (their choice) per 6 captured
         n_rolls = (total_captured + 5) // 6
         enemy = "ghibelline" if side == "guelph" else "guelph"
+        # 1.4.2 rolls: `side`'s captives Languish -> `enemy` benefits/rolls.
+        _revolt.trigger_revolts(state, losing_side=side, count=n_rolls,
+                                rng=rng, context=f"languish_{side}")
         results = []
         for _ in range(n_rolls):
-            r = rng.roll(f"languish_{side}")
-            results.append({"die": r.value})
             _add_treachery_to_enemy(state, "<languish>", enemy)
         # Captured units removed (Lost)
         state["captured_knights"][side] = {}
@@ -3856,3 +3913,10 @@ def _h_cmd_play_ambush(state, side, args, rng) -> dict[str, Any]:
 
 
 _HANDLERS["cmd_play_ambush"] = _h_cmd_play_ambush
+
+
+# Revolt-resolution actions (1.4.2 / 1.4.4) — registered last.
+_HANDLERS.update({
+    "cmd_resolve_revolt": _h_cmd_resolve_revolt,
+    "cmd_resolve_exiles": _h_cmd_resolve_exiles,
+})

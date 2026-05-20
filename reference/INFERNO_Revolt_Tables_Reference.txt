@@ -1,0 +1,307 @@
+==============================================================
+INFERNO - REVOLT TABLES REFERENCE
+Rule References: 1.4.2, 4.4.5, 4.5.1, 4.5.2, 4.9.2
+==============================================================
+
+Spellings normalized to INFERNO_Map_Reference.txt and
+INFERNO_Lords_Reference.txt.  Where the printed board differs
+from those references, the references control (see RECONCILIATION
+NOTES at the end of this document).
+
+Notation:
+  (n)              = Numbered circle (force value = Stronghold Value)
+  [LORDS: ... ]    = Lord/Vassal shields shown in the cell (composite
+                     of all Lords and Vassals seated at that Locale,
+                     except as noted under RECONCILIATION NOTES)
+  CITY (red font)  = Major city as printed in red/large font in original
+  [SUBMISSION]     = Result-marker cell with no named Locale (an "X"
+                     over an Allegiance marker). Per RoP 1.4.2 SUBMISSION,
+                     the rolling side must, if able, select a Stronghold
+                     marked with Enemy Allegiance (only, not printed) that
+                     is eligible for Revolt (1.4.1) and at or adjacent to
+                     which the rolling side has a Lord cylinder; it Revolts.
+                     [Corrected from an earlier "[SUBMISSION]" reading per
+                     user adjudication 2026-05-20 — see RECONCILIATION NOTE G.]
+
+Result-marker icons (Ghibelline? for the top table, Guelph? for the
+bottom table) are omitted below for compactness.
+
+
+==============================================================
+TABLE 1: REVOLT AGAINST GUELPHS?
+Orientation: North.
+Columns West (1) -> East (6).
+Row die = gold (Guelph).  Column die = purple (Ghibelline).
+==============================================================
+
+ROW 1 (●):
+  Col 1 (●):       LUCCA (3)        [LORDS: Lucca Podestà;
+                                            Vassal: Tommaso & Anfrione degli Obizzi]
+  Col 2 (●●):      Montecatini (1)
+  Col 3 (●●●):     FIRENZE (3)      [LORDS: Firenze Podestà;
+                                            Vassals: Adimari Family, Cerchi Family]
+  Col 4 (●●●●):    FIRENZE (3)      [LORDS: Firenze Podestà;
+                                            Vassals: Adimari Family, Cerchi Family]
+  Col 5 (●●●●●):   FIRENZE (3)      [LORDS: Firenze Podestà;
+                                            Vassals: Adimari Family, Cerchi Family]
+  Col 6 (●●●●●●):  Battifolle (1)
+
+ROW 2 (●●):
+  Col 1 (●):       Vecliano (1)
+  Col 2 (●●):      Altopascio (2)   [LORDS: Lucca Podestà;
+                                            Special Vassal: Altopascio (Tau Company)]
+  Col 3 (●●●):     Prato (2)        [LORDS: Firenze Podestà;
+                                            Vassal: Prato Comune]
+  Col 4 (●●●●):    Figline (1)
+  Col 5 (●●●●●):   Ponte a Sieve (1)
+  Col 6 (●●●●●●):  Poppi (1)        [LORDS: Guido Guerra Guidi;
+                                            Vassals associated with his Lombardia-Bologna
+                                            Outposts (Lombardia / Guelph League and
+                                            Bologna Comune) - see Reconciliation Note A]
+
+ROW 3 (●●●):
+  Col 1 (●):       [SUBMISSION]
+  Col 2 (●●):      Empoli (1)
+  Col 3 (●●●):     Montelupo (1)
+  Col 4 (●●●●):    San Casciano (1)
+  Col 5 (●●●●●):   San Giovanni (1)
+  Col 6 (●●●●●●):  Bibbiena (1)
+
+ROW 4 (●●●●):
+  Col 1 (●):       [SUBMISSION]
+  Col 2 (●●):      San Miniato (2)  [LORDS: Vassal-only Seat - San Miniato Comune
+                                            (of Colle Podestà)]
+  Col 3 (●●●):     Montespertoli (1)
+  Col 4 (●●●●):    Barberino (1)
+  Col 5 (●●●●●):   AREZZO (3)       [LORDS: Arezzo Podestà;
+                                            Vassal: Bishop Donatello Tarlati]
+  Col 6 (●●●●●●):  Anghiari (1)
+
+ROW 5 (●●●●●):
+  Col 1 (●):       [SUBMISSION]
+  Col 2 (●●):      San Gimignano (2) [LORDS: Colle Podestà;
+                                             Vassal: San Gimignano Comune]
+  Col 3 (●●●):     Poggio Bonizio (2) [LORDS: Firenze Podestà]
+  Col 4 (●●●●):    Montevarchi (2)  [LORDS: Arezzo Podestà;
+                                            Vassal: Montevarchi Comune]
+  Col 5 (●●●●●):   Monte San Savino (1)
+  Col 6 (●●●●●●):  Castiglione (1)
+
+ROW 6 (●●●●●●):
+  Col 1 (●):       [SUBMISSION]
+  Col 2 (●●):      Colle (2)        [LORDS: Colle Podestà;
+                                            Vassals: Antonio Incontri (Volterra Exiles),
+                                            Aldobrandino Rosso (Count of Pitigliano)]
+  Col 3 (●●●):     Poggio Bonizio (2) [LORDS: Firenze Podestà]
+  Col 4 (●●●●):    Castelnuovo Berardenga (1)
+  Col 5 (●●●●●):   Chiusi (2)       [LORDS: Orvieto Capitaneus]
+  Col 6 (●●●●●●):  Cortona (2)
+
+
+==============================================================
+TABLE 2: REVOLT AGAINST GHIBELLINES?
+Orientation: South.
+Columns West (1) -> East (6).
+Row die = gold (Guelph).  Column die = purple (Ghibelline).
+(Same dice convention as Table 1 - both tables are read with the
+same pair of dice; the purple/gold mapping does not flip between
+tables.)
+==============================================================
+
+ROW 1 (●):
+  Col 1 (●):       PISA (3)         [LORDS: Pisa Podestà;
+                                            Vassal: Pisa Commune]
+  Col 2 (●●):      Vicopisano (1)
+  Col 3 (●●●):     Volterra (2)
+  Col 4 (●●●●):    Monteriggioni (1)
+  Col 5 (●●●●●):   Asinalunga (2)   [LORDS: Siena Podestà;
+                                            Vassal: Cacciaconti (Lords of Asinalunga)
+                                            - see Reconciliation Note B]
+  Col 6 (●●●●●●):  [SUBMISSION]
+
+ROW 2 (●●):
+  Col 1 (●):       Borgo Livorno (1)
+  Col 2 (●●):      Pontedera (1)    [LORDS: Pisa Podestà;
+                                            Vassal: Gherardo della Gherardesca]
+  Col 3 (●●●):     Volterra (2)
+  Col 4 (●●●●):    Asciano (1)
+  Col 5 (●●●●●):   Montepulciano (2)
+  Col 6 (●●●●●●):  [SUBMISSION]
+
+ROW 3 (●●●):
+  Col 1 (●):       Rosignano (1)
+  Col 2 (●●):      Pecciole (1)
+  Col 3 (●●●):     Casole (1)       [LORDS: Walther von Astimberg]
+  Col 4 (●●●●):    Montalcino (2)
+  Col 5 (●●●●●):   Montepulciano (2)
+  Col 6 (●●●●●●):  [SUBMISSION]
+
+ROW 4 (●●●●):
+  Col 1 (●):       Campiglia (1)
+  Col 2 (●●):      Rocca Sillana (1)
+  Col 3 (●●●):     Radicondoli (1)
+  Col 4 (●●●●):    Montalcino (2)
+  Col 5 (●●●●●):   Chianciano (1)
+  Col 6 (●●●●●●):  [SUBMISSION]
+
+ROW 5 (●●●●●):
+  Col 1 (●):       Massa Marittima (2) [LORDS: Count Giordano di Agliano;
+                                                Vassal: Massa Marittima Commune]
+  Col 2 (●●):      Monterotondo (1)
+  Col 3 (●●●):     Monticiano (1)
+  Col 4 (●●●●):    San Quirico (1)  [LORDS: Provenzano Salvani;
+                                            Vassal: Guglielmino Ubertini
+                                            (Exiled Bishop of Arezzo)]
+  Col 5 (●●●●●):   Radicofani (1)
+  Col 6 (●●●●●●):  [SUBMISSION]
+
+ROW 6 (●●●●●●):
+  Col 1 (●):       Castiglione della Pescaia (1)
+                                   [LORDS: Pisa Podestà]
+  Col 2 (●●):      Grosseto (2)     [LORDS: Aldobrandino Aldobrandeschi
+                                            (Count of Santa Fiora);
+                                            Vassal: Grosseto Commune]
+  Col 3 (●●●):     Montemassi (1)
+  Col 4 (●●●●):    Montepescali (1)
+  Col 5 (●●●●●):   Santa Fiora (2)  [LORDS: Aldobrandino Aldobrandeschi
+                                            (Count of Santa Fiora);
+                                            Vassal: Uguccione Casali (Cortona's Exiled)]
+  Col 6 (●●●●●●):  [SUBMISSION]
+
+
+==============================================================
+COVERAGE CHECK (vs. INFERNO_Map_Reference.txt)
+==============================================================
+
+CITIES (Value 3): 5 total in game (1.3.1)
+  - On tables: Lucca, Firenze (3x), Arezzo, Pisa = 4 distinct cities
+  - Excluded: Siena (per 1.4.2 DESIGN NOTE: "Siena does not appear on
+    the Revolt tables, reflecting its staunch Ghibelline stand
+    these years")
+  STATUS: All 4 non-Siena Cities represented; consistent with rule.
+
+TOWNS (Value 2): 16 total in game (1.3.1)
+  Top table:    Altopascio, San Miniato, Prato, Montevarchi,
+                San Gimignano, Colle, Poggio Bonizio (R5+R6),
+                Chiusi, Cortona = 9 distinct
+  Bottom table: Volterra (R1+R2), Montepulciano (R2+R3),
+                Montalcino (R3+R4), Asinalunga, Massa Marittima,
+                Grosseto, Santa Fiora = 7 distinct
+  Total = 16.  STATUS: All Towns represented.
+
+CASTLES (Value 1): 36 total in game (1.3.1)
+  Top table:    Vecliano, Montecatini, Battifolle, Figline,
+                Ponte a Sieve, Poppi, Empoli, Montelupo, San Casciano,
+                San Giovanni, Bibbiena, Montespertoli, Barberino,
+                Anghiari, Monte San Savino, Castiglione,
+                Castelnuovo Berardenga = 17
+  Bottom table: Vicopisano, Monteriggioni, Borgo Livorno, Pontedera,
+                Asciano, Rosignano, Pecciole, Casole, Campiglia,
+                Rocca Sillana, Radicondoli, Chianciano, Monterotondo,
+                Monticiano, San Quirico, Radicofani,
+                Castiglione della Pescaia, Montemassi,
+                Montepescali = 19
+  Total = 36.  STATUS: All Castles represented exactly once.
+
+OUTPOSTS: 3 in game (Lombardia-Bologna East, Lombardia-Bologna West,
+  Orvieto).  STATUS: None appear as named result cells, consistent with
+  rule 1.4.1 ("Ruins and Outposts never Revolt").
+
+SUBMISSION cells: 10 total (Table 1: R3C1, R4C1, R5C1, R6C1 = 4;
+  Table 2: R1C6, R2C6, R3C6, R4C6, R5C6, R6C6 = 6). These name no
+  Locale; they resolve via the SUBMISSION procedure (1.4.2).
+
+GRAND TOTAL: 62 named-Locale (Rebellion) cells + 10 SUBMISSION cells
+= 72 cells (2 tables of 36). The 62 named cells cover 56 distinct
+Strongholds (Firenze x3, Poggio Bonizio / Volterra / Montepulciano /
+Montalcino x2 each = 6 repeats). Consistent with 57 Strongholds minus
+Siena. [An earlier draft mis-stated "12 [NO REVOLT] cells"; the grid
+has 10 such cells and they are SUBMISSION results, not no-revolt.]
+
+
+==============================================================
+PLAYBOOK CROSS-CHECK
+==============================================================
+
+Playbook page 18 worked example: "Cortona's Allegiance markers and
+Santa Fiora's cylinder ... would result in Chiusi (B) going over to
+the Ghibellines on a Revolt Table roll naming 'Chiusi' (a Ghibelline
+roll of purple '5' and gold '6')."
+
+This document places Chiusi at Row 6 (gold die) × Col 5 (purple die)
+in Table 1.  STATUS: Confirmed against Playbook.
+
+
+==============================================================
+RECONCILIATION NOTES & FLAGS
+==============================================================
+
+A. POPPI CELL (Table 1, R2C6) - Outpost-Vassal display anomaly.
+   The cell shows Guido Guerra's shield plus shields associated with
+   his Lombardia / Guelph League and Bologna Comune vassals.  Per
+   the Map Reference, those vassals are seated at the Lombardia-
+   Bologna East and West Outposts, NOT at Poppi.  Since Outposts
+   never appear as Revolt Table results (1.4.1), the table appears
+   to display those Outpost vassal shields at Guido Guerra's only
+   non-Outpost Lord Seat (Poppi).
+   - Confirmed: Pistoia Comune (Guido Guerra's third vassal,
+     seated at Lombardia-Bologna West only) does NOT appear on
+     the Poppi cell.  Only Lombardia / Guelph League and Bologna
+     Comune are represented.
+
+B. SIENA PODESTÀ APPEARS ON BOTTOM TABLE (Table 2, R1C5 Asinalunga).
+   Rule 1.4.2 DESIGN NOTE states "Siena does not appear on the Revolt
+   tables."  That note refers to Siena as a *Stronghold/Locale*
+   result; the Siena Podestà's *shield* still appears at his
+   secondary Lord Seat (Asinalunga), which is consistent with how
+   other Lord shields appear at their Lord Seats throughout both
+   tables.  No conflict.
+   - Visually confirmed against the printed lord map.
+
+C. PISA PODESTÀ APPEARS TWICE on the bottom table:
+   - PISA itself (R1C1, his Main Seat)
+   - Castiglione della Pescaia (R6C1, his third Lord Seat)
+   This is the only Lord represented at two different result cells
+   on the same table.  Consistent with the Map Reference's seat
+   assignments.
+
+D. SPELLING DEVIATIONS - printed board vs. project references:
+   - Printed board: "Monte San Salvino"
+     Map Reference:  "Monte San Savino"  -> using "Monte San Savino"
+   - Printed board: "figline" (lowercase)
+     Map Reference:  "Figline"           -> using "Figline"
+   - Printed board: "Santa fiora" (lowercase 'f' on the lower table)
+     Map Reference:  "Santa Fiora"       -> using "Santa Fiora"
+   No other spelling deviations identified.
+
+E. TERMINOLOGY - "Comune" vs "Commune":
+   Per INFERNO_Lords_Reference.txt terminology note:
+   - "Comune" (one m) = Commander's second mat (only Firenze and
+     Siena have one)
+   - "Commune" (two m's) = vassal type
+   This document follows that convention.  E.g. "Prato Comune" (a
+   Comune-style vassal of Firenze named with the Italian spelling)
+   versus "Pisa Commune", "Massa Marittima Commune", "Grosseto
+   Commune" (English-spelled vassal Communes).  These spellings
+   match the Lords Reference verbatim.
+
+F. NO ERRATA AFFECTS THE REVOLT TABLES.  The 10 April 2023 Official
+   Errata makes no corrections to the Revolt Tables card itself.
+   Rule changes from errata that touch the Revolt system
+   (e.g. 4.5.1 deleting "Sacked" before "Stronghold") affect when
+   Revolt is triggered, not the contents of the tables.
+
+G. CROSSED-OUT CELLS ARE SUBMISSION, NOT NO-REVOLT (adjudicated).
+   An earlier draft of this reference labeled the crossed-out
+   faction-shield cells "[NO REVOLT] (no revolt possible)". RoP 1.4.2
+   describes a SUBMISSION result ("If the table result shows an 'X'
+   over an Allegiance marker, the rolling side must if able select a
+   Stronghold marked with Enemy Allegiance ... at or adjacent to which
+   the rolling side has a Lord cylinder. It Revolts."). Per user
+   adjudication (2026-05-20), these 10 cells ARE the SUBMISSION result.
+   The harness encodes them as SUBMISSION (a player-choice flip), not
+   as no-ops. Logged in RULES_DECISIONS.md as Q-002.
+
+==============================================================
+END OF DOCUMENT
+==============================================================

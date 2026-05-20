@@ -29,6 +29,44 @@ from . import static_data as sd
 from .flow import current_campaign_step, current_side, current_step
 
 
+def _enum_pending_revolts(state):
+    """If a Revolt-table choice (Submission / Rebellion fallback) or an Exiles
+    slide is pending, return ONLY the resolution moves (they pause everything
+    else, per 1.4.2/1.4.4). Returns None when nothing is pending."""
+    for batch in state.get("pending_revolts", []):
+        dec = batch.get("decision")
+        if not dec:
+            continue
+        side = dec["side"]
+        moves = [{
+            "action": "cmd_resolve_revolt", "side": side,
+            "args": {"choice": cand},
+            "description": f"Revolt {dec['kind']}: flip {cand}.",
+            "rule_citation": "1.4.2",
+        } for cand in dec.get("candidates", [])]
+        if moves:
+            return moves
+    pend_ex = state.get("pending_exiles", [])
+    if pend_ex:
+        head = pend_ex[0]
+        side = head["side"]
+        cands = head.get("candidates", [])
+        moves = [{
+            "action": "cmd_resolve_exiles", "side": side,
+            "args": {"slides": [{"lord_id": c["lord_id"], "kind": c["kind"]}]},
+            "description": f"Exiles: slide {c['lord_id']} ({c['kind']}).",
+            "rule_citation": "1.4.4",
+        } for c in cands]
+        # Always allow slimming to zero slides (the side may decline if no marker
+        # is worth moving / none available).
+        moves.append({
+            "action": "cmd_resolve_exiles", "side": side, "args": {"slides": []},
+            "description": "Exiles: slide nothing.", "rule_citation": "1.4.4",
+        })
+        return moves
+    return None
+
+
 def enumerate_legal(state: dict[str, Any]) -> list[dict[str, Any]]:
     # Pending decisions take precedence over phase enumeration (per BRIEF
     # "Non-Combat Pending Decisions"). If an approach_response is pending
@@ -37,6 +75,11 @@ def enumerate_legal(state: dict[str, Any]) -> list[dict[str, Any]]:
     for p in pendings:
         if p.get("type") == "approach_response" and p.get("side") == state["meta"].get("active_player"):
             return _enum_approach_response(state, p)
+    # Revolt-table decisions (1.4.2) and Exiles (1.4.4) MUST be resolved before
+    # anything else — they pause the triggering action. Surface only those.
+    rev = _enum_pending_revolts(state)
+    if rev is not None:
+        return rev
     phase = state["meta"].get("phase")
     if phase == "levy":
         return _enum_levy(state)

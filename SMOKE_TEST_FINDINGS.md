@@ -490,3 +490,50 @@ target holds.
 `TestS19Brigands` (3, in-range coin transfer, out-of-range rejection,
 carts+prov bundle). 369 tests total; greedy self-play 90/90 reach a
 winner with 0 invariant violations after the treachery-handler changes.
+
+
+---
+
+## SMOKE-Inferno-046 — Revolt Table was abstracted to eligibility (now table-driven)
+
+**Pattern:** Box-only data fabricated as a stand-in (the v1.8 audit's
+single true reasoning gap). RoP 1.4.2 gives the Revolt procedure but the
+die-pair -> named-Locale grid is printed on the board, not in the rules
+text. Pre-v1.9 every automatic Revolt roll (Disband 3.3.1, Surrender
+4.5.1, Sack 4.5.2, Languish 4.9.2) rolled a die and added a Treachery
+card but never flipped the table-named Locale; S18 revolt_roll used an
+eligibility gate in place of the roll.
+
+**Fix (v1.9):** The user supplied the full Revolt Tables; encoded in
+`src/inferno/revolt.py` as REVOLT_TABLE_VS_GUELPH / _VS_GHIBELLINE
+(reference spellings; validated — all 56 distinct named cells join to
+LOCALES, both tables 36 cells, Siena absent, 10 Submission cells).
+`resolve_revolt()` implements 1.4.2 Rebellion + Submission, 1.4.4 flip,
+and Exiles; `trigger_revolts()`/`drain_revolts()` pre-roll dice
+(replay-deterministic), resolve in order, and PARK any roll needing a
+player choice as a pending decision. All Revolt triggers and S18 now
+call it.
+
+**Q-002 (RULES_DECISIONS.md):** the crossed-out cells are SUBMISSION,
+not no-revolt; all player choices (Submission target, Rebellion
+already-Friendly fallback, Exiles slides) are surfaced as decisions
+(consumer supplies the choice), never auto-selected — No-Agent
+constraint.
+
+**Deadlock guard (CROSS_PROJECT_LESSONS §8.5):** the enumerator surfaces
+ONLY the pending `cmd_resolve_revolt` / `cmd_resolve_exiles` moves until
+the decision clears, and `dispatch()` exempts those resolutions from the
+active-player turn check (the benefitting/losing side may not be active).
+
+**Tests:** `test_v19_features.py` (16) — table integrity + Playbook
+golden (Chiusi @ gold6/purple5 vs-Guelph), Rebellion (success / no
+presence / ineligible / Friendly-fallback), Submission (choice / illegal
+/ none), Exiles surfaced+applied, full enumerate->dispatch resolution,
+and a real `trigger_revolts` Submission park-then-resolve via a
+controlled RNG. Self-play sweep: 150/150 scenarios reach a winner, 0
+invariant violations, 0 stalls.
+
+**Reference-data flags logged (no guessing):** the supplied reference's
+summary said "12 [NO REVOLT] cells" — the grid has 10 (corrected in the
+repo reference); and the [NO REVOLT]->SUBMISSION relabel is recorded as
+Q-002.

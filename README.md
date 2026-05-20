@@ -14,7 +14,7 @@ exposes a structured interface (`new`, `state`, `legal-moves`, `do`,
 This is a private project. See [`BRIEF.md`](BRIEF.md) for the
 authoring spec.
 
-## Status — v1.8
+## Status — v1.9
 
 Every rule mechanic in the Inferno Rules of Play has a state-mutating
 implementation. The harness plays a complete game start-to-finish
@@ -52,9 +52,13 @@ Highlights beyond the BRIEF Phase 0–4 core:
 - LLM-play harness (`src/inferno/llm/`) + `examples/play_with_claude.py`.
 - CLI `do` executes any action via `dispatch()` and persists state
   (e.g. `inferno do state.json '{"action":"levy_aow_draw","side":"guelph"}'`).
+- Full Revolt Tables (1.4.2): every Revolt trigger (Disband, Surrender,
+  Sack, Languish, S18) rolls the real die->Locale table and flips the
+  result; Rebellion + Submission + 1.4.4 Exiles, with player choices
+  surfaced as decisions (`cmd_resolve_revolt` / `cmd_resolve_exiles`).
 
-**369 tests pass** on Python 3.10 sandbox (project policy 3.11+).
-45 SMOKE-Inferno-NNN markers with regression tests. Round-trip
+**386 tests pass** on Python 3.10 sandbox (project policy 3.11+).
+46 SMOKE-Inferno-NNN markers with regression tests. Round-trip
 enumerator/handler sweep + greedy & strategic self-play sweeps +
 Hypothesis property-based invariant tests all green. Tier-2 sweep:
 all 6 scenarios reach a winner under both agent styles. 14-pattern
@@ -68,7 +72,7 @@ Requires Python 3.11+.
 git clone https://github.com/FeeSimple1/Inferno-Harness.git
 cd Inferno-Harness
 pip install -e ".[dev]"
-pytest -v                         # 369 tests
+pytest -v                         # 386 tests
 inferno scenarios                 # list the 6 scenarios
 inferno new A --seed 42 --out a.state.json
 inferno state a.state.json --mode summary

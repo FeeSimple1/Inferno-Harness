@@ -39,3 +39,38 @@ colour bands.
 
 **Encoded in commit:** `b6e5fdc` (Phase 3a: Plan + simple Commands + FPD;
 the commit that introduced `SEASON_BY_BOX` and `PLAN_SIZE_BY_SEASON`).
+
+---
+
+## Q-002 — Revolt Table "crossed-out" cells: no-revolt or Submission?
+
+**Context:** Encoding the physical Revolt Tables (1.4.2) into the
+harness from the user-supplied `INFERNO_Revolt_Tables_Reference.txt`.
+The reference's initial draft labeled 10 cells (Table 1 col-1 rows 3–6;
+Table 2 col-6 rows 1–6) as "[NO REVOLT] = crossed-out faction shield
+(no revolt possible)" and showed no Submission cells. RoP 1.4.2,
+however, describes a SUBMISSION result ("if the table result shows an
+'X' over an Allegiance marker, the rolling side must if able select a
+Stronghold marked with Enemy Allegiance ... at or adjacent to which the
+rolling side has a Lord cylinder; it Revolts").
+
+**What was ambiguous:** Whether those 10 cells are no-ops or are the
+RoP 1.4.2 Submission result.
+
+**Resolved (2026-05-20):** They are **Submission** results. "No revolt
+should mean a submission result." The repo reference
+(`reference/INFERNO_Revolt_Tables_Reference.txt`) was corrected
+accordingly (RECONCILIATION NOTE G), and the harness encodes those
+cells as a player-choice Submission flip, not a no-op.
+
+**Companion ruling:** All revolt player-choices — the Submission target,
+the Rebellion "already-Friendly" adjacent-Stronghold fallback (≤ Value,
+eligible), and the 1.4.4 Exiles cylinder/Service slides — are **surfaced
+as decisions** (consumer/LLM supplies the choice via args); the harness
+never auto-selects among genuine alternatives, per the No-Agent
+constraint.
+
+**Citation:** Rules of Play 1.4.2 (Rebellion / Submission), 1.4.4
+(Switching Allegiance + Exiles).
+
+**Encoded in commit:** (v1.9 — src/inferno/revolt.py + trigger wiring).

@@ -139,30 +139,23 @@ class TestS18Cortona:
         assert target not in s["decks"]["ghibelline"]["treachery_set_aside"]
         assert len(s["decks"]["ghibelline"]["command_deck"]) == before_cmd + 1
 
-    def test_revolt_roll_flips_eligible_enemy_stronghold(self):
-        s = load_scenario("A", seed=1)
-        # Cortona is Ghibelline. Find a Guelph-aligned eligible neighbor.
-        # Force a clean test: make Volterra a Guelph town near a Ghibelline marker.
-        # Use Cortona's neighbor that is enemy-aligned; if none, set one up.
-        from inferno import static_data as sd
-        neigh = [n for n, _ in sd.adjacent_to("Cortona")]
-        target = neigh[0]
-        tl = s["locales"][target]
-        tl["ruins"] = None
-        tl["current_allegiance"] = [{"side": "guelph", "value": 1}]
-        # Remove any enemy (guelph) lords at/adjacent to target.
-        for loc_n in [target] + [n for n, _ in sd.adjacent_to(target)]:
-            for lid in list(s["locales"].get(loc_n, {}).get("lords_present", [])):
-                if s["lords"][lid]["side"] == "guelph":
-                    s["locales"][loc_n]["lords_present"].remove(lid)
-                    s["lords"][lid]["location"] = None
+    def test_revolt_roll_rolls_on_table(self):
+        """S18 revolt_roll now rolls on the real Revolt Table (1.4.2) rather
+        than flipping a directed target. It rolls once on the 'Revolt Against
+        Guelphs' table; the outcome depends on the dice (resolved / no_effect
+        / a parked decision)."""
+        s = load_scenario("A", seed=1)  # Cortona Ghibelline -> revolt_roll allowed
         r = ce.apply_event_effect(s, "S18", "ghibelline",
-                                  {"mode": "revolt_roll", "target_locale": target},
-                                  HarnessRNG(seed=3))
-        assert r["applied"] is True, r
-        assert any(m["side"] == "ghibelline" for m in tl["current_allegiance"])
-        assert len(r["rolls"]) == 2
+                                  {"mode": "revolt_roll"}, HarnessRNG(seed=3))
+        assert r["applied"] is True
+        assert "revolt_rolls" in r and len(r["revolt_rolls"]) == 1
+        # target_locale is no longer used by S18; the table cell governs.
 
+    def test_revolt_roll_requires_cortona_ghibelline(self):
+        s = load_scenario("B", seed=1)  # Cortona Ruins/empty
+        r = ce.apply_event_effect(s, "S18", "ghibelline",
+                                  {"mode": "revolt_roll"}, HarnessRNG(seed=1))
+        assert r["applied"] is False
 
 # =====================================================================
 # S18 free-Treachery consumed by cmd_treachery_revolt
