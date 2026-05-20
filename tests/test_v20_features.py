@@ -115,10 +115,10 @@ class TestCombatRemovalRevolt:
         set_before = len(s["decks"]["ghibelline"]["treachery_set_aside"])
         cmd_before = len(s["decks"]["ghibelline"]["command_deck"])
         rng = _CountingRNG(value=1)
-        res = A._trigger_combat_removal_revolts(s, [lid], rng, "battle")
+        res = A._trigger_disband_revolt_and_treachery(s, [lid], rng, "battle")
         # 1 Revolt roll == gold + purple die == 2 RNG calls.
         assert rng.calls == 2
-        added = res["combat_removal_treachery"]
+        added = res["treachery_added"]
         assert len(added) == min(1, set_before)
         assert all(a["to_side"] == "ghibelline" for a in added)
         assert len(s["decks"]["ghibelline"]["command_deck"]) == cmd_before + len(added)
@@ -129,25 +129,25 @@ class TestCombatRemovalRevolt:
         s["lords"][lid]["podesta"] = True
         set_before = len(s["decks"]["ghibelline"]["treachery_set_aside"])
         rng = _CountingRNG(value=1)
-        res = A._trigger_combat_removal_revolts(s, [lid], rng, "battle")
+        res = A._trigger_disband_revolt_and_treachery(s, [lid], rng, "battle")
         # Podesta = 3x => 3 Revolt rolls => 6 die rolls.
         assert rng.calls == 6
-        assert len(res["combat_removal_treachery"]) == min(3, set_before)
+        assert len(res["treachery_added"]) == min(3, set_before)
 
     def test_comune_lord_no_revolt(self):
         s = load_scenario("A", seed=1)
         lid = self._guelph_lord(s)
         s["lords"][lid]["comune_of"] = "Firenze"
         rng = _CountingRNG(value=1)
-        res = A._trigger_combat_removal_revolts(s, [lid], rng, "battle")
+        res = A._trigger_disband_revolt_and_treachery(s, [lid], rng, "battle")
         assert rng.calls == 0
-        assert res["combat_removal_treachery"] == []
+        assert res["treachery_added"] == []
 
     def test_wired_into_all_three_combat_paths(self):
         # The shared trigger is invoked by Battle (_apply_post_battle), Storm
         # (_apply_sack), and Sally (_h_cmd_sally) — defined once, reused.
         for fn in (A._apply_post_battle, A._apply_sack, A._h_cmd_sally):
-            assert "_trigger_combat_removal_revolts" in inspect.getsource(fn)
+            assert "_trigger_disband_revolt_and_treachery" in inspect.getsource(fn)
 
     def test_marker_present(self):
-        assert "SMOKE-Inferno-050" in inspect.getsource(A._trigger_combat_removal_revolts)
+        assert "SMOKE-Inferno-050" in inspect.getsource(A._trigger_disband_revolt_and_treachery)

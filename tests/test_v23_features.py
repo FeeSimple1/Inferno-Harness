@@ -105,3 +105,57 @@ class TestFpdPaySubStep:
 
     def test_marker_present(self):
         assert "SMOKE-Inferno-057" in inspect.getsource(A._run_fpd)
+
+
+# =====================================================================
+# SMOKE-Inferno-058 — FPD Beyond-Service Disband triggers Revolt & Treachery
+# (4.8.2 Errata / 3.3.1), via the shared trigger; At-Service-Limit does not.
+# =====================================================================
+class TestFpdDisbandRevolt:
+    def _one_beyond(self, side="guelph", podesta=False, at_limit=False):
+        s = load_scenario("A", seed=1)
+        s["calendar"]["levy_box"] = 5
+        # Make every mustered Lord safe (Service 10) and strip Coin/Loot so FPD
+        # runs synchronously (no Pay sub-step), isolating one Disband.
+        for ld in s["lords"].values():
+            if ld.get("status") == "mustered":
+                ld["service_box"] = 10
+            ld.get("assets", {}).pop("Coin", None)
+            ld.get("assets", {}).pop("Loot", None)
+        lid = next(l for l, ld in s["lords"].items()
+                   if ld["side"] == side and ld.get("status") == "mustered")
+        s["lords"][lid]["service_box"] = 5 if at_limit else 3
+        s["lords"][lid].pop("comune_of", None)
+        if podesta:
+            s["lords"][lid]["podesta"] = True
+        else:
+            s["lords"][lid].pop("podesta", None)
+        return s, lid
+
+    def test_beyond_disband_triggers_one_revolt_and_treachery(self):
+        s, lid = self._one_beyond()
+        cmd_before = len(s["decks"]["ghibelline"]["command_deck"])
+        out = A._run_fpd(s)
+        assert out["pay_pending"] is False                 # synchronous
+        assert s["lords"][lid]["status"] != "mustered"     # Disbanded Beyond
+        assert len(out.get("disband_treachery", [])) == 1
+        assert len(s["decks"]["ghibelline"]["command_deck"]) == cmd_before + 1
+        assert len(out.get("disband_revolts", [])) >= 1
+
+    def test_podesta_beyond_disband_triggers_three(self):
+        s, lid = self._one_beyond(podesta=True)
+        out = A._run_fpd(s)
+        assert len(out.get("disband_treachery", [])) == 3
+
+    def test_at_service_limit_disband_no_revolt(self):
+        s, lid = self._one_beyond(at_limit=True)
+        out = A._run_fpd(s)
+        assert s["lords"][lid]["status"] != "mustered"     # Disbanded At limit
+        assert "disband_treachery" not in out              # no Revolt/Treachery
+
+    def test_shared_trigger_used_by_fpd_and_combat(self):
+        assert "_trigger_disband_revolt_and_treachery" in inspect.getsource(A._fpd_run_disband)
+        assert "_trigger_disband_revolt_and_treachery" in inspect.getsource(A._apply_post_battle)
+
+    def test_marker_present(self):
+        assert "SMOKE-Inferno-058" in inspect.getsource(A._fpd_run_disband)

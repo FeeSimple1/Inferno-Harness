@@ -753,3 +753,28 @@ Regression: `test_v23_features.py::TestFpdPaySubStep`.
 plus `pay_done`; the handler still accepts any valid 3.2 Pay the consumer
 supplies (cross-Lord, Loot, multi-box). Beyond-Service-Limit Disband Revolt/
 Treachery wiring at FPD is a separate pre-existing item (unchanged here).
+
+---
+
+## SMOKE-Inferno-058 — FPD Beyond-Service Disband skipped its Revolt & Treachery
+
+**Pattern:** §2 missing trigger + misleading docstring — the predicate "this
+Disband triggers Revolt & Treachery (3.3.1)" was wired for Levy Disband and (as
+of SMOKE-050) combat removal, but NOT for the FPD (4.8.2) Beyond-Service Disband,
+even though `_fpd_run_disband`'s docstring claimed it applied.
+
+**Detected:** v2.4 (flagged at end of v2.3). `_fpd_run_disband` called
+`_disband_beyond_service_limit` directly and never rolled Revolt or added
+Treachery. SoP 4.8.2 Errata: "Beyond-Service-Limit Revolt/Treachery DOES apply."
+(At-Service-Limit Disband correctly adds none.)
+
+**Fix (v2.4):** the v2.0 combat-removal helper was generalised and renamed
+`_trigger_disband_revolt_and_treachery` — the Rules Reference groups "Disbanded
+Beyond Service OR Removed by combat" as one 3.3.1 trigger (1x regular / 3x
+Podesta, Comune exempt). It is now called by `_fpd_run_disband` for the
+Beyond-Service (and off-left-Service) Disbands, with a state-seeded RNG that
+updates `rng_advance` (replay-deterministic; this path has no handler rng). The
+three combat call sites (Battle/Storm/Sally) were updated to the new name (return
+keys neutralised to `revolt_rolls` / `treachery_added`). At-Service-Limit Disband
+still triggers nothing. Self-play: 240 games, 0 stalls. Regression:
+`test_v23_features.py::TestFpdDisbandRevolt`.

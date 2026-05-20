@@ -626,21 +626,24 @@ def _add_treachery_to_enemy(state, for_lord_id: str, enemy_side: str) -> str | N
     return card
 
 
-def _trigger_combat_removal_revolts(state, removed_lids, rng, context):
-    """1.4.2 / 1.4.3 / 4.4.5: every Lord REMOVED BY COMBAT triggers Revolt-table
-    rolls benefitting the enemy (once for a regular Lord, 3x for a Podesta) and
-    adds that many Treachery cards to the enemy's Command deck. This is the same
-    Revolt & Treachery trigger as a Disband Beyond Service (3.3.1) — defined once
-    here and reused by Battle, Storm-Sack, and Sally removals so the three combat
-    paths can never drift apart.
+def _trigger_disband_revolt_and_treachery(state, lord_ids, rng, context):
+    """3.3.1 Revolt & Treachery, defined ONCE for the two events the Rules
+    Reference groups together: a Lord "Disbanded Beyond Service OR Removed by
+    combat". Each such Lord triggers Revolt-table rolls benefitting the enemy
+    (once for a regular Lord, 3x for a Podesta) and adds that many Treachery
+    cards to the enemy's Command deck. Comune Lords add no Revolt/Treachery.
 
-    SMOKE-Inferno-050: a Lord removed in Battle/Storm/Sally now rolls on the
-    Revolt table (it previously did not — only Disband/Surrender/Sack/Languish
-    were wired). Comune Lords add no Revolt/Treachery (3.3.1), matching Disband.
+    Reused by Battle, Storm-Sack, and Sally combat removals AND by the FPD
+    (4.8.2) Beyond-Service-Limit Disband so the paths can never drift apart.
+
+    SMOKE-Inferno-050: combat removal (Battle/Storm/Sally) now rolls on the
+    Revolt table (previously unwired). SMOKE-Inferno-058: the FPD Beyond-Service
+    Disband now rolls too (it called the mechanical disband directly and skipped
+    Revolt/Treachery, despite SoP 4.8.2 Errata saying it applies).
     """
     revolt_rolls = []
     treachery_added = []
-    for lid in removed_lids:
+    for lid in lord_ids:
         lord = state["lords"].get(lid)
         if not lord:
             continue
@@ -657,9 +660,8 @@ def _trigger_combat_removal_revolts(state, removed_lids, rng, context):
             t = _add_treachery_to_enemy(state, lid, enemy_side)
             if t:
                 treachery_added.append({"card": t, "to_side": enemy_side,
-                                        "for_removal_of": lid})
-    return {"combat_removal_revolts": revolt_rolls,
-            "combat_removal_treachery": treachery_added}
+                                        "for_lord": lid})
+    return {"revolt_rolls": revolt_rolls, "treachery_added": treachery_added}
 
 
 # =====================================================================
@@ -1645,9 +1647,15 @@ def _fpd_legal_pays(state, side: str) -> list[dict[str, Any]]:
 
 def _fpd_run_disband(state, summary: dict[str, Any]) -> None:
     """4.8.2 DISBAND + 4.8.3 remove Moved/Fought markers (run after the Pay
-    sub-step). Errata Campaign timing applies (Beyond-Service-Limit Revolt/
-    Treachery, Podestà placement) via the shared Disband handlers."""
+    sub-step). Per SoP 4.8.2 Errata, a Beyond-Service-Limit Disband DOES trigger
+    Revolt & Treachery (3.3.1); an At-Service-Limit Disband does NOT.
+
+    SMOKE-Inferno-058: the Beyond-Service Disband now routes its Revolt/Treachery
+    through the shared `_trigger_disband_revolt_and_treachery` (same predicate as
+    Levy Disband and combat removal); previously this path called the mechanical
+    disband directly and silently skipped the trigger."""
     levy_box = state["calendar"]["levy_box"]
+    beyond_lids: list[str] = []
     for side in ("guelph", "ghibelline"):
         for lid, lord in list(state["lords"].items()):
             if lord["side"] != side or lord["status"] != "mustered":
@@ -1656,13 +1664,28 @@ def _fpd_run_disband(state, summary: dict[str, Any]) -> None:
             if svc is None:
                 _disband_beyond_service_limit(state, lid)
                 summary["disband"].append({"lord_id": lid, "kind": "beyond_via_off_left"})
+                beyond_lids.append(lid)
                 continue
             if svc < levy_box:
                 _disband_beyond_service_limit(state, lid)
                 summary["disband"].append({"lord_id": lid, "kind": "beyond"})
+                beyond_lids.append(lid)
             elif svc == levy_box:
                 _disband_at_service_limit(state, lid, levy_box)
                 summary["disband"].append({"lord_id": lid, "kind": "at"})
+    # 3.3.1 Revolt & Treachery for Beyond-Service Disbands (4.8.2 Errata). Uses a
+    # state-seeded RNG and updates rng_advance for replay determinism (this path
+    # is reached without a handler rng — mirrors the post-Battle helper).
+    if beyond_lids:
+        from .rng import HarnessRNG
+        rng = HarnessRNG(state["meta"]["rng_seed"],
+                         advance=state["meta"].get("rng_advance", 0))
+        rolls_before = rng.advance_count
+        trig = _trigger_disband_revolt_and_treachery(state, beyond_lids, rng,
+                                                     context="fpd_disband")
+        state["meta"]["rng_advance"] = state["meta"].get("rng_advance", 0) + (rng.advance_count - rolls_before)
+        summary["disband_revolts"] = trig["revolt_rolls"]
+        summary["disband_treachery"] = trig["treachery_added"]
     # 4.8.3 remove Moved/Fought
     for lord in state["lords"].values():
         lord["flags"].pop("moved_fought", None)
@@ -2260,7 +2283,7 @@ def _apply_post_battle(state, result, attackers: list[str], defenders: list[str]
                              harsh_recovery=retreated_no_concede,
                              rng_caller=rng.roll)
     # 4.4.5 Revolt & Treachery for Lords removed in this Battle.
-    _trigger_combat_removal_revolts(state, combat_removed, rng, context="battle")
+    _trigger_disband_revolt_and_treachery(state, combat_removed, rng, context="battle")
     state["meta"]["rng_advance"] = state["meta"].get("rng_advance", 0) + (rng.advance_count - rolls_before)
 
 
@@ -2548,8 +2571,8 @@ def _apply_sack(state, locale_name, side, storm_result, rng):
         _disband_beyond_service_limit(state, removed_lid)
     # Per-Lord combat-removal Revolt & Treachery FIRST (Sec.13 lists this
     # before the separate Sack rolls below).
-    _trigger_combat_removal_revolts(state, storm_removed, rng,
-                                    context=f"storm_{locale_name}")
+    _trigger_disband_revolt_and_treachery(state, storm_removed, rng,
+                                          context=f"storm_{locale_name}")
 
     # Revolt + Treachery # = Value (Sack rolls, SEPARATE from Lord removal).
     # `side` (attacker) benefits; `enemy` lost.
@@ -2597,7 +2620,7 @@ def _h_cmd_sally(state, side, args, rng) -> dict[str, Any]:
     for removed_lid in sally_removed:
         _disband_beyond_service_limit(state, removed_lid)
     # 4.4.5 Revolt & Treachery for Lords removed in this Sally.
-    _trigger_combat_removal_revolts(state, sally_removed, rng, context="sally")
+    _trigger_disband_revolt_and_treachery(state, sally_removed, rng, context="sally")
     return _finish_card_with({"sally_result": result}, state, side,
                               reason="sally_ends_card", citation="4.5.3")
 
