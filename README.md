@@ -14,32 +14,49 @@ exposes a structured interface (`new`, `state`, `legal-moves`, `do`,
 This is a private project. See [`BRIEF.md`](BRIEF.md) for the
 authoring spec.
 
-## Status — v1.0
+## Status — v1.7
 
-All BRIEF Phase 0–4 mechanics are implemented:
+Every rule mechanic in the Inferno Rules of Play has a state-mutating
+implementation. The harness plays a complete game start-to-finish
+across all six scenarios under automated agents.
 
-- All 6 scenarios (A through F) load and play.
-- Full Levy phase (3.1 AoW → 3.2 Pay → 3.3 Disband → 3.4 Muster → 3.5
-  CtA-skip).
-- Full Campaign phase (capability_discard → plan w/ Lieutenants →
-  command_phase → end_campaign 4.9).
-- All Commands: Tax, Forage, Ravage, Supply, Sail, Pass, March +
-  Approach + Battle, Besiege/Bypass + Depart/Encamp/Sortie, Siege +
-  Storm + Sally, Treachery-Revolt + Treachery-Bribe.
-- Full Battle resolution with three-position Array, Flanking,
-  Reposition, six-step Strike, Concede, Loss rolls (with Knights'
-  Quarter), Service-shift dice, post-Battle Spoils.
-- All 52 AoW card effects registered (encoded where mechanically
-  unambiguous, flagged for manual application by the LLM consumer
-  where Battle/Storm in-round modifiers require operator judgment).
+Highlights beyond the BRIEF Phase 0–4 core:
+
+- All 6 scenarios (A–F) load and play to a winner.
+- Full Levy (3.1 AoW → 3.2 Pay → 3.3 Disband → 3.4 Muster → 3.5
+  full Call to Arms: Gather / Commander to Arms / Comune / Allies).
+- Full Campaign (capability_discard → plan w/ Lieutenants →
+  command_phase → end_campaign 4.9 substeps).
+- Every Command: Tax, Forage, Ravage, routed Supply (Cart chains),
+  Sail (full Ship transport + Sail-to-Enemy Siege), Pass, single &
+  Group March + Approach + Battle, Besiege/Bypass + Depart/Encamp/
+  Sortie, Siege + Storm + Sally + Relief Sally, Treachery-Revolt +
+  Treachery-Bribe (Path-A Mustered & Path-B Unmustered-via-Seat).
+- Full Battle: three-position Array, Flanking, Reposition, six-step
+  Strike, Concede, Loss rolls (with Knights' Quarter), Service-shift
+  dice, post-Battle Spoils; Storm Sack with full Spoils + Ruins +
+  Revolt/Treachery.
+- All 52 AoW cards mechanically encoded (no manual-flag gaps); 10
+  in-Battle / Storm / Command Capability hooks (Feditori, Army
+  Reserve, Arcieri, Luceria, Balestrieri, Balestre Grosse, Trebuchets,
+  Siege Towers, Astrologers, Via Francigena) plus Hold-Event Battle
+  modifiers (Hills, Swamp, Sudden Clash, Camp Attack, Bloody Red
+  Stream, Ambush, Surprise).
+- Scenario special rules: Sudden Campaign (A), Reprisal War (B),
+  Maremma War line-cross + Grosseto auto-Surrender (C), Resistance
+  VP-doubling (E), Exhaustion (F), Alliance Treaty +3 (C/S22).
+- Optional rules: Hidden Mats redaction (1.5.2), Advanced Vassal
+  Service (3.4.2).
 - BattleDecisionContext with scripted_decisions / callback / leftmost
   fallback priority.
-- LLM-play harness (`src/inferno/llm/`) per CROSS_PROJECT_LESSONS §5.
+- LLM-play harness (`src/inferno/llm/`) + `examples/play_with_claude.py`.
 
-**291 tests pass** on Python 3.10 sandbox (project policy 3.11+).
-17 SMOKE-Inferno-NNN markers with regression tests. Round-trip
-enumerator/handler sweep + greedy self-play sweep + strategic-agent
-sweep + Hypothesis property-based invariant tests all green.
+**351 tests pass** on Python 3.10 sandbox (project policy 3.11+).
+40 SMOKE-Inferno-NNN markers with regression tests. Round-trip
+enumerator/handler sweep + greedy & strategic self-play sweeps +
+Hypothesis property-based invariant tests all green. Tier-2 sweep:
+all 6 scenarios reach a winner under both agent styles. 14-pattern
+audit per FUTURE_PROJECTS_LESSONS.md: zero open findings.
 
 ## Quickstart
 
@@ -49,12 +66,13 @@ Requires Python 3.11+.
 git clone https://github.com/FeeSimple1/Inferno-Harness.git
 cd Inferno-Harness
 pip install -e ".[dev]"
-pytest -v                         # 291 tests
+pytest -v                         # 351 tests
 inferno scenarios                 # list the 6 scenarios
 inferno new A --seed 42 --out a.state.json
 inferno state a.state.json --mode summary
 inferno legal-moves a.state.json
 inferno briefing a.state.json --side guelph
+python examples/play_with_claude.py --scenario A --seed 42 --stub
 ```
 
 ## Architecture

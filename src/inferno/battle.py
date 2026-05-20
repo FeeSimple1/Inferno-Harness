@@ -1004,6 +1004,11 @@ def resolve_storm(state, attackers: list[str], defenders: list[str],
     # adjusted Siegeworks die range.
     from . import card_effects as ce
     storm_walls_minus = sum(c["value"] for c in ce.active_capabilities_for(state, "storm_walls_minus"))
+    pending_wm = [m for m in state.get("battle_modifiers_pending", [])
+                  if m.get("effect") == "storm_walls_minus"]
+    for m in pending_wm:
+        storm_walls_minus += m.get("value", 1)
+        state["battle_modifiers_pending"].remove(m)
     if storm_walls_minus and walls_die:
         walls_die = walls_die[:-storm_walls_minus] if len(walls_die) > storm_walls_minus else []
     # Phase 6: Trebuchets — Storm Attacker reduces Defender Walls by 1 if

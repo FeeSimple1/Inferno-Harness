@@ -351,3 +351,64 @@ Card-text fidelity (Pattern 7) sweep run post-v1.1: 4 findings (018,
 Storm in-round modifiers reserved for the Phase 5+ in-Battle hooks
 (BattleDecisionContext extensions for flanker_target, flanker_absorb,
 hit_allocation, and per-card Hold-Event trigger points).
+
+
+---
+
+## SMOKE-Inferno-041 — Surprise (F3/S3) one-shot Storm modifier consumption
+
+**Pattern:** State-set-but-never-consumed (FUTURE_PROJECTS_LESSONS
+Pattern 9) + one-shot leak.
+
+**Symptom (latent):** `besiege_modifiers_pending` / the resulting
+`storm_walls_minus` entry in `battle_modifiers_pending` was being
+*written* when F3/S3 Surprise applied, but pre-v1.7 nothing removed it.
+A one-shot Walls reduction would have persisted and re-applied to every
+subsequent Storm in the Campaign.
+
+**Fix (v1.7a):** `_h_besiege_or_bypass` consumes the Surprise entry
+when it places the 2 Siege markers + triggers the auto-Storm at
+Walls-2; `resolve_storm` removes each one-shot `storm_walls_minus`
+entry from `battle_modifiers_pending` as it folds the value into the
+Attacker's effective Walls die (battle.py ~L1007-1011).
+
+**Regression tests:**
+  - `TestSurpriseConsumption` (2 tests): asserts `surprise_besiege` +
+    `auto_storm` state-changes and the 1-marker normal-besiege baseline.
+  - `TestModifierConsumptionFuzz.test_storm_walls_minus_always_consumed`
+    (Hypothesis, 60 examples): for 0-5 markers × value 1-4 × 500 seeds,
+    the queue NEVER leaks a `storm_walls_minus` entry after one Storm,
+    and an unrelated modifier (`KEEP`) is left untouched.
+  - `..._double_storm_does_not_reapply_consumed_marker` (40 examples):
+    a consumed one-shot never resurrects for a second Storm.
+
+## SMOKE-Inferno-042 — Ambush (F1/S1) Approach modifier consumption + WRONG_TURN
+
+**Pattern:** Cross-turn action permission (the attacker plays a card
+during the *defender's* Approach-response window) + one-shot consume.
+
+**Symptom:** `cmd_play_ambush` was rejected with WRONG_TURN because the
+active_player during the Approach window is the defender, while Ambush
+is played by the marching attacker. Separately, the
+`approach_modifiers_pending` Ambush entry needed consuming so it pins
+exactly one Avoiding Lord once.
+
+**Fix (v1.7a):** `dispatch()` exempts `cmd_play_ambush` from the
+turn-owner check when `side == meta.approach_attacker_side`
+(`ambush_exempt` clause). `_h_cmd_play_ambush` requires a pending
+`ambush_force_one_stand` entry (else `NO_AMBUSH`), sets the target
+Lord's `flags.ambush_forced`, and consumes the entry; `approach_response`
+then raises `AMBUSH_FORCED` if that Lord tries to Avoid.
+
+**Regression tests:** `TestAmbushConsumption` (2 tests) — pin-then-block
+happy path (asserts `ambush_pinned`, `flags.ambush_forced`, and the
+`AMBUSH_FORCED` rejection on Avoid) and the `NO_AMBUSH` rejection when
+no modifier is pending.
+
+**v1.7d extended sweep:** greedy self-play across all 6 scenarios ×
+seeds 1-25 (150 games) — 150/150 reach a winner, 0 invariant
+violations, 0 exceptions, and all three modifier queues
+(`battle_/approach_/besiege_modifiers_pending`) observed max length 0
+under greedy play (greedy never plays situational cards), confirming no
+leak path is reachable through ordinary play. Consumption paths are
+covered by the targeted unit + Hypothesis tests above.

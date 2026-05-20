@@ -139,6 +139,28 @@ critique = your_llm_client.complete(system="", user=prompt)
 # STRATEGY_DIGEST.md
 ```
 
+## Working example
+
+`examples/play_with_claude.py` is a runnable reference implementation of
+this whole loop wired to the Anthropic Python SDK:
+
+```bash
+export ANTHROPIC_API_KEY=sk-ant-...
+python examples/play_with_claude.py --scenario F --seed 42 \
+    --model claude-sonnet-4-6 --max-actions 800 --critique
+```
+
+It builds the briefing, lists legal moves, calls Claude, parses one JSON
+action from the response (`_parse_action` strips code fences and tolerates
+surrounding prose), and feeds it through `play_with_callback`. Without an
+API key or the SDK, it falls back to a deterministic 'first legal move'
+stub so the example is runnable and CI-testable offline (`--stub`).
+
+The full Command surface is available to the LLM through `legal-moves`,
+including the v1.5–1.7 mechanics: full Call to Arms (the 4 substeps),
+Group March (`with_lords`), routed Supply (`source`/`provender` args),
+Treachery-Bribe Path-B, and the Ambush (`cmd_play_ambush`) interaction.
+
 ## What this guide does NOT include
 
 - The actual LLM API call. Wire to your model of choice. The harness

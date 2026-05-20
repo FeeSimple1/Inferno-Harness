@@ -155,3 +155,39 @@ class TestSelfCritique:
         dispatch(s, {"action": "levy_aow_draw", "side": "guelph"})
         prompt = build_self_critique_prompt(s, "guelph")
         assert "levy_aow_draw" in prompt
+
+
+# =====================================================================
+# Example client (examples/play_with_claude.py) — stub-mode smoke test
+# =====================================================================
+class TestExampleClient:
+    def test_stub_callback_plays_to_terminal(self):
+        """The example's stub callback drives a scenario to victory."""
+        import importlib.util
+        from pathlib import Path
+        ex_path = Path(__file__).parent.parent / "examples" / "play_with_claude.py"
+        spec = importlib.util.spec_from_file_location("play_with_claude", ex_path)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        from inferno.scenarios import load_scenario
+        from inferno.llm import play_with_callback
+        cb = mod.make_stub_callback()
+        s = load_scenario("A", seed=42)
+        for _ in range(300):
+            if s["meta"].get("phase") == "victory":
+                break
+            play_with_callback(s, cb, max_strikes=3)
+        assert s["meta"]["phase"] == "victory"
+
+    def test_parse_action_strips_fences(self):
+        import importlib.util
+        from pathlib import Path
+        ex_path = Path(__file__).parent.parent / "examples" / "play_with_claude.py"
+        spec = importlib.util.spec_from_file_location("play_with_claude2", ex_path)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        parsed = mod._parse_action('```json\n{"action": "levy_pay_done", "side": "guelph"}\n```')
+        assert parsed["action"] == "levy_pay_done"
+        # Bare JSON with surrounding prose
+        parsed2 = mod._parse_action('I choose: {"action": "cmd_pass", "side": "guelph", "args": {"count": 1}} done')
+        assert parsed2["action"] == "cmd_pass"

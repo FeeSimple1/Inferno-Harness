@@ -55,7 +55,14 @@ def dispatch(state: dict[str, Any], action: dict[str, Any]) -> dict[str, Any]:
     side = action.get("side")
     if side not in ("guelph", "ghibelline"):
         raise IllegalAction("BAD_SIDE", f"side must be guelph or ghibelline, got {side!r}")
-    if side != current_side(state):
+    # cmd_play_ambush is played by the ATTACKER during the defender's
+    # Approach-response window, so exempt it from the active-player check
+    # when the side matches the recorded approach attacker.
+    ambush_exempt = (
+        name == "cmd_play_ambush"
+        and side == state["meta"].get("approach_attacker_side")
+    )
+    if side != current_side(state) and not ambush_exempt:
         raise IllegalAction(
             "WRONG_TURN",
             f"It's {current_side(state)}'s turn, not {side}'s.",
@@ -1807,6 +1814,14 @@ def _h_approach_response(state, side, args, rng) -> dict[str, Any]:
     choice = args.get("choice")
     if choice not in ("avoid", "withdraw", "stand"):
         raise IllegalAction("BAD_CHOICE", f"choice must be avoid/withdraw/stand; got {choice!r}.", "4.3.4")
+    # SMOKE-Inferno-042: F1/S1 Ambush — a Lord the attacker forced via
+    # Ambush may not Avoid; must Stand or Withdraw.
+    if choice == "avoid" and state["lords"].get(lid, {}).get("flags", {}).get("ambush_forced"):
+        raise IllegalAction(
+            "AMBUSH_FORCED",
+            f"{lid} was targeted by Ambush (F1/S1) and may not Avoid; must Stand or Withdraw.",
+            "F1/S1 / 4.3.4",
+        )
 
     # Find matching pending
     pending = state.get("pending", [])
@@ -1922,6 +1937,9 @@ def _h_approach_response(state, side, args, rng) -> dict[str, Any]:
 def _finalize_approach(state, locale_name, approaching_lord, defender_side) -> dict[str, Any]:
     """All Inactive Lords have responded. If any Stood, run Battle."""
     loc = state["locales"][locale_name]
+    # Clear any ambush_forced flags now that responses are gathered.
+    for _lid, _l in state["lords"].items():
+        _l.get("flags", {}).pop("ambush_forced", None)
     attacker_side = "ghibelline" if defender_side == "guelph" else "guelph"
     # Standers: any Inactive Lord at this Locale not in_stronghold and not moved away
     standers = [lid for lid in loc.get("lords_present", [])
@@ -2095,8 +2113,39 @@ def _h_besiege_or_bypass(state, side, args, rng) -> dict[str, Any]:
         raise IllegalAction("BAD_CHOICE", f"choice must be besiege/bypass; got {choice!r}.", "4.3.5")
 
     if choice == "besiege":
+        # SMOKE-Inferno-041: F3/S3 Surprise — Besieging with no other Lord
+        # consumes a pending surprise modifier: 2 Siege markers + mandatory
+        # auto-Storm up to 3 Rounds at Walls -2.
+        other_lords_here = [
+            oid for oid in loc.get("lords_present", [])
+            if oid != lid and not state["lords"][oid].get("flags", {}).get("in_stronghold")
+        ]
+        surprise = None
+        if not other_lords_here:
+            for i, m in enumerate(state.get("besiege_modifiers_pending", []) or []):
+                if m.get("effect") == "surprise_besiege_alone" and m.get("side") == side:
+                    surprise = state["besiege_modifiers_pending"].pop(i)
+                    break
+        if surprise:
+            loc.setdefault("siege", []).append({
+                "side": side, "color": "gold" if side == "guelph" else "purple", "count": 2,
+            })
+            state.setdefault("battle_modifiers_pending", []).append({
+                "id": "F3/S3", "side": side, "effect": "storm_walls_minus", "value": 2,
+            })
+            enemy_side = "ghibelline" if side == "guelph" else "guelph"
+            defenders = [oid for oid in loc.get("lords_present", [])
+                         if state["lords"][oid].get("flags", {}).get("in_stronghold")
+                         and state["lords"][oid]["side"] == enemy_side]
+            from .battle import resolve_storm
+            result = resolve_storm(state, attackers=[lid], defenders=defenders,
+                                    active_id=lid, locale_name=locale_name)
+            if result["outcome"] == "sack":
+                _apply_sack(state, locale_name, side, result, rng)
+            return _finish_card_with({
+                "surprise_besiege": locale_name, "auto_storm": result,
+            }, state, side, reason="surprise_besiege_storm", citation="F3/S3 / 4.3.5")
         loc.setdefault("siege", []).append({"side": side, "color": "gold" if side == "guelph" else "purple", "count": 1})
-        # End card; FPD; flip side
         return _finish_card_with({"besieged": locale_name}, state, side,
                                   reason="besiege_ends_card", citation="4.3.5")
     else:  # bypass
@@ -3710,3 +3759,49 @@ def _maybe_reshuffle_aow_deck(state, side: str) -> None:
     deck["aow_deck"] = available
     deck["aow_discard"] = []
     state["meta"][flag] = True
+
+
+
+def _h_cmd_play_ambush(state, side, args, rng) -> dict[str, Any]:
+    """F1/S1 Ambush consumption — during an Approach where the Enemy is
+    declaring responses, the side with a pending Ambush modifier forces
+    one Inactive Enemy Lord to NOT Avoid (must Stand or Withdraw).
+
+    SMOKE-Inferno-042. The attacking side plays this BEFORE the targeted
+    Lord submits an Avoid; it sets ambush_forced on that Lord.
+
+    args:
+      target_lord_id: the Inactive Enemy Lord to pin.
+    """
+    # Find a pending Ambush modifier for this side.
+    pend = None
+    for i, m in enumerate(state.get("approach_modifiers_pending", []) or []):
+        if m.get("effect") == "ambush_force_one_stand" and m.get("side") == side:
+            pend = i
+            break
+    if pend is None:
+        raise IllegalAction("NO_AMBUSH", f"No pending Ambush modifier for {side}.", "F1/S1")
+    target = args.get("target_lord_id")
+    if not target or target not in state["lords"]:
+        raise IllegalAction("BAD_TARGET", "Ambush needs a target_lord_id.", "F1/S1")
+    # Target must have an open approach_response pending owed by the enemy.
+    enemy = "ghibelline" if side == "guelph" else "guelph"
+    open_pending = [pp for pp in state.get("pending", [])
+                    if pp.get("type") == "approach_response"
+                    and pp["info"].get("lord_id") == target
+                    and pp.get("side") == enemy]
+    if not open_pending:
+        raise IllegalAction(
+            "NO_OPEN_RESPONSE",
+            f"{target} has no open approach_response to pin with Ambush.",
+            "F1/S1",
+        )
+    state["lords"][target].setdefault("flags", {})["ambush_forced"] = True
+    state["approach_modifiers_pending"].pop(pend)
+    return {
+        "state_changes": {"ambush_pinned": target},
+        "rule_citation": "F1/S1 / 4.3.4",
+    }
+
+
+_HANDLERS["cmd_play_ambush"] = _h_cmd_play_ambush
