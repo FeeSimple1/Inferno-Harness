@@ -242,33 +242,52 @@ def F6_event(state, side, args, rng):
     return {"applied": True, "flag_set": "F6_pending"}
 
 
-@register_event("F7")
-def F7_event(state, side, args, rng):
-    """F7 GREEK FIRE (Hold): on Besieging Enemy Lord, reduce to 1 Siege marker, remove 1 unit, discard 1 This Lord cap.
-    Target args: enemy_lord_id, unit_to_remove, capability_to_discard?
+def _greek_fire_apply(state, side, args):
+    """Shared Greek Fire mechanic (F7 Guelph / S7 Ghibelline mirror).
+
+    On a Besieging Enemy Lord: reduce his Siege to 1 marker, remove 1
+    of his units, and discard 1 of his This Lord Capabilities.
+    Returns the standard effect dict.
     """
+    card_id = "F7" if side == "guelph" else "S7"
+    enemy_side = "ghibelline" if side == "guelph" else "guelph"
     enemy_lid = args.get("enemy_lord_id")
     unit = args.get("unit_to_remove")
     if not enemy_lid or enemy_lid not in state["lords"]:
-        return _manual("F7", "Specify enemy_lord_id + unit_to_remove to apply.")
+        return _manual(card_id, "Specify enemy_lord_id + unit_to_remove to apply.")
     enemy = state["lords"][enemy_lid]
+    if enemy.get("side") != enemy_side:
+        return {"applied": False, "reason": f"{enemy_lid} is not an Enemy ({enemy_side}) Lord."}
     locale = state["locales"].get(enemy.get("location"))
     if not locale or not locale.get("siege"):
         return {"applied": False, "reason": "target not at a Besieged Locale"}
     # Reduce to 1 marker
     if locale["siege"]:
-        locale["siege"] = [{"side": locale["siege"][0]["side"], "color": locale["siege"][0]["color"], "count": 1}]
+        locale["siege"] = [{"side": locale["siege"][0]["side"],
+                            "color": locale["siege"][0]["color"], "count": 1}]
     # Remove one unit
+    removed_unit = None
     if unit and enemy["forces"].get(unit, 0) > 0:
         enemy["forces"][unit] -= 1
         if enemy["forces"][unit] <= 0:
             enemy["forces"].pop(unit, None)
+        removed_unit = unit
     # Discard first This Lord Capability if any
+    discarded_cap = None
     if enemy.get("capabilities"):
-        cap_id = enemy["capabilities"].pop()
-        state["decks"][enemy["side"]]["aow_deck"].append(cap_id)
-    return {"applied": True, "target": enemy_lid, "removed_unit": unit}
+        discarded_cap = enemy["capabilities"].pop()
+        state["decks"][enemy["side"]]["aow_deck"].append(discarded_cap)
+    return {"applied": True, "target": enemy_lid,
+            "removed_unit": removed_unit, "discarded_capability": discarded_cap}
 
+
+@register_event("F7")
+
+def F7_event(state, side, args, rng):
+    """F7 GREEK FIRE (Hold): on Besieging Enemy Lord, reduce to 1 Siege marker, remove 1 unit, discard 1 This Lord cap.
+    Target args: enemy_lord_id, unit_to_remove, capability_to_discard?
+    """
+    return _greek_fire_apply(state, side, args)
 
 @register_event("F8")
 def F8_event(state, side, args, rng):
@@ -894,7 +913,11 @@ def S6_event(state, side, args, rng):
 
 @register_event("S7")
 def S7_event(state, side, args, rng):
-    return _manual("S7", "See F7 Greek Fire (Ghibelline version).")
+    """S7 GREEK FIRE (Ghibelline mirror of F7): on Besieging Enemy (Guelph)
+    Lord, reduce to 1 Siege marker, remove 1 unit, discard 1 This Lord cap.
+    Target args: enemy_lord_id, unit_to_remove.
+    """
+    return _greek_fire_apply(state, side, args)
 
 
 @register_event("S8")
@@ -1070,14 +1093,171 @@ def S17_event(state, side, args, rng):
     return {"applied": True, "shifted_cylinder_to": _shift_cylinder_left(state, target, 2)}
 
 
+def _locales_within(state, start, max_dist):
+    """Set of Locale names within max_dist steps of start (inclusive)."""
+    from . import static_data as sd
+    seen = {start}
+    frontier = [start]
+    for _ in range(max_dist):
+        nxt = []
+        for loc in frontier:
+            for n, _w in sd.adjacent_to(loc):
+                if n not in seen:
+                    seen.add(n)
+                    nxt.append(n)
+        frontier = nxt
+    return seen
+
+
 @register_event("S18")
+
 def S18_event(state, side, args, rng):
-    return _manual("S18", "Cortona — Ghibelline shift / Treachery.")
+    """S18 CORTONA (Hold). Three uses (AoW Reference):
+
+      mode='treachery_free' (default): play with a Treachery in the Plan so
+        that Revolt or Bribe targeting Cortona (or a target at Cortona)
+        succeeds for 0 Coin and no roll. Registers a one-shot modifier the
+        Treachery handler consumes.
+      mode='add_treachery': if Cortona has Ghibelline Allegiance (not Ruins),
+        add one set-aside Ghibelline Treachery card to the Ghibelline Command
+        deck. args.treachery_card optional (else FIFO).
+      mode='revolt_roll': if Cortona Ghibelline, roll the Revolt Table (1
+        purple + 1 gold) and flip an eligible Enemy Stronghold (args.
+        target_locale) per 1.4.1/1.4.2. The physical Revolt-Table chart
+        (die->named Locale) is not reproduced; eligibility (Enemy, not
+        Ruins/Outpost, no Enemy Lord at/adjacent, within 1 Locale of a
+        Ghibelline cylinder/marker) is the faithful gate, with both dice
+        rolled for audit.
+    """
+    if side != "ghibelline":
+        return {"applied": False, "reason": "S18 is a Ghibelline card."}
+    cortona = state["locales"].get("Cortona", {})
+    cortona_ghib = (not cortona.get("ruins") and
+                    any(m.get("side") == "ghibelline"
+                        for m in cortona.get("current_allegiance", []) or []))
+    mode = args.get("mode", "treachery_free")
+
+    if mode == "treachery_free":
+        state.setdefault("treachery_modifiers_pending", []).append({
+            "id": "S18", "side": "ghibelline", "effect": "cortona_treachery_free",
+        })
+        return {"applied": True, "flag_set": "cortona_treachery_free"}
+
+    if mode == "add_treachery":
+        if not cortona_ghib:
+            return {"applied": False,
+                    "reason": "Cortona must have Ghibelline Allegiance (not Ruins)."}
+        set_aside = state["decks"]["ghibelline"]["treachery_set_aside"]
+        if not set_aside:
+            return {"applied": False, "reason": "No set-aside Ghibelline Treachery cards."}
+        want = args.get("treachery_card")
+        card = want if (want in set_aside) else set_aside[0]
+        set_aside.remove(card)
+        state["decks"]["ghibelline"]["command_deck"].append(card)
+        return {"applied": True, "added_treachery": card}
+
+    if mode == "revolt_roll":
+        if not cortona_ghib:
+            return {"applied": False,
+                    "reason": "Cortona must have Ghibelline Allegiance to roll Revolt."}
+        from . import static_data as sd
+        target_name = args.get("target_locale")
+        target = state["locales"].get(target_name)
+        if not target:
+            return _manual("S18", "Provide target_locale (eligible Enemy Stronghold) for revolt_roll.")
+        # 1.4.1 eligibility
+        if target.get("ruins") or target.get("type") == "outpost":
+            return {"applied": False, "reason": "Ruins/Outposts never Revolt."}
+        if any(m.get("side") == "ghibelline" for m in target.get("current_allegiance", []) or []):
+            return {"applied": False, "reason": "Target is already Ghibelline."}
+        danger = [target_name] + [n for n, _ in sd.adjacent_to(target_name)]
+        for loc_n in danger:
+            l = state["locales"].get(loc_n)
+            if not l:
+                continue
+            for oid in l.get("lords_present", []):
+                if (state["lords"][oid]["side"] == "guelph"
+                        and state["lords"][oid]["status"] == "mustered"):
+                    return {"applied": False,
+                            "reason": f"Enemy Lord {oid} at/adjacent to {target_name}."}
+        # 1.4.2: within 1 Locale of a Ghibelline cylinder or marker
+        within1 = _locales_within(state, target_name, 1)
+        has_ghib_presence = False
+        for loc_n in within1:
+            l = state["locales"].get(loc_n, {})
+            if any(m.get("side") == "ghibelline" for m in l.get("current_allegiance", []) or []):
+                has_ghib_presence = True
+            for oid in l.get("lords_present", []):
+                if state["lords"][oid]["side"] == "ghibelline":
+                    has_ghib_presence = True
+        rp = rng.roll("s18_revolt_purple")
+        rg = rng.roll("s18_revolt_gold")
+        if not has_ghib_presence:
+            return {"applied": False, "reason": "No Ghibelline cylinder/marker within 1 Locale.",
+                    "rolls": [rp.value, rg.value]}
+        size = sd.STRONGHOLDS[target["type"]]["size"]
+        target["current_allegiance"] = [m for m in target.get("current_allegiance", [])
+                                        if m.get("side") != "guelph"]
+        for _ in range(size):
+            target["current_allegiance"].append({"side": "ghibelline", "value": 1})
+        state["vp"]["ghibelline"] = min(state["vp"].get("ghibelline", 0) + size, 17.5)
+        state["vp"]["guelph"] = max(state["vp"].get("guelph", 0) - size, 0)
+        return {"applied": True, "revolted": target_name, "size": size,
+                "rolls": [rp.value, rg.value]}
+
+    return {"applied": False, "reason": "mode must be treachery_free, add_treachery, or revolt_roll."}
 
 
 @register_event("S19")
 def S19_event(state, side, args, rng):
-    return _manual("S19", "Brigands — Ghibelline harassment.")
+    """S19 BRIGANDS (Hold). Play as an Enemy (Guelph) Lord Marches within 2
+    Locales of Giordano or Astimberg for the receiver to take from that
+    Enemy one of: 2 Coin, or 2 Loot, or 4 Carts and 4 Provender.
+
+    args:
+      target_lord_id:   the Guelph Lord that just Marched (loses Assets).
+      receiver_lord_id: 'giordano' or 'astimberg' (gains Assets); must be
+                        Mustered Ghibelline within 2 Locales of the target.
+      bundle:           'coin' (2 Coin) | 'loot' (2 Loot) |
+                        'carts_prov' (4 Carts + 4 Provender). Default 'coin'.
+    Assets are capped at what the target actually holds (Hidden Mats lets
+    the chooser switch bundles; here we transfer what is available).
+    """
+    if side != "ghibelline":
+        return {"applied": False, "reason": "S19 is a Ghibelline card."}
+    target_lid = args.get("target_lord_id")
+    receiver_lid = args.get("receiver_lord_id")
+    if not target_lid or target_lid not in state["lords"]:
+        return _manual("S19", "Provide target_lord_id (the Guelph Lord that Marched).")
+    if receiver_lid not in ("giordano", "astimberg"):
+        return _manual("S19", "Provide receiver_lord_id: 'giordano' or 'astimberg'.")
+    target = state["lords"][target_lid]
+    receiver = state["lords"].get(receiver_lid)
+    if target.get("side") != "guelph":
+        return {"applied": False, "reason": f"{target_lid} is not a Guelph Lord."}
+    if not receiver or receiver.get("status") != "mustered":
+        return {"applied": False, "reason": f"{receiver_lid} is not Mustered."}
+    tloc, rloc = target.get("location"), receiver.get("location")
+    if not tloc or not rloc or tloc not in _locales_within(state, rloc, 2):
+        return {"applied": False,
+                "reason": f"{target_lid} ({tloc}) not within 2 Locales of {receiver_lid} ({rloc})."}
+    bundle = args.get("bundle", "coin")
+    plans = {"coin": {"Coin": 2}, "loot": {"Loot": 2},
+             "carts_prov": {"Carts": 4, "Provender": 4}}
+    if bundle not in plans:
+        return _manual("S19", "bundle must be 'coin', 'loot', or 'carts_prov'.")
+    moved = {}
+    for asset, n in plans[bundle].items():
+        take = min(n, target.get("assets", {}).get(asset, 0))
+        if take > 0:
+            target["assets"][asset] -= take
+            if target["assets"][asset] <= 0:
+                target["assets"].pop(asset, None)
+            receiver.setdefault("assets", {})
+            receiver["assets"][asset] = receiver["assets"].get(asset, 0) + take
+            moved[asset] = take
+    return {"applied": True, "from": target_lid, "to": receiver_lid,
+            "bundle": bundle, "transferred": moved}
 
 
 @register_event("S20")

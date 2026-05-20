@@ -64,15 +64,17 @@ def main(argv: list[str] | None = None) -> int:
     p_state.add_argument("--decks", action="store_true", help="Focused view: deck composition.")
     p_state.set_defaults(func=_cmd_state)
 
-    # ---- legal-moves (Phase 0 stub still) ----
-    p_legal = sub.add_parser("legal-moves", help="Enumerate legal actions (Phase 2+).")
+    # ---- legal-moves ----
+    p_legal = sub.add_parser("legal-moves", help="Enumerate legal actions.")
     p_legal.add_argument("state_file", type=Path)
     p_legal.set_defaults(func=_cmd_legal_moves)
 
-    # ---- do (Phase 0 stub still) ----
-    p_do = sub.add_parser("do", help="Execute an action (Phase 2+).")
+    # ---- do ----
+    p_do = sub.add_parser("do", help="Execute an action via dispatch() and persist the result.")
     p_do.add_argument("state_file", type=Path)
-    p_do.add_argument("action_json")
+    p_do.add_argument("action_json", help='Action object as JSON, e.g. \'{"action":"levy_aow_draw","side":"guelph"}\'.')
+    p_do.add_argument("--out", type=Path, default=None,
+                      help="Write updated state here instead of in-place.")
     p_do.set_defaults(func=_cmd_do)
 
     # ---- pending / history / save / load ----
@@ -171,8 +173,26 @@ def _cmd_legal_moves(args: argparse.Namespace) -> int:
 
 
 def _cmd_do(args: argparse.Namespace) -> int:
-    print(PHASE_NOT_IMPLEMENTED)
-    print(f"  Would apply action: {args.action_json}")
+    state = _load_state(args.state_file)
+    from .actions import IllegalAction, dispatch
+    try:
+        action = json.loads(args.action_json)
+    except json.JSONDecodeError as e:
+        print(f"Invalid action JSON: {e}")
+        return 2
+    if not isinstance(action, dict) or "action" not in action:
+        print('Action JSON must be an object with at least an "action" key, '
+              'e.g. \'{"action": "levy_aow_draw", "side": "guelph"}\'.')
+        return 2
+    try:
+        result = dispatch(state, action)
+    except IllegalAction as e:
+        print(f"IllegalAction[{e.code}]: {e}")
+        return 1
+    print(json.dumps(result, indent=2, ensure_ascii=False))
+    out_path = args.out or args.state_file
+    out_path.write_text(json.dumps(state, indent=2, ensure_ascii=False))
+    print(f"Updated state at {out_path}")
     return 0
 
 

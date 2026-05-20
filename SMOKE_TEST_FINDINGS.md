@@ -412,3 +412,81 @@ violations, 0 exceptions, and all three modifier queues
 under greedy play (greedy never plays situational cards), confirming no
 leak path is reachable through ordinary play. Consumption paths are
 covered by the targeted unit + Hypothesis tests above.
+
+
+---
+
+## SMOKE-Inferno-043 — CLI `do` verb was a Phase-0 stub (no dispatch)
+
+**Pattern:** Rule/feature cited-but-not-enforced at the boundary
+(FUTURE_PROJECTS_LESSONS Pattern: surface-defined-but-dead).
+
+**Symptom:** `inferno do <state> <action_json>` printed
+`PHASE_NOT_IMPLEMENTED` and never called `dispatch()`. The engine fully
+supports action execution (used by the LLM harness, example client, and
+all tests) but the human-facing CLI verb did nothing — state never
+changed on disk. Stale "Phase 0 stub" comments on `legal-moves`/`do`
+masked this.
+
+**Fix (v1.8):** `_cmd_do` now parses the action JSON (exit 2 on malformed
+input or missing "action" key), calls `dispatch()`, prints the result,
+and persists state to `--out` or in-place (mirrors `_cmd_play_event`).
+IllegalAction → exit 1 with `IllegalAction[CODE]: msg`. Stale comments
+corrected.
+
+**Regression test:** `TestCliDo` (3 tests) — subprocess-drives the CLI:
+a real `levy_aow_draw` mutates and persists state (history grows); bad
+JSON exits 2; an illegal action does not crash.
+
+## SMOKE-Inferno-044 — S7 Greek Fire (Ghibelline) was an unencoded stub
+
+**Pattern:** Mirror-gap (the Guelph F7 was fully encoded; its Ghibelline
+mirror S7 returned a bare `_manual`).
+
+**Fix (v1.8):** Extracted the F7 mechanic into `_greek_fire_apply(state,
+side, args)` and pointed both `F7_event` and `S7_event` at it. On a
+Besieging Enemy Lord: reduce his Siege to 1 marker, remove 1 named unit,
+discard 1 of his This Lord Capabilities. Validates the target is an
+actual Enemy Lord; returns `_manual` only when no `enemy_lord_id` given
+(the choose-target prompt path, by design).
+
+**Regression test:** `TestS7GreekFire` (3 tests) — applies (siege->1,
+unit removed, capability discarded), manual without target, rejects a
+friendly (non-enemy) target.
+
+## SMOKE-Inferno-045 — S18 Cortona and S19 Brigands were unencoded stubs
+
+**Pattern:** State-cited-but-no-effect (both Events returned a bare
+`_manual` with no mechanical effect at all).
+
+**S18 CORTONA (AoW Reference)** — three uses now encoded:
+  - `treachery_free` (default): registers a one-shot
+    `cortona_treachery_free` entry in `treachery_modifiers_pending`,
+    consumed by `cmd_treachery_revolt` / `cmd_treachery_bribe` when the
+    target is/at Cortona — the Treachery succeeds for 0 Coin with no roll.
+    The modifier is consumed only on success (peek-then-commit, so a
+    failed-validation Revolt does NOT leak the modifier).
+  - `add_treachery`: if Cortona has Ghibelline Allegiance (not Ruins),
+    move one set-aside Ghibelline Treachery card to the Ghibelline Command
+    deck.
+  - `revolt_roll`: if Cortona Ghibelline, roll the Revolt Table (1 purple
+    + 1 gold, recorded for audit/RNG fidelity) and flip an eligible Enemy
+    Stronghold per 1.4.1/1.4.2 (Enemy, not Ruins/Outpost, no Enemy Lord
+    at/adjacent, within 1 Locale of a Ghibelline cylinder/marker). NOTE:
+    the physical Revolt-Table chart (die->named Locale) is not in the
+    reference set; eligibility is the faithful gate, consistent with how
+    the harness already abstracts all other Revolt-Table rolls
+    (disband/sack add Treachery without resolving the named-Locale chart).
+
+**S19 BRIGANDS (AoW Reference)** — when an Enemy (Guelph) Lord that just
+Marched is within 2 Locales of Giordano or Astimberg, the receiver takes
+one bundle from that Enemy: 2 Coin, or 2 Loot, or 4 Carts + 4 Provender.
+Validates target is Guelph, receiver is Mustered Giordano/Astimberg, and
+range <= 2 (BFS via `_locales_within`). Transfers are capped at what the
+target holds.
+
+**Regression tests:** `TestS18Cortona` (4) + `TestS18RevoltConsumption`
+(1, 0-Coin Cortona Revolt via dispatch with modifier consumed) +
+`TestS19Brigands` (3, in-range coin transfer, out-of-range rejection,
+carts+prov bundle). 369 tests total; greedy self-play 90/90 reach a
+winner with 0 invariant violations after the treachery-handler changes.

@@ -2402,17 +2402,50 @@ def _h_cmd_sally(state, side, args, rng) -> dict[str, Any]:
                               reason="sally_ends_card", citation="4.5.3")
 
 
+def _peek_cortona_free(state, side: str):
+    """S18 Cortona: return the one-shot 'cortona_treachery_free' modifier for
+    `side` if present (without consuming). When set, a Revolt/Bribe targeting
+    Cortona (or a target at Cortona) succeeds for 0 Coin and no roll
+    (4.7.5/4.7.6 via AoW S18)."""
+    for m in state.get("treachery_modifiers_pending", []):
+        if m.get("effect") == "cortona_treachery_free" and m.get("side") == side:
+            return m
+    return None
+
+
+def _consume_cortona_free(state, side: str) -> bool:
+    """Pop the Cortona free-Treachery modifier for `side`; True if one was
+    present. Call only once the Treachery is actually committed/succeeds."""
+    m = _peek_cortona_free(state, side)
+    if m is not None:
+        state["treachery_modifiers_pending"].remove(m)
+        return True
+    return False
+
+
 def _h_cmd_treachery_revolt(state, side, args, rng) -> dict[str, Any]:
     """4.7.5 Treachery-Revolt. Commit 1-4 Coin; roll dice = Stronghold
-    Value; if each ≤ Coin, Stronghold flips Allegiance."""
+    Value; if each <= Coin, Stronghold flips Allegiance.
+
+    S18 Cortona (AoW): if a 'cortona_treachery_free' modifier is pending for
+    this side and the target is Cortona, the Revolt succeeds for 0 Coin with
+    no roll. The modifier is consumed only on success.
+    """
     lid = _require_active_lord(state, side, args.get("lord_id"))
     lord = state["lords"][lid]
     target_name = args.get("target_locale")
-    coin = int(args.get("coin", 1))
-    if not (1 <= coin <= 4):
-        raise IllegalAction("BAD_COIN", "Revolt commits 1-4 Coin.", "4.7.5")
-    if lord["assets"].get("Coin", 0) < coin:
-        raise IllegalAction("INSUFFICIENT_COIN", f"{lid} has {lord['assets'].get('Coin',0)} Coin; needs {coin}.", "4.7.5")
+    # S18 Cortona free-Treachery is available only when target IS Cortona.
+    cortona_free_available = (target_name == "Cortona"
+                              and _peek_cortona_free(state, side) is not None)
+    coin = int(args.get("coin", 0 if cortona_free_available else 1))
+    if cortona_free_available:
+        if not (0 <= coin <= 4):
+            raise IllegalAction("BAD_COIN", "Revolt commits 0-4 Coin (Cortona free).", "4.7.5")
+    else:
+        if not (1 <= coin <= 4):
+            raise IllegalAction("BAD_COIN", "Revolt commits 1-4 Coin.", "4.7.5")
+        if lord["assets"].get("Coin", 0) < coin:
+            raise IllegalAction("INSUFFICIENT_COIN", f"{lid} has {lord['assets'].get('Coin',0)} Coin; needs {coin}.", "4.7.5")
     target = state["locales"].get(target_name)
     if not target:
         raise IllegalAction("UNKNOWN_LOCALE", f"{target_name} not found.", "4.7.5")
@@ -2439,18 +2472,23 @@ def _h_cmd_treachery_revolt(state, side, args, rng) -> dict[str, Any]:
         for oid in l.get("lords_present", []):
             if state["lords"][oid]["side"] == enemy and state["lords"][oid]["status"] == "mustered":
                 raise IllegalAction("ENEMY_LORD_NEARBY", f"Enemy Lord {oid} at or adjacent to {target_name}.", "4.7.5/1.4.1")
-    # Roll dice
+    # Roll dice (skipped when S18 Cortona free-Treachery applies)
     size = sd.STRONGHOLDS[target["type"]]["size"]
     rolls = []
     accepted = True
-    for i in range(size):
-        r = rng.roll(f"revolt_treachery_{target_name}_{i}")
-        rolls.append({"context": r.context, "value": r.value})
-        if r.value > coin:
-            accepted = False
+    cortona_free = False
+    if cortona_free_available:
+        cortona_free = _consume_cortona_free(state, side)  # commit now (all checks passed)
+        coin = 0
+    else:
+        for i in range(size):
+            r = rng.roll(f"revolt_treachery_{target_name}_{i}")
+            rolls.append({"context": r.context, "value": r.value})
+            if r.value > coin:
+                accepted = False
     if accepted:
-        # Pay Coin, flip Allegiance
-        lord["assets"]["Coin"] -= coin
+        # Pay Coin (0 if Cortona free), flip Allegiance
+        lord["assets"]["Coin"] = lord["assets"].get("Coin", 0) - coin
         target["current_allegiance"] = [m for m in target.get("current_allegiance", []) if m.get("side") != enemy]
         for _ in range(size):
             target["current_allegiance"].append({"side": side, "value": 1})
@@ -2458,8 +2496,10 @@ def _h_cmd_treachery_revolt(state, side, args, rng) -> dict[str, Any]:
         state["vp"][enemy] = max(state["vp"].get(enemy, 0) - size, 0)
     return _finish_card_with({
         "treachery_revolt": {"target": target_name, "coin": coin, "size": size,
-                              "accepted": accepted, "rolls": [r["value"] for r in rolls]},
+                              "accepted": accepted, "rolls": [r["value"] for r in rolls],
+                              "cortona_free": cortona_free},
     }, state, side, reason="treachery_card_ends", citation="4.7.5")
+
 
 
 def _h_cmd_treachery_bribe(state, side, args, rng) -> dict[str, Any]:
@@ -2576,12 +2616,22 @@ def _h_cmd_treachery_bribe(state, side, args, rng) -> dict[str, Any]:
                             "Special Vassals (Carroccio/Sestiere/Terzo/Altopascio) cannot be Bribed.",
                             "4.7.6")
 
-    # Roll
-    r = rng.roll(f"bribe_{target_vassal['name']}")
+    # Roll (S18 Cortona: auto-success for 0 Coin if target is/at Cortona)
     sr = target_vassal.get("service_rating", 0)
-    success = r.value > sr
+    target_loc = (target_lord.get("location") if path == "A" and target_lord else None)
+    cortona_free = ((cur == "Cortona" or target_loc == "Cortona")
+                    and _peek_cortona_free(state, side) is not None)
+    if cortona_free:
+        _consume_cortona_free(state, side)
+        r = None
+        success = True
+        coin_paid = 0
+    else:
+        r = rng.roll(f"bribe_{target_vassal['name']}")
+        success = r.value > sr
+        coin_paid = 1
     if success:
-        lord["assets"]["Coin"] -= 1
+        lord["assets"]["Coin"] -= coin_paid
         # Move Vassal forces (only if on_mat with surviving forces)
         if path == "A":
             target_lord["vassals"] = [v for v in target_lord["vassals"] if v["name"] != vassal_name]
@@ -2605,7 +2655,8 @@ def _h_cmd_treachery_bribe(state, side, args, rng) -> dict[str, Any]:
         "treachery_bribe": {
             "target_lord": target_lord_id, "vassal": vassal_name,
             "path": path, "service_rating": sr,
-            "die": r.value, "success": success,
+            "die": (r.value if r is not None else None), "success": success,
+            "cortona_free": cortona_free,
         },
     }, state, side, reason="treachery_card_ends", citation="4.7.6")
 
