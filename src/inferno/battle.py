@@ -296,9 +296,15 @@ def _flanking_relationships(positions: dict, bdc: "BattleDecisionContext | None"
 
 def _resolve_step(state, step: str, positions, reserve, conceded: str | None,
                   bdc, rng_caller, hit_log: list, removed_lords: set,
-                  routed_per_lord: dict, round_n: int = 1) -> None:
+                  routed_per_lord: dict, round_n: int = 1,
+                  walls_by_side: dict | None = None, locale_name: str | None = None) -> None:
     """Resolve one Strike sub-step. Consults Phase-5 Battle hooks for
-    F4 Sudden Clash, F6/S6 Hills, F8/S8 Swamp."""
+    F4 Sudden Clash, F6/S6 Hills, F8/S8 Swamp.
+
+    SMOKE-Inferno-056: `walls_by_side` (optional) maps a target side -> a walls
+    die-range; incoming Hits to that side are cancelled within the range BEFORE
+    units absorb them. Used by SALLY so the Besieging (defender) side defends
+    behind Siegeworks-as-Walls. Plain Battle passes None (no walls)."""
     striking_side = "attacker" if step.startswith("atk") else "defender"
     target_side = "defender" if striking_side == "attacker" else "attacker"
     # Phase 5: F8/S8 Swamp — defender's effect, skips enemy Horse R1.
@@ -351,6 +357,12 @@ def _resolve_step(state, step: str, positions, reserve, conceded: str | None,
         target_id = positions[target_side][slot]
         if target_id is None:
             continue
+        # SMOKE-Inferno-056: Siegeworks-as-Walls for the protected side (Sally).
+        if walls_by_side and walls_by_side.get(target_side):
+            n_hits = _apply_walls(int(n_hits), walls_by_side[target_side], rng_caller,
+                                  f"siegeworks_{locale_name}_{slot}")
+            if n_hits <= 0:
+                continue
         _absorb_hits(state, target_id, int(n_hits), rng_caller, hit_log, routed_per_lord)
         # Check if target lord routs entirely
         if _all_units_routed(state["lords"][target_id]):
@@ -1141,6 +1153,166 @@ def resolve_storm(state, attackers: list[str], defenders: list[str],
         "routed_per_lord": routed_per_lord,
         "garrison_final": dict(state["storm_garrison"].get(locale_name, {})),
         "siege_count": siege_count,
+        "decisions": bdc.trace,
+        "rolls": [{"context": r.context, "value": r.value} for r in rng.drain_log()],
+    }
+
+
+def resolve_sally(state, sallying: list[str], besiegers: list[str],
+                  active_id: str, locale_name: str,
+                  scripted_decisions: list[dict] | None = None,
+                  callback: Callable | None = None) -> dict[str, Any]:
+    """4.5.3 SALLY (Battle&Storm 2.3). A Besieged Lord attacks the Besiegers,
+    using full Battle procedure (the 6-step initiative) with a Storm-like Array:
+
+      - Each side starts with 1 Lord in Front; the rest start in Reserve. The
+        Attacker Front is the Sallying Active Lord; the Defender Front is a
+        Besieging Lord.
+      - In each Round AFTER the first, Attacker then Defender MAY add ONE Lord
+        from Reserve to Front, up to the Stronghold Size.
+      - If all of a side's Front Lords are Routed, a Reserve Lord (if any) MUST
+        move to Front.
+      - The Besiegers (Defenders) defend behind SIEGEWORKS = the number of Siege
+        markers, used as their Walls. The Sallying side gets NO Walls and NO
+        Garrison.
+      - A Comune counts as a separate Lord for Array (caller passes it in lists).
+
+    SMOKE-Inferno-056: previously Sally just reused plain resolve_battle, giving
+    neither the Storm-style 1-Front/Reserve array nor the Besiegers' Siegeworks.
+    """
+    bdc = BattleDecisionContext(scripted=list(scripted_decisions or []),
+                                callback=callback)
+    locale = state["locales"][locale_name]
+    stronghold_type = locale.get("type")
+    size = sd.STRONGHOLDS.get(stronghold_type, {}).get("size", 1)
+    siege_count = sum(s.get("count", 1) for s in locale.get("siege", []))
+    # Besiegers (defender) defend behind Siegeworks = # Siege markers; the
+    # Sallying side (attacker) gets no Walls.
+    siegeworks_die = list(range(1, siege_count + 1))
+    walls_by_side = {"defender": siegeworks_die}
+
+    pre_forces = {lid: dict(state["lords"][lid].get("forces", {}))
+                  for lid in [active_id] + list(besiegers) if lid in state["lords"]}
+
+    positions = _empty_positions()
+    positions["attacker"]["center"] = active_id
+    reserve = {"attacker": [a for a in sallying if a != active_id],
+               "defender": list(besiegers)}
+    if besiegers:
+        positions["defender"]["center"] = besiegers[0]
+        reserve["defender"] = list(besiegers[1:])
+
+    from .rng import HarnessRNG
+    rng = HarnessRNG(state["meta"]["rng_seed"],
+                     advance=state["meta"].get("rng_advance", 0))
+    rolls_before = rng.advance_count
+
+    def _rng_roll(ctx: str):
+        return rng.roll(ctx)
+
+    def _front_count(side: str) -> int:
+        return sum(1 for s in SLOTS if positions[side][s] is not None)
+
+    def _empty_slot(side: str):
+        for s in ("center", "left", "right"):
+            if positions[side][s] is None:
+                return s
+        return None
+
+    conceded: str | None = None
+    pursuit_marker: str | None = None
+    rounds: list[dict] = []
+    removed_lords: set = set()
+    routed_per_lord: dict = {}
+    max_rounds = 12  # safety bound
+
+    for round_n in range(1, max_rounds + 1):
+        round_log: dict[str, Any] = {"round": round_n}
+
+        # Concede (Round >= 2).
+        if round_n >= 2 and conceded is None:
+            for s_side in ("attacker", "defender"):
+                choice = bdc.decide("concede", s_side, options=["no", "yes"],
+                                    info={"round": round_n})
+                if choice == "yes":
+                    conceded = s_side
+                    pursuit_marker = "attacker" if s_side == "defender" else "defender"
+                    round_log["concede"] = s_side
+                    break
+
+        # Reposition (Round >= 2): each side MAY add ONE Reserve Lord to Front,
+        # up to the Stronghold Size.
+        if round_n >= 2:
+            for s_side in ("attacker", "defender"):
+                if reserve[s_side] and _front_count(s_side) < size:
+                    add = bdc.decide("sally_reserve_add", s_side,
+                                     options=["yes", "no"],
+                                     info={"front_count": _front_count(s_side),
+                                           "stronghold_size": size})
+                    if add == "yes":
+                        slot = _empty_slot(s_side)
+                        if slot:
+                            positions[s_side][slot] = reserve[s_side].pop(0)
+
+        # Forced promotion: if a side's Front is empty but it has Reserve, a
+        # Reserve Lord MUST move to Front.
+        for s_side in ("attacker", "defender"):
+            if _front_count(s_side) == 0 and reserve[s_side]:
+                positions[s_side]["center"] = reserve[s_side].pop(0)
+
+        # 6-step Battle Strike, with Siegeworks-as-Walls protecting the Besiegers.
+        hit_log_round: list = []
+        for step in BATTLE_STRIKE_ORDER:
+            _resolve_step(state, step, positions, reserve, conceded, bdc, _rng_roll,
+                          hit_log_round, removed_lords, routed_per_lord, round_n,
+                          walls_by_side=walls_by_side, locale_name=locale_name)
+        round_log["hit_log"] = hit_log_round
+        round_log["positions"] = _snapshot_positions(positions)
+        rounds.append(round_log)
+
+        if conceded is not None:
+            break
+        atk_alive = _front_count("attacker") > 0 or bool(reserve["attacker"])
+        def_alive = _front_count("defender") > 0 or bool(reserve["defender"])
+        if not atk_alive or not def_alive:
+            break
+
+    atk_alive = _front_count("attacker") > 0 or bool(reserve["attacker"])
+    def_alive = _front_count("defender") > 0 or bool(reserve["defender"])
+    if conceded == "attacker":
+        winner, loser = "defender", "attacker"
+    elif conceded == "defender":
+        winner, loser = "attacker", "defender"
+    elif atk_alive and not def_alive:
+        winner, loser = "attacker", "defender"
+    elif def_alive and not atk_alive:
+        winner, loser = "defender", "attacker"
+    else:
+        # Inconclusive (both still present after the safety bound): the Sally
+        # failed to break the Siege -> the Besiegers hold (Sallying side loses).
+        winner, loser = "defender", "attacker"
+
+    state["meta"]["rng_advance"] = state["meta"].get("rng_advance", 0) + (rng.advance_count - rolls_before)
+    for lid in [active_id] + list(besiegers):
+        if lid in state["lords"]:
+            state["lords"][lid].setdefault("flags", {})["moved_fought"] = True
+
+    return {
+        "locale": locale_name,
+        "mode": "sally",
+        "winner": winner,
+        "loser": loser,
+        "conceded": conceded,
+        "pursuit_marker": pursuit_marker,
+        "rounds_played": len(rounds),
+        "rounds": rounds,
+        "positions_final": _snapshot_positions(positions),
+        "reserve_final": dict(reserve),
+        "removed_lords": sorted(removed_lords),
+        "routed_per_lord": routed_per_lord,
+        "pre_forces": pre_forces,
+        "siege_count": siege_count,
+        "stronghold_size": size,
         "decisions": bdc.trace,
         "rolls": [{"context": r.context, "value": r.value} for r in rng.drain_log()],
     }

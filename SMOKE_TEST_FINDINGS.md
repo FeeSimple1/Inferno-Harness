@@ -697,3 +697,30 @@ approach_response pending; new shared `static_data.avoid_along_approach_way()`
 predicate blocks an Avoid to that origin when the sole connecting Way is the
 approach Way. Enforced in both the handler (raises AVOID_ALONG_APPROACH_WAY) and
 the enumerator. Regression: `test_v21_features.py::TestAvoidApproachWay`.
+
+---
+
+## SMOKE-Inferno-056 — Sally reused plain Battle instead of the Storm-style Array (4.5.3 / 2.3)
+
+**Pattern:** rules-procedure under-modeled — a distinct combat mode collapsed
+onto a more generic one, dropping its specific Array and Walls.
+
+**Detected:** v2.2 work. `_h_cmd_sally` resolved a Sally with `resolve_battle`
+(commented "Phase 3c approximation"), so it used the full Battle Array (up to 3
+Front + auto-Reposition) and gave NEITHER side Walls. Battle&Storm 2.3 requires:
+each side starts with 1 Front Lord (Attacker = Sallying Active Lord, Defender =
+a Besieger), the rest in Reserve; each Round after the first each side MAY add
+ONE Reserve Lord to Front up to the Stronghold Size; if all of a side's Front
+Lords Rout a Reserve Lord MUST promote; the Besiegers defend behind SIEGEWORKS
+(= # Siege markers) as Walls; and the Sallying side gets NO Walls and NO
+Garrison. Sally otherwise uses Battle rules (the full 6-step initiative — 2.3
+lists only Array/Reposition differences, not Storm's melee collapse).
+
+**Fix (v2.2):** new `battle.resolve_sally` (Battle 6-step Strike + Storm-style
+1-Front/Reserve Array + reserve-add-up-to-Size + forced promotion). `_resolve_step`
+gained an optional `walls_by_side` parameter so the Besieging (defender) side
+can defend behind Siegeworks-as-Walls while the Sallying side has none (plain
+Battle passes None — unchanged). `_h_cmd_sally` now calls `resolve_sally`; its
+existing aftermath (Besiegers lose -> Siege ends; Sally fails -> Raid to 1 Siege
+marker + back inside; 4.4.5 combat-removal Revolt/Treachery) is unchanged.
+Regression: `test_v22_features.py::TestSallyArray`.

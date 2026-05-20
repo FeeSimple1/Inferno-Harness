@@ -2490,11 +2490,12 @@ def _h_cmd_sally(state, side, args, rng) -> dict[str, Any]:
                  and not state["lords"][oid].get("flags", {}).get("in_stronghold")]
     if not besiegers:
         raise IllegalAction("NO_BESIEGERS", f"No Besieging Lords at {locale_name}.", "4.5.3")
-    # Sally = Battle reuse with Sally-ish parameters. Phase 3c approximation:
-    # use resolve_battle with attackers = sallying, defenders = besiegers.
-    from .battle import resolve_battle
-    result = resolve_battle(
-        state, attackers=[lid], defenders=besiegers,
+    # SMOKE-Inferno-056: Sally uses the Storm-style Array with Battle initiative
+    # (Battle&Storm 2.3) — the Besiegers defend behind Siegeworks-as-Walls and
+    # the Sallying side gets no Walls/Garrison (was a plain resolve_battle).
+    from .battle import resolve_sally
+    result = resolve_sally(
+        state, sallying=[lid], besiegers=besiegers,
         active_id=lid, locale_name=locale_name,
         scripted_decisions=args.get("scripted_decisions"),
     )
