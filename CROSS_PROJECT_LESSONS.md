@@ -7,7 +7,7 @@ future ports — and at anyone joining a Nevsky-style rules-engine project
 mid-stream.
 
 The five most recent SMOKEs (118-122) drove most of these insights, but the
-patterns have been seen across the full 188 rounds. Code shapes shown
+patterns have been seen across the full run of ~200 rounds. Code shapes shown
 below are lifted from the Nevsky source and are intended to be portable
 with minimal renaming.
 
@@ -258,7 +258,7 @@ the system-prompt shape.
 
 ---
 
-## 6. Audit patterns that have paid off across 188 rounds
+## 6. Audit patterns that have paid off across ~200 rounds
 
 In rough order of yield, these are the audit lenses that have produced
 SMOKEs on Nevsky. Worth running once per harness:
@@ -322,7 +322,7 @@ overwrites. Cheap institutional memory; the audit history is the file.
 
 ## Closing
 
-The single biggest lesson from 188 rounds on Nevsky: **the enumerator
+The single biggest lesson from ~200 rounds on Nevsky: **the enumerator
 and the handler will diverge.** Every other audit pattern, every agent
 style, every test idiom in this doc is, at root, a way of catching
 that divergence before a user does. If a sibling harness only adopts
@@ -333,3 +333,240 @@ Questions, corrections, or additions welcome — append to this file or
 to `FUTURE_PROJECTS_LESSONS.md` as appropriate. The two docs are
 intentionally redundant in the patterns they catalogue; this one is
 the short version.
+
+---
+
+## 8. The LLM-playthrough era (R188-R199): what full games surfaced that sweeps missed
+
+Sections 1-7 were written after ~188 rounds of scripted-agent auditing.
+What followed was a run of full-game LLM self-play (a single model
+playing both sides through `scripts/llm_self_play.py`), and the result
+was stark enough to be its own lesson: **every full playthrough found a
+fresh, real bug** that 187 rounds of greedy/strategic sweeps had not.
+SMOKE-122 (R188), 129 (R196), 130 (R197), and 131/132/133 (R199) all
+came from LLM games, plus a fidelity gap (R198). The patterns below are
+the distilled, evidence-backed takeaways for any L&C harness.
+
+### 8.1 LLM self-play is the highest-yield detector for a *mature* harness
+
+Once scripted sweeps are clean, they stop finding bugs — not because the
+bugs are gone, but because greedy/strategic agents optimize a heuristic
+and only ever construct the states that heuristic steers toward. An LLM
+plays *positionally* and will try rules-legal but strategically unusual
+things the scripted agents structurally never set up: defending a
+Stronghold it conquered from *inside* it, marching a second Lord in to
+join an existing siege, choosing how to absorb casualties, drawing and
+advancing in an off sequence. Each of those is a state the scripted
+agents never reach. Recommendation: once your sweeps are clean, treat an
+LLM full-game playthrough as a first-class part of the bug-hunting
+rotation, not a demo. Budget for one per scenario.
+
+### 8.2 The bug hotspot is combat/siege state-transition predicates
+
+Three of the playthrough SMOKEs (129, 130, and the besieged-Lord half of
+the family) were all in the same place: the conditions for "who is a
+valid Approach target," "what counts as Friendly for a Withdraw," "who
+may join vs. who is besieged." These predicates have subtle exceptions
+that only arise mid-siege:
+- An enemy Lord *inside* a Stronghold (besieged) is not a valid Approach
+  target — a Lord arriving just joins the siege (SMOKE-129). The
+  enumerator was treating any enemy at the Locale as Approachable.
+- A Stronghold you *conquered* is Friendly to you even in enemy
+  territory, so you may Withdraw into it (SMOKE-130). The Withdraw check
+  only accepted own *territory*.
+
+Scripted agents avoid sieges (high variance, low greedy-EV), so these
+sat undetected. Concrete action for a sibling harness: enumerate every
+combat/siege handler's pre-checks ("valid target," "Friendly here,"
+"may withdraw/sally/storm") and confirm each is exercised by a test that
+*sets up the besieged / conquered / joined-siege position directly* —
+don't rely on an agent to wander into it.
+
+### 8.3 Define each rules predicate once; never re-derive it inline
+
+SMOKE-130's root cause is the most portable single lesson here. The
+harness had a correct `_is_friendly_locale` that counted own-conquered
+Strongholds as Friendly — but the Withdraw handler couldn't call it
+directly (during an Approach the attacker is present, which the strict
+Friendly test rejects), so it *re-derived* a Friendly check inline — and
+the re-derivation silently dropped the own-conquered clause. Re-derived
+predicates lose conditions. If a rules concept (Friendly, Eligible,
+Besieged, Laden) is defined in one function, every site must call that
+function or a documented variant of it — never a fresh inline
+re-implementation with "the conditions I remember." When a caller needs
+a relaxed form (e.g. "Friendly ignoring the attacker's presence"), make
+that an explicit parameter or sibling helper of the canonical predicate,
+so the full condition set stays in one place.
+
+### 8.4 Auto-resolved player choices are silent fidelity bugs
+
+R198 wasn't a crash — it was the harness *deciding for the player* where
+the rules grant the player a choice. Casualty absorption ("which unit
+takes this Hit") was hard-coded to weakest-first; the rulebook says the
+owner picks. An LLM trying to play well asks "can I choose how to
+absorb?" and exposes the missing decision point. These never show up as
+test failures because the auto-choice is usually the optimal one — they
+show up as *lost agency* and rare edge-case divergence. Audit: grep the
+rulebook for "the owner/player chooses / may / decides" and confirm each
+is a decision the harness surfaces, not one it silently makes. Expose it
+as an optional action argument that defaults to the sensible auto-choice
+(so nothing changes unless the player asserts a preference).
+
+### 8.5 Tightening a "must do X first" rule can deadlock — guarantee X is always completable
+
+SMOKE-131 (you may not advance the Levy step while you still owe
+implementation of drawn cards) is correct, and the *first* attempt at it
+deadlocked the game. The reason: consumers (agents, the LLM safe-
+fallback) relied on the advance action as a universal escape hatch, and
+some drawn cards (immediate Events with no valid target) *could not be
+cleared* because their resolvers raise rather than no-op-discard. So
+"you must clear it first" + "it can't be cleared" = hard deadlock — worse
+than the orphaning bug it fixed. Two portable principles: (1) before
+enforcing "you must complete X before Y," verify X can *always* be
+completed from any reachable state — every pending item needs a guaranteed
+clearing path; (2) if some cases can't yet guarantee that, *scope* the
+new rule to the cases that can (here: first-Levy Capabilities, which
+always have an implement-or-auto-discard path) and leave the rest
+permissive until the clearing path exists. Shipping the safe subset beats
+shipping a correct-but-deadlocking whole.
+
+### 8.6 A clean sweep means "no bugs on the trajectories you currently take"
+
+SMOKE-133 (the move enumerator offered a Muster for a Lord that an event
+had blocked from using Lordship) was years old and had passed every
+sweep — until an unrelated change (the SMOKE-132 draw cap) shifted one
+game's trajectory into a state that reached it. The lesson: a green
+sweep is not "no bugs," it's "no bugs on the paths my agents happen to
+walk." The way you flush the rest out is trajectory diversity — multiple
+agent styles, LLM play, many seeds, and re-running the full sweep after
+*every* change (a change elsewhere can expose a latent bug here). This is
+also why the merge gate runs the scaled sweep + tournament + round-trip
+sweep on every round, not just when combat code changed.
+
+### 8.7 Audit a per-phase flag's reset point as carefully as its set point
+
+SMOKE-132's fix added a per-Levy "already drew" flag. The set is obvious;
+the bug-prone part is the *reset* — it must fire at exactly the right
+transition (here, entry into each new Levy's first step), and a test that
+only covers a single Levy will never catch a missing reset. Any
+per-phase counter or once-per-turn flag needs its reset audited as
+deliberately as its set, and a regression test that spans *at least two*
+of the relevant phases. (We caught the missing reset only because the
+multi-Levy self-play sweep would have deadlocked Levy 2 — the unit test
+alone wouldn't have.)
+
+### Closing the loop
+
+The throughline across §§8.1-8.7: the bugs that survive a mature
+scripted-sweep regime live in the rarely-walked corners — deep siege
+states, player-choice points, mandatory-sequence edges, and latent
+enumerator gaps that only a shifted trajectory reaches. LLM full-game
+play is the cheapest way to walk those corners, and the discipline that
+makes its findings safe to fix is the one already in §§1-7: mirror every
+handler check in the enumerator, define each predicate once, and re-run
+the full verification battery (sweep + tournament + round-trip) on every
+change before merge.
+
+---
+
+## 9. Silent approximation is the failure mode a "rules-accuracy" rule does NOT catch by itself (Inferno, v1.8 audit)
+
+Inferno-Harness shipped under a BRIEF that already said, in bold,
+"Rules Accuracy Trumps Simplification — simplifications and shortcuts
+are NOT acceptable." It still accumulated a quiet layer of
+approximations. A line-by-line audit of the mature, green-on-369-tests
+harness found a dozen `# simplified` / `# conservative` / `# Phase Na
+approximation` sites and two outright fidelity bugs. The constraint was
+written; the discipline that enforces it was not. This section is the
+distilled lesson for any sibling harness.
+
+### 9.1 The dangerous bugs are the ones that never crash and never fail a test
+
+Every approximation found in the Inferno audit was *plausible*: a
+"conservative" Spoils carry of `prov - carts` instead of the rules'
+`prov - 2*carts`; a Forage block on *any* Siege marker instead of
+"besiegers >= Stronghold Size"; a Sally that reused the plain Battle
+resolver instead of the Storm-style array; an end-of-Campaign Revolt
+that rolled the dice and added Treachery cards but never flipped the
+table-named Locale. None crashed. Several had passing tests — because
+the test was written against the same wrong assumption as the code
+(the Spoils test and a v1.8 asset-key bug both used the wrong key, so
+they agreed with each other and stayed green). **A passing test suite
+certifies internal consistency, not rules fidelity.** Greedy and
+property sweeps will never catch a rule that is uniformly wrong, only
+one that is inconsistently wrong.
+
+### 9.2 "Missing from the references" must trigger a question, not a guess
+
+The single highest-value rule to add: when a datum required to
+implement a mechanic faithfully is not in any available source, the
+mechanic must *refuse to run* (raise) and the gap must be logged as a
+**blocking** question — never papered over with a stand-in. Inferno's
+clearest case is the **Revolt Table** (the die-pair -> named-Locale
+grid printed on the board): the procedure is in the rules, the chart
+is not. The harness "resolved" this by gating on eligibility and
+recording the dice cosmetically — a fabricated mechanic that looks
+faithful and is not. The correct behavior was to stop and ask for the
+chart. A second, milder case: the Castle Garrison composition (Militia
+vs Armigeri) where the reference itself hedged "confirm from the
+Strongholds table" — that hedge should have become a Q-NNN, not a
+silently-chosen value.
+
+Corollary: eligibility-as-a-substitute-for-a-die-roll is a specific
+anti-pattern. If a rule says "roll on table X," replacing it with
+"if the obvious preconditions hold, just succeed" changes the game's
+probability structure while looking principled. Flag it.
+
+### 9.3 Re-derived / inline rule logic drifts (this is §8.3, re-confirmed)
+
+Inferno repeated Nevsky's SMOKE-130 lesson independently: a canonical
+`_is_friendly_locale` existed, yet several sites (Loot payment, Via
+Francigena Command bonus, Avoid-Battle target check) re-derived a
+"Friendly" test inline with a subset of the conditions. Define each
+predicate once; every caller invokes it or a documented variant.
+Inline re-derivation silently drops clauses.
+
+### 9.4 The cheap, mandatory audit: grep your own hedge-words before merge
+
+The whole approximation layer was discoverable in one pass:
+
+```bash
+grep -rni 'simplif\|approxim\|conservative\|abstract\|assume\|\
+for now\|best guess\|deferred\|not reproduc\|placeholder\|heuristic' \
+    src/<engine>/
+```
+
+Every hit must trace to a Q-NNN, a `[HOUSE RULE]` decision, or a
+tracked future-phase issue. A hit that traces to nothing is a defect —
+fix it or log it, never ship it. Run this as part of the merge gate,
+not as a one-time cleanup; comments like "Phase 3a simplified (refined
+later)" outlive the phase that promised to refine them and become
+permanent unless something keeps surfacing them. (Inferno still had
+"Phase 3a"/"Phase 3b"/"for now" comments live at v1.8.)
+
+### 9.5 Distinguish "fixable from text I have" from "needs the physical box"
+
+When you do surface the approximation list, split it cleanly:
+- **Text-resolvable** (the rule is in the references; you simply
+  approximated it): fix it now, no user input needed. Inferno's
+  Spoils carry, Forage threshold, Sally array, and inline Friendly
+  checks were all here.
+- **Box-only** (the datum lives on a physical component not in any
+  reference): the user must supply it; until then the mechanic raises.
+  Inferno's Revolt Table grid and the Castle Garrison confirmation
+  were here.
+
+Conflating the two either stalls fixes you could make immediately or
+fabricates data you should have asked for. Keep the categories
+separate in the report and in the issue tracker.
+
+### Closing
+
+§§1-8 are about the enumerator/handler divergence and the trajectories
+your agents fail to walk. §9 is about a quieter gap: a rule the code
+*states* it is approximating, in plain sight, that no test or sweep
+objects to because the approximation is reasonable. The guardrail is
+not another agent — it is a standing discipline: follow the rules, and
+when you cannot (missing data, genuine ambiguity), STOP and ask rather
+than guess. Grep your own hedge-words every merge; a "rules-accuracy"
+clause in the spec is necessary but not self-enforcing.

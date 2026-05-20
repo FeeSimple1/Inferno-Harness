@@ -137,8 +137,10 @@ identifiers and tests.
 Rules Accuracy Trumps Simplification — HARD CONSTRAINT
 Where the rules are clear, the harness MUST implement them
 faithfully. Simplifications, approximations, "Phase N+ deferrals",
-and convenience shortcuts are NOT acceptable when the rules are
-explicit about a behavior.
+convenience shortcuts, and GUESSES are NOT acceptable when the rules
+are explicit about a behavior. The harness must follow the rules. It
+must never guess, never approximate, and never quietly substitute a
+placeholder for a mechanic it cannot fully resolve.
 
 The only acceptable reasons to depart from the rules are:
   1. The rules are ambiguous (-> follow the Ambiguity Policy / Q-NNN
@@ -151,6 +153,25 @@ Reasons that are NOT acceptable:
   - "Phase N is just a stub; Phase N+1 will fix it."
   - "Most games won't hit this case."
   - "The simplification is conservative / lenient."
+  - "I will guess / approximate / use a sensible default for now."
+  - "The exact value isn't in the references, so I'll infer it."
+
+Missing data is a BLOCKING question, not a license to guess — HARD RULE
+If a rule, value, table, or chart required to implement a mechanic
+faithfully is NOT present in the available sources (Errata, Rules of
+Play, the curated reference .txt files, the in-repo PDFs), you MUST:
+  a. Log it as a Q-NNN in RULES_QUESTIONS.md, marked Blocking, naming
+     exactly what datum is missing and where it physically lives
+     (e.g. "the Revolt Table die->Locale grid printed on the board").
+  b. Make the affected mechanic refuse to run (raise IllegalAction
+     with a clear code) rather than silently approximate, abstract to
+     "eligibility only", or fabricate a threshold/probability.
+  c. Surface the question to the user before merge.
+Inventing a stand-in (a "conservative" carry value, an eligibility
+gate that replaces a die-roll, a best-guess garrison composition) is
+a rules-fidelity bug even if it never crashes and even if it is the
+"sensible" choice. Silent plausibility is the most dangerous failure
+mode: it passes tests and ships a wrong rule.
 
 When implementing a feature, if the chosen approach diverges from
 the rules in any measurable way, the divergence MUST be either:
@@ -158,10 +179,13 @@ the rules in any measurable way, the divergence MUST be either:
   b. Logged as a Q-NNN in RULES_QUESTIONS.md and surfaced to the
      user before merge.
 
-Code comments that say "simplified", "approximated", "deferred", or
+Code comments that say "simplified", "approximated", "abstracted",
+"conservative", "assume", "for now", "best guess", "deferred", or
 similar are flags for audit. Each must trace to either a Q-NNN, a
-[HOUSE RULE] decision, or a future-phase commitment with an
-explicit issue tracking it.
+[HOUSE RULE] decision, or a future-phase commitment with an explicit
+issue tracking it. Before every merge, grep the source for these
+hedge-words; any hit without such a trace is a defect to fix or log,
+not to ship.
 
 Ambiguity Policy
 The harness encodes rules deterministically. Every rule encoded in
