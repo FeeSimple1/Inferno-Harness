@@ -67,6 +67,31 @@ def _enum_pending_revolts(state):
     return None
 
 
+def _enum_pending_fpd(state):
+    """SMOKE-Inferno-057: when the FPD Pay sub-step (4.8.2) is parked, surface
+    ONLY its moves (deadlock guard) for the side whose segment is active: end
+    the segment, plus the self-Coin Pays the handler will accept. `pay_done` is
+    listed first so a greedy consumer cleanly declines and proceeds to Disband.
+    Returns None when no FPD Pay is pending."""
+    pend = state.get("pending_fpd")
+    if not pend or pend.get("step") != "pay":
+        return None
+    side = pend["side"]
+    from . import actions as _actions
+    moves = [{
+        "action": "cmd_fpd_pay_done", "side": side, "args": {},
+        "description": f"{side} ends its FPD Pay sub-step.",
+        "rule_citation": "4.8.2",
+    }]
+    for pay in _actions._fpd_legal_pays(state, side):
+        moves.append({
+            "action": "cmd_fpd_pay", "side": side, "args": pay,
+            "description": f"FPD Pay: {pay['from_lord_id']} shifts Service +1 box (Coin).",
+            "rule_citation": "4.8.2",
+        })
+    return moves
+
+
 def enumerate_legal(state: dict[str, Any]) -> list[dict[str, Any]]:
     # Pending decisions take precedence over phase enumeration (per BRIEF
     # "Non-Combat Pending Decisions"). If an approach_response is pending
@@ -80,6 +105,10 @@ def enumerate_legal(state: dict[str, Any]) -> list[dict[str, Any]]:
     rev = _enum_pending_revolts(state)
     if rev is not None:
         return rev
+    # FPD Pay sub-step (4.8.2) pauses everything else until both sides finish.
+    fpd = _enum_pending_fpd(state)
+    if fpd is not None:
+        return fpd
     phase = state["meta"].get("phase")
     if phase == "levy":
         return _enum_levy(state)

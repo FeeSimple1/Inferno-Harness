@@ -74,7 +74,13 @@ def dispatch(state: dict[str, Any], action: dict[str, Any]) -> dict[str, Any]:
         name == "cmd_resolve_exiles"
         and any(e.get("side") == side for e in state.get("pending_exiles", []))
     )
-    if side != current_side(state) and not (ambush_exempt or revolt_exempt):
+    # FPD Pay sub-step (4.8.2) is owned by the paying side (Guelph then Ghib),
+    # which may not be the active player; exempt it from the turn check.
+    fpd_exempt = (
+        name in ("cmd_fpd_pay", "cmd_fpd_pay_done")
+        and state.get("pending_fpd", {}).get("side") == side
+    )
+    if side != current_side(state) and not (ambush_exempt or revolt_exempt or fpd_exempt):
         raise IllegalAction(
             "WRONG_TURN",
             f"It's {current_side(state)}'s turn, not {side}'s.",
@@ -237,6 +243,13 @@ def _h_levy_pay(state, side: str, args, rng) -> dict[str, Any]:
       amount: number of boxes to shift (positive integer)
     """
     _require_step(state, "3.2")
+    return _apply_pay_action(state, side, args)
+
+
+def _apply_pay_action(state, side: str, args) -> dict[str, Any]:
+    """Core Pay mechanic (3.2.1/3.2.2), shared by Levy Pay and the FPD Pay
+    sub-step (4.8.2). Spends Coin/Loot from one Lord to shift another Lord's
+    Service marker right; no Levy-step gate (callers gate as appropriate)."""
     from_lid = args.get("from_lord_id")
     target_lid = args.get("target_lord_id", from_lid)
     asset = args.get("asset", "Coin")
@@ -306,6 +319,42 @@ def _h_levy_pay_done(state, side, args, rng) -> dict[str, Any]:
     _require_step(state, "3.2")
     advance_to_next_side_or_step(state)
     return {"state_changes": {"step": "pay_done"}, "rule_citation": "3.2"}
+
+
+def _h_cmd_fpd_pay(state, side, args, rng) -> dict[str, Any]:
+    """4.8.2 FPD Pay (optional). Apply a single 3.2 Pay during the parked FPD
+    Pay sub-step for the side whose segment is active. SMOKE-Inferno-057."""
+    pend = state.get("pending_fpd")
+    if not pend or pend.get("step") != "pay":
+        raise IllegalAction("NO_FPD_PAY", "No FPD Pay sub-step is active.", "4.8.2")
+    if pend["side"] != side:
+        raise IllegalAction("WRONG_FPD_PAY_SIDE",
+                            f"FPD Pay segment belongs to {pend['side']}, not {side}.", "4.8.2")
+    res = _apply_pay_action(state, side, args)
+    res["rule_citation"] = "4.8.2"
+    return res
+
+
+def _h_cmd_fpd_pay_done(state, side, args, rng) -> dict[str, Any]:
+    """End this side's FPD Pay segment (4.8.2). Guelphs then Ghibellines; after
+    Ghibelline finishes, run Disband (4.8.2) + remove Moved/Fought (4.8.3).
+    SMOKE-Inferno-057."""
+    pend = state.get("pending_fpd")
+    if not pend or pend.get("step") != "pay":
+        raise IllegalAction("NO_FPD_PAY", "No FPD Pay sub-step is active.", "4.8.2")
+    if pend["side"] != side:
+        raise IllegalAction("WRONG_FPD_PAY_SIDE",
+                            f"FPD Pay segment belongs to {pend['side']}, not {side}.", "4.8.2")
+    if side == "guelph":
+        pend["side"] = "ghibelline"
+        return {"state_changes": {"fpd_pay_done": "guelph", "next": "ghibelline"},
+                "rule_citation": "4.8.2"}
+    # Ghibelline done -> resolve Disband + markers, then clear the pending step.
+    summary: dict[str, Any] = {"disband": []}
+    _fpd_run_disband(state, summary)
+    state.pop("pending_fpd", None)
+    return {"state_changes": {"fpd_pay_done": "ghibelline", "fpd_disband": summary["disband"]},
+            "rule_citation": "4.8.2"}
 
 
 def _shift_service_right(state, lord_id: str, boxes: int) -> int | str:
@@ -886,6 +935,8 @@ _HANDLERS = {
     "levy_aow_draw":           _h_levy_aow_draw,
     "levy_pay":                _h_levy_pay,
     "levy_pay_done":           _h_levy_pay_done,
+    "cmd_fpd_pay":             _h_cmd_fpd_pay,
+    "cmd_fpd_pay_done":        _h_cmd_fpd_pay_done,
     "levy_disband":            _h_levy_disband,
     "levy_disband_done":       _h_levy_disband_done,
     "levy_muster_lord":        _h_levy_muster_lord,
@@ -1518,12 +1569,10 @@ def _run_fpd(state) -> dict[str, Any]:
     4.8.2 DISBAND: Lords at/past Service limit Disband per 3.3.
     4.8.3 Remove Moved/Fought markers.
 
-    Phase 3a: Pay step is auto-skipped (LLM Pay decisions during FPD are
-    a separate sub-step; skip for now — players who want to Pay during
-    Campaign should do so explicitly when implemented in Phase 3b). The
-    Errata-modified Disband (Beyond Service Limit Revolt/Treachery
-    applies, Podestà cylinder placed on next box + Service Rating) is
-    delegated to the same handlers as Levy Disband.
+    SMOKE-Inferno-057: the optional Pay sub-step (4.8.2) is surfaced as a parked
+    decision (pending_fpd) resolved by cmd_fpd_pay / cmd_fpd_pay_done, Guelphs
+    then Ghibellines, BEFORE Disband — it is no longer auto-skipped. Disband runs
+    only after both sides finish Pay (or immediately when neither side can Pay).
     """
     summary: dict[str, Any] = {"feed": [], "disband": []}
     # 4.8.1 FEED
@@ -1557,7 +1606,47 @@ def _run_fpd(state) -> dict[str, Any]:
                     boxes[str(new)]["services"].append(lid)
             summary["feed"].append({"lord_id": lid, "units": units, "need": need, "fed": False, "service_shift": -1})
 
-    # 4.8.2 DISBAND (per 3.3.1 + 3.3.2, with Errata for Campaign timing)
+    # 4.8.2 PAY (optional, Guelphs then Ghibellines). SMOKE-Inferno-057: the Pay
+    # sub-step was auto-skipped; it is a player choice (No-Agent), so when either
+    # side has at least one legal Pay we PARK a pending FPD-Pay decision and DEFER
+    # Disband until both sides have resolved Pay (via cmd_fpd_pay / cmd_fpd_pay_done).
+    # When neither side can Pay, there is no choice to surface and FPD runs
+    # straight through Disband (unchanged behaviour).
+    if _fpd_legal_pays(state, "guelph") or _fpd_legal_pays(state, "ghibelline"):
+        state["pending_fpd"] = {"step": "pay", "side": "guelph",
+                                "levy_box": state["calendar"]["levy_box"]}
+        summary["pay_pending"] = True
+        return summary
+
+    summary["pay_pending"] = False
+    _fpd_run_disband(state, summary)
+    return summary
+
+
+def _fpd_legal_pays(state, side: str) -> list[dict[str, Any]]:
+    """Legal FPD Pay moves for `side` (4.8.2 -> 3.2). For deadlock-free
+    enumeration we surface the self-Coin Pay (a Lord paying 1 box of its own
+    Service) for each eligible Lord; the handler still accepts any valid 3.2
+    Pay the consumer supplies (cross-Lord, Loot, multi-box)."""
+    pays: list[dict[str, Any]] = []
+    for lid, lord in state["lords"].items():
+        if lord.get("side") != side:
+            continue
+        if lord.get("status") not in ("mustered", "on_calendar"):
+            continue
+        if lord.get("service_box") is None:
+            continue  # no Service marker on the Calendar to shift
+        rate = 2 if lord.get("podesta") else 1
+        if lord.get("assets", {}).get("Coin", 0) >= rate:
+            pays.append({"from_lord_id": lid, "target_lord_id": lid,
+                         "asset": "Coin", "amount": 1})
+    return pays
+
+
+def _fpd_run_disband(state, summary: dict[str, Any]) -> None:
+    """4.8.2 DISBAND + 4.8.3 remove Moved/Fought markers (run after the Pay
+    sub-step). Errata Campaign timing applies (Beyond-Service-Limit Revolt/
+    Treachery, Podestà placement) via the shared Disband handlers."""
     levy_box = state["calendar"]["levy_box"]
     for side in ("guelph", "ghibelline"):
         for lid, lord in list(state["lords"].items()):
@@ -1565,7 +1654,6 @@ def _run_fpd(state) -> dict[str, Any]:
                 continue
             svc = lord.get("service_box")
             if svc is None:
-                # Off-Calendar (e.g., off_left_service): treat as Beyond Service Limit.
                 _disband_beyond_service_limit(state, lid)
                 summary["disband"].append({"lord_id": lid, "kind": "beyond_via_off_left"})
                 continue
@@ -1575,12 +1663,9 @@ def _run_fpd(state) -> dict[str, Any]:
             elif svc == levy_box:
                 _disband_at_service_limit(state, lid, levy_box)
                 summary["disband"].append({"lord_id": lid, "kind": "at"})
-
     # 4.8.3 remove Moved/Fought
     for lord in state["lords"].values():
         lord["flags"].pop("moved_fought", None)
-
-    return summary
 
 
 # =====================================================================

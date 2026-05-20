@@ -124,7 +124,9 @@ class TestFriendlyLocaleChecks:
         assert lord["service_box"] == before + 1
 
     def test_both_sites_use_canonical_predicate(self):
-        pay_src = inspect.getsource(A._h_levy_pay)
+        # The Loot Friendly check lives in the shared pay core (_apply_pay_action),
+        # which both Levy Pay and FPD Pay route through.
+        pay_src = inspect.getsource(A._apply_pay_action)
         assert "_is_friendly_locale" in pay_src and "LOOT_NOT_FRIENDLY" in pay_src
         # Via Francigena lives in the command-reveal handler.
         reveal_src = inspect.getsource(A)

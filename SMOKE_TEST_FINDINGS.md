@@ -724,3 +724,32 @@ Battle passes None — unchanged). `_h_cmd_sally` now calls `resolve_sally`; its
 existing aftermath (Besiegers lose -> Siege ends; Sally fails -> Raid to 1 Siege
 marker + back inside; 4.4.5 combat-removal Revolt/Treachery) is unchanged.
 Regression: `test_v22_features.py::TestSallyArray`.
+
+---
+
+## SMOKE-Inferno-057 — FPD optional Pay sub-step (4.8.2) was auto-skipped
+
+**Pattern:** No-Agent violation — a player choice silently auto-decided (here,
+always "decline to Pay"), plus a "skip for now / Phase 3a" hedge.
+
+**Detected:** v2.3 work. `_run_fpd` ran Feed -> Disband and skipped the Pay
+sub-step entirely ("Pay step is auto-skipped ... skip for now"). SoP 4.8.2
+gives Guelphs then Ghibellines an OPTIONAL Pay (per Levy 3.2) BETWEEN Feed and
+Disband, which can save a Lord from Disband by shifting its Service marker
+right. Auto-skipping denied that legal choice.
+
+**Fix (v2.3):** after Feed, when either side has a legal Pay, `_run_fpd` parks a
+`pending_fpd` Pay decision and DEFERS Disband; the enumerator surfaces ONLY the
+FPD-Pay moves (deadlock guard) for the active segment side (Guelph then Ghib,
+`cmd_fpd_pay` / `cmd_fpd_pay_done`, pay_done listed first so a greedy consumer
+declines cleanly); `dispatch` exempts them from the turn check. Disband + remove
+Moved/Fought (`_fpd_run_disband`) runs only after both sides finish Pay (or
+immediately when neither side can Pay — unchanged behaviour). The Pay mechanic
+was factored into a shared `_apply_pay_action` used by both Levy Pay and FPD
+Pay. Self-play sweep: 240 games, 0 stalls across ~6k FPD-parked steps.
+Regression: `test_v23_features.py::TestFpdPaySubStep`.
+
+**Scope note:** the enumerator surfaces the self-Coin Pay for each eligible Lord
+plus `pay_done`; the handler still accepts any valid 3.2 Pay the consumer
+supplies (cross-Lord, Loot, multi-box). Beyond-Service-Limit Disband Revolt/
+Treachery wiring at FPD is a separate pre-existing item (unchanged here).
