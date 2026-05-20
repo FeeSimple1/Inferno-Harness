@@ -435,10 +435,12 @@ def _enum_command_phase(state, side) -> list[dict[str, Any]]:
             "rule_citation": "4.7.4",
         })
     # SMOKE-Inferno-004: pre-check Forage — Locale not Ravaged, not Besieged, Season check.
+    # SMOKE-Inferno-051: "Besieged" uses the Size-threshold predicate (besieging
+    # Enemy Lords >= Stronghold Size), shared with the handler.
     forage_ok = False
     forage_reason = ""
     try:
-        if loc and not loc.get("ravaged") and not loc.get("siege"):
+        if loc and not loc.get("ravaged") and not sd.forage_besieged_block(state, loc, side):
             season = sd.SEASON_BY_BOX.get(state["meta"]["turn"], "winter")
             friendly_stronghold = _is_friendly_stronghold_quiet(state, loc, side)
             if friendly_stronghold or season != "winter":
@@ -683,11 +685,12 @@ def _enum_approach_response(state, pending) -> list[dict[str, Any]]:
     try:
         if (lord and lord["assets"].get("Loot", 0) == 0):
             for neighbour, way_type in sd.adjacent_to(locale_name):
-                if way_type == info.get("approached_via"):
-                    # Phase 3b conservative: same-Way ambiguity is rejected
-                    # only if all routes are that Way; here we accept the
-                    # candidate and let the handler validate.
-                    pass
+                # SMOKE-Inferno-055: do not offer an Avoid that retreats back
+                # along the Way the Active Lord approached (shared predicate).
+                ways_to_n = [w for n, w in sd.adjacent_to(locale_name) if n == neighbour]
+                if sd.avoid_along_approach_way(neighbour, info.get("approached_from"),
+                                               ways_to_n, info.get("approached_via")):
+                    continue
                 target = state["locales"].get(neighbour, {})
                 # No Avoiding into an enemy-occupied Locale
                 has_enemy = any(

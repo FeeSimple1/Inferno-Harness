@@ -1848,6 +1848,46 @@ def adjacent_to(locale: str) -> list[tuple[str, str]]:
     return out
 
 
+def avoid_along_approach_way(dest, approached_from, ways_to_dest, approached_via) -> bool:
+    """4.3.4 Avoid-Battle restriction, defined ONCE for both the handler and the
+    enumerator: an Avoiding (Inactive) Lord may NOT retreat along the same Way
+    the Active Lord just used to approach. Returns True when moving to `dest`
+    would re-use that Way — i.e. `dest` is the Locale the Active Lord came from
+    (`approached_from`) AND every Way connecting the Locale to `dest` is the
+    approach Way (`approached_via`), so there is no alternative edge that avoids
+    re-using it.
+
+    SMOKE-Inferno-055 completes SMOKE-Inferno-009: previously the harness did not
+    track the Active Lord's from-Locale, so this restriction was a no-op.
+    `ways_to_dest` is the list of Way-types connecting the current Locale to
+    `dest`. When `approached_from` is None (e.g. a Sally sortie with no approach
+    Way) the restriction does not apply.
+    """
+    if approached_from is None or dest != approached_from:
+        return False
+    return bool(ways_to_dest) and all(w == approached_via for w in ways_to_dest)
+
+
+def forage_besieged_block(state: dict, loc: dict, side: str) -> bool:
+    """4.7.1 Forage restriction, defined ONCE for both the handler and the
+    enumerator: a Lord may not Forage while Besieged by Enemy Lords whose count
+    is EQUAL TO OR MORE THAN the Stronghold's Size. Fewer besieging Enemy Lords
+    than the Size does NOT block Forage. Returns True when Forage is blocked.
+
+    SMOKE-Inferno-051: replaces the earlier "any Siege marker blocks Forage"
+    simplification with the Size-threshold count of besieging Enemy Lords.
+    """
+    if not loc or not loc.get("siege"):
+        return False
+    enemy_side = "ghibelline" if side == "guelph" else "guelph"
+    besiegers = [oid for oid in loc.get("lords_present", [])
+                 if state["lords"].get(oid, {}).get("side") == enemy_side
+                 and state["lords"][oid].get("status") == "mustered"
+                 and not state["lords"][oid].get("flags", {}).get("in_stronghold")]
+    size = STRONGHOLDS.get(loc.get("type"), {}).get("size", 0)
+    return len(besiegers) >= size
+
+
 # ============================================================================
 # CALENDAR SEASONS (per Inferno SoP "Plan size by season" + Grow rule)
 # ============================================================================

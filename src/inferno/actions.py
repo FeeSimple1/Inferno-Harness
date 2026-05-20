@@ -267,8 +267,12 @@ def _h_levy_pay(state, side: str, args, rng) -> dict[str, Any]:
             raise IllegalAction("LOOT_OFF_MAP", "Loot requires payer on map.", "3.2.2")
         if loc.get("siege"):
             raise IllegalAction("LOOT_UNDER_SIEGE", f"Cannot pay Loot at besieged {loc['name']}.", "3.2.2")
-        # Friendly check: simplified to printed allegiance + side's allegiance markers.
-        # Phase 3+ refines with current allegiance.
+        # SMOKE-Inferno-052: 3.2.2 requires a FRIENDLY Locale to pay with Loot
+        # (was unchecked). Uses the canonical _is_friendly_locale predicate.
+        if not _is_friendly_locale(state, loc, side):
+            raise IllegalAction("LOOT_NOT_FRIENDLY",
+                                f"Loot pay requires a Friendly Locale; {loc['name']} is not Friendly to {side}.",
+                                "3.2.2")
 
     # Podestà target costs 2 per box.
     rate = 2 if target_lord.get("podesta") else 1
@@ -1066,11 +1070,10 @@ def _h_command_reveal(state, side, args, rng) -> dict[str, Any]:
         via_francigena_bonus = 0
         if _lord_has_capability(state, lord_id, "Via Francigena"):
             if lord.get("location") in lord.get("seats", []):
-                # Phase 6 simplified Friendly check: own-printed allegiance
-                # or marked with own allegiance markers.
+                # SMOKE-Inferno-052: F23 grants +1 Command only at a FRIENDLY Lord
+                # Seat; use the canonical _is_friendly_locale predicate.
                 loc = state["locales"].get(lord.get("location"), {})
-                if (loc.get("allegiance") == side or
-                        any(m.get("side") == side for m in loc.get("current_allegiance", []))):
+                if loc and _is_friendly_locale(state, loc, side):
                     via_francigena_bonus = 1
         state["current_lord_id"] = lord_id
         state["actions_remaining"] = rating + astrologers_bonus + via_francigena_bonus
@@ -1171,10 +1174,14 @@ def _h_cmd_forage(state, side, args, rng) -> dict[str, Any]:
         raise IllegalAction("NO_LOCATION", f"{lid} has no map Locale.", "4.7.1")
     if loc.get("ravaged"):
         raise IllegalAction("LOCALE_RAVAGED", f"{loc['name']} is Ravaged; cannot Forage.", "4.7.1")
-    # 4.7.1: may NOT be Besieged by Enemy Lords >= Stronghold Size.
-    # Simplified Phase 3a: any Siege marker blocks Forage (refined later).
-    if loc.get("siege"):
-        raise IllegalAction("BESIEGED", f"{lid} is Besieged; Forage blocked (Phase 3a simplified).", "4.7.1")
+    # 4.7.1: a Lord may NOT Forage while Besieged by Enemy Lords whose count is
+    # EQUAL TO OR MORE THAN the Stronghold's Size (SMOKE-Inferno-051). Predicate
+    # defined once in static_data.forage_besieged_block (shared with enumerator).
+    if sd.forage_besieged_block(state, loc, side):
+        raise IllegalAction(
+            "BESIEGED",
+            f"{lid} is Besieged by Enemy Lords >= Stronghold Size; Forage blocked.",
+            "4.7.1")
 
     season = sd.SEASON_BY_BOX.get(state["meta"]["turn"], "winter")
     friendly_stronghold = _is_friendly_stronghold(state, loc, side)
@@ -1609,10 +1616,12 @@ def _require_active_lord(state, side, lord_id: str | None) -> str:
 
 
 def _is_friendly_locale(state, locale: dict, side: str) -> bool:
-    """A Locale is Friendly to `side` if the printed allegiance is `side`
-    AND there are no enemy Allegiance markers, OR there are `side`
-    Allegiance markers on top. Phase 3a's simplified check uses the
-    printed allegiance plus any current allegiance markers.
+    """Canonical "Friendly Locale" predicate (SMOKE-Inferno-052), defined once
+    and reused wherever a rule says "Friendly Locale". Current Allegiance
+    markers override the printed Allegiance (1.3): a Locale is Friendly to
+    `side` when it has `side` Allegiance markers, OR its printed Allegiance is
+    `side` and it carries no Enemy markers. Enemy markers with no own markers
+    make it Enemy regardless of the printed Allegiance.
     """
     enemy = "ghibelline" if side == "guelph" else "guelph"
     markers = locale.get("current_allegiance", []) or []
@@ -1869,6 +1878,9 @@ def _h_cmd_march(state, side, args, rng) -> dict[str, Any]:
                     "approaching_lord": lid,
                     "locale": dest_name,
                     "approached_via": way_type,
+                    # SMOKE-Inferno-055: the Locale the Active Lord approached
+                    # FROM, so Avoid can forbid retreating back along that Way.
+                    "approached_from": cur_loc_name,
                 },
             })
         state.setdefault("pending", []).extend(pendings)
@@ -1946,22 +1958,16 @@ def _h_approach_response(state, side, args, rng) -> dict[str, Any]:
         ways_to = [(n, w) for n, w in adj if n == dest_name]
         if not ways_to:
             raise IllegalAction("NOT_ADJACENT", f"{dest_name} not adjacent to {locale_name}.", "4.3.4")
-        # May NOT use the way the active just used? For our 60-locale map with
-        # mostly unique adjacencies, this restricts when there's only one way
-        # between cur and adjacent — checked: if all ways to dest are the
-        # same as approached_via we reject. Phase 3b conservative.
-        # SMOKE-Inferno-009: Avoid-Battle Way-of-Approach restriction.
-        approached_pair = (info["approaching_lord"], approached_via)
-        if all(w == approached_via for _, w in ways_to):
-            # Only blocked if the destination is also the source of the active's approach.
-            active_lid = info["approaching_lord"]
-            active_lord = state["lords"][active_lid]
-            # We don't track the active Lord's "from" — accept this Phase 3b limitation.
-            # Restriction is purely "may not use that Way". With multi-way,
-            # we need to pick a different way_type.
-            # For now, if there's another way option, use it; else reject only
-            # if dest is the locale the active came from.
-            pass
+        # SMOKE-Inferno-009 / SMOKE-Inferno-055: Avoid-Battle may NOT retreat back
+        # along the Way the Active Lord just used to approach. Now enforced via
+        # the recorded approached_from + the shared predicate (was a no-op).
+        if sd.avoid_along_approach_way(dest_name, info.get("approached_from"),
+                                       [w for _, w in ways_to], approached_via):
+            raise IllegalAction(
+                "AVOID_ALONG_APPROACH_WAY",
+                f"{lid} may not Avoid back along the Way the Active Lord approached "
+                f"({approached_via}) to {dest_name}.",
+                "4.3.4")
         # Other enemy Lord at destination?
         target_loc = state["locales"][dest_name]
         for other_id in target_loc.get("lords_present", []):
@@ -2433,7 +2439,10 @@ def _apply_sack(state, locale_name, side, storm_result, rng):
         carroccio = next((v for v in ilord.get("vassals", [])
                           if v.get("name") == "Carroccio" and v.get("on_mat")), None)
         if carroccio:
+            # +2 VP (running) AND persist for the end-game tally. SMOKE-Inferno-053.
             state["vp"][side] = min(state["vp"].get(side, 0) + 2, 17.5)
+            ccfs = state.setdefault("captured_carroccio_for_side", {})
+            ccfs[side] = ccfs.get(side, 0) + 1
             ilord["vassals"] = [v for v in ilord["vassals"] if v.get("name") != "Carroccio"]
             spoils_log["carroccio_captured"] += 1
 
@@ -2916,7 +2925,8 @@ def _h_cmd_sortie(state, side, args, rng) -> dict[str, Any]:
             "side": enemy_side,
             "options": ["stand"],  # Bypassing Lords typically can't Avoid/Withdraw
             "info": {"lord_id": eid, "approaching_lord": lid,
-                     "locale": locale_name, "approached_via": "sortie"},
+                     "locale": locale_name, "approached_via": "sortie",
+                     "approached_from": None},
         })
     state.setdefault("pending", []).extend(pendings)
     state["meta"]["approach_attacker_side"] = side
@@ -3848,62 +3858,41 @@ def _compute_final_vp(state) -> tuple[float, float]:
         +3 Ghibelline VP.
     """
     scenario = state["meta"].get("scenario", "")
+    # 5.0 VP sources: Allegiance markers (+1 each), Ruins (+1/2), Captured enemy
+    # Carroccio (+2). Ravaged (+1/2) is bucketed SEPARATELY because Scenario E
+    # doubles every Guelph VP EXCEPT Ravaged.
+    # SMOKE-Inferno-053: Captured Carroccio is now tallied here. It is NOT a map
+    # marker, so it is read from state["captured_carroccio_for_side"], which the
+    # Battle and Storm-Sack Spoils steps now persist (previously never written,
+    # so every Carroccio's +2 VP was silently dropped at the end-game recompute).
     vp = {"guelph": 0.0, "ghibelline": 0.0}
-    # Allegiance markers (+1 each)
-    for loc in state["locales"].values():
-        for m in loc.get("current_allegiance", []) or []:
-            s = m.get("side")
-            v = m.get("value", 1)
-            if s in vp:
-                vp[s] += v
-        # Ruins (+1/2 in opposite of printed)
-        if loc.get("ruins"):
-            ruins_color = loc["ruins"]
-            ruins_side = "guelph" if ruins_color == "gold" else "ghibelline"
-            vp[ruins_side] += 0.5
-        # Ravaged (+1/2 in opposite of printed)
-        if loc.get("ravaged"):
-            rv_color = loc["ravaged"]
-            rv_side = "guelph" if rv_color == "gold" else "ghibelline"
-            vp[rv_side] = vp[rv_side]  # accumulate as separate ravaged bucket below
-    # Need separate Ravaged tally for scenario-E doubling exclusion.
     ravaged_vp = {"guelph": 0.0, "ghibelline": 0.0}
     for loc in state["locales"].values():
-        if loc.get("ravaged"):
-            rv_color = loc["ravaged"]
-            rv_side = "guelph" if rv_color == "gold" else "ghibelline"
-            ravaged_vp[rv_side] += 0.5
-    # Subtract ravaged from accumulator we built above (we didn't actually
-    # add it twice — re-do clean):
-    vp = {"guelph": 0.0, "ghibelline": 0.0}
-    for loc in state["locales"].values():
         for m in loc.get("current_allegiance", []) or []:
-            s = m.get("side")
-            v = m.get("value", 1)
-            if s in vp:
-                vp[s] += v
+            mside = m.get("side")
+            if mside in vp:
+                vp[mside] += m.get("value", 1)
         if loc.get("ruins"):
-            rs = "guelph" if loc["ruins"] == "gold" else "ghibelline"
-            vp[rs] += 0.5
-    # Captured Carroccio +2 each
+            # Marker color is the OPPOSITE of printed Allegiance; that color's
+            # side scores it.
+            vp["guelph" if loc["ruins"] == "gold" else "ghibelline"] += 0.5
+        if loc.get("ravaged"):
+            ravaged_vp["guelph" if loc["ravaged"] == "gold" else "ghibelline"] += 0.5
+    # Captured Carroccio +2 each (5.0).
     for sd_side in ("guelph", "ghibelline"):
-        captured = state.get("captured_knights", {}).get(sd_side, {})
-        # The Carroccio model: vp_if_captured stored in state.captured_carroccio[side]
-        # Phase 3 stored Carroccio capture inline by adjusting VP. Here we additionally
-        # track via the captured_carroccio_for_side dict if present.
         cc = state.get("captured_carroccio_for_side", {}).get(sd_side, 0)
         vp[sd_side] += cc * 2
     # Scenario E 'Resistance': double Guelph VP except Ravaged.
     if scenario == "E":
         vp["guelph"] *= 2
-    # Add Ravaged (not doubled)
-    for s in vp:
-        vp[s] += ravaged_vp[s]
+    # Add Ravaged (not doubled).
+    for sd_side in vp:
+        vp[sd_side] += ravaged_vp[sd_side]
     # Scenario C 'Alliance Treaty': +3 Ghib if S22 Manfredi Capability in play.
     if scenario == "C":
         if any(c.get("id") == "S22" for c in state.get("capabilities_in_play", [])):
             vp["ghibelline"] += 3
-    # Clamp
+    # Clamp.
     vp["guelph"] = max(0, min(vp["guelph"], 17.5))
     vp["ghibelline"] = max(0, min(vp["ghibelline"], 17.5))
     return vp["guelph"], vp["ghibelline"]

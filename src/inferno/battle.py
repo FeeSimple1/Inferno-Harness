@@ -1378,9 +1378,13 @@ def transfer_spoils(state, loser_id: str, winners: list[str],
                           and v.get("on_mat")), None)
         if carroccio:
             carroccio_cap = True
-            # +2 VP to winning side
+            # +2 VP to winning side (running tally) AND persist the capture so
+            # the end-game recompute (_compute_final_vp, 5.0) counts it.
+            # SMOKE-Inferno-053.
             winner_side = state["lords"][winners[0]]["side"]
             state["vp"][winner_side] = min(state["vp"].get(winner_side, 0) + 2, 17.5)
+            ccfs = state.setdefault("captured_carroccio_for_side", {})
+            ccfs[winner_side] = ccfs.get(winner_side, 0) + 1
             # Remove Carroccio Vassal from loser
             loser["vassals"] = [v for v in loser["vassals"] if v.get("name") != "Carroccio"]
     # Distribute to winners: round-robin starting with first

@@ -615,3 +615,85 @@ from all three combat-removal sites (Storm runs it BEFORE the separate Sack
 rolls, per Sec.13 ordering). Regression:
 `test_v20_features.py::TestCombatRemovalRevolt` (roll/treachery counts,
 Podesta 3×, Comune exemption, all-three-paths wiring).
+
+---
+
+## SMOKE-Inferno-051 — Forage was blocked by ANY Siege marker (4.7.1)
+
+**Pattern:** §1 over-strict gate + Phase-3a simplification hedge.
+
+**Detected:** v2.1 batch audit. `_h_cmd_forage` (and the enumerator pre-check)
+blocked Forage whenever `loc.siege` was truthy, with the comment "Phase 3a
+simplified". 4.7.1 only forbids Forage when the Lord is Besieged by Enemy Lords
+numbering EQUAL TO OR MORE THAN the Stronghold's Size; fewer besiegers do not
+block.
+
+**Fix (v2.1):** new `static_data.forage_besieged_block(state, loc, side)`
+predicate (besieging Enemy Lords not in_stronghold vs Stronghold Size), defined
+ONCE and called by both the handler and the legal-moves enumerator.
+Regression: `test_v21_features.py::TestForageSiegeThreshold`.
+
+## SMOKE-Inferno-052 — "Friendly Locale" checks at Loot Pay (3.2.2) and F23
+
+**Pattern:** §2 rules-predicate re-derived inline / omitted, plus a missing
+requirement.
+
+**Detected:** v2.1 batch audit. Loot Pay (3.2.2) required a Friendly Locale per
+the rules but only checked Siege — the Friendly test was a comment, never
+enforced. Via Francigena (F23) used an inline `printed==side or own markers`
+test that wrongly treated a printed-Friendly Locale under ENEMY Allegiance
+markers as Friendly.
+
+**Fix (v2.1):** both routed through the canonical `_is_friendly_locale`
+predicate (current Allegiance markers override printed Allegiance, 1.3); its
+docstring de-hedged. Loot Pay now raises LOOT_NOT_FRIENDLY off-Friendly.
+Regression: `test_v21_features.py::TestFriendlyLocaleChecks`.
+
+## SMOKE-Inferno-053 — Captured Carroccio (+2 VP) dropped at end-game tally (5.0)
+
+**Pattern:** write/read key mismatch + dead/confusing code.
+
+**Detected:** v2.1 batch audit. `_compute_final_vp` recomputes end-game VP from
+scratch and read Carroccio captures from `state["captured_carroccio_for_side"]`,
+but NOTHING ever wrote that key — so every captured Carroccio's +2 VP was lost
+when the final recompute overwrote `state.vp`. The function also contained a
+discarded first-pass build ("re-do clean").
+
+**Fix (v2.1):** Battle Spoils (`battle.transfer_spoils`) and Storm-Sack
+(`_apply_sack`) now persist each capture into `captured_carroccio_for_side`;
+`_compute_final_vp` rewritten cleanly (Allegiance +1, Ruins +1/2, Carroccio +2,
+Ravaged +1/2 bucketed for the Scenario-E doubling exclusion). Ravaged/Ruins
+tally verified correct per 5.0. Regression:
+`test_v21_features.py::TestEndGameVpTally`.
+
+## SMOKE-Inferno-054 — F17 Foreign Help treachery->cylinder branch was a stub
+
+**Pattern:** unimplemented secondary card branch (returned applied=False).
+
+**Detected:** v2.1 batch audit. F17's second option ("set aside 1 Treachery
+from the Guelph deck to shift Guido's/Orvieto's cylinders left to current
+Levy") was a "Phase 4 simplified" stub.
+
+**Fix (v2.1):** implemented `mode="treachery_cylinder"`: validates an eligible
+cylinder (Guido/Orvieto on the Calendar right of the Levy box) and a Guelph
+Treachery card in the Command deck, sets that card aside again, and moves the
+chosen cylinder(s) into the Levy box. Player choices (mode, targets, which
+card) are consumer-supplied (No-Agent); missing/ambiguous -> `_manual` prompt.
+Regression: `test_v21_features.py::TestF17ForeignHelp`.
+
+## SMOKE-Inferno-055 — Avoid-Battle could retreat along the approach Way (4.3.4)
+
+**Pattern:** §6 state-not-tracked — the restriction existed but the data it
+needed (Active Lord's from-Locale) was never recorded, so it was a no-op
+(completes the long-open SMOKE-Inferno-009).
+
+**Detected:** v2.1 batch audit. The Avoid handler and enumerator both had a
+`pass`/no-op where 4.3.4 forbids an Avoiding Lord from retreating back along the
+Way the Active Lord just used; the code comment admitted "we don't track the
+active Lord's from".
+
+**Fix (v2.1):** the March handler now records `approached_from` on the
+approach_response pending; new shared `static_data.avoid_along_approach_way()`
+predicate blocks an Avoid to that origin when the sole connecting Way is the
+approach Way. Enforced in both the handler (raises AVOID_ALONG_APPROACH_WAY) and
+the enumerator. Regression: `test_v21_features.py::TestAvoidApproachWay`.

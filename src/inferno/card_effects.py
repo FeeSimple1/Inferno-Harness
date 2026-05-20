@@ -454,17 +454,82 @@ def F16_event(state, side, args, rng):
 
 @register_event("F17")
 def F17_event(state, side, args, rng):
-    """F17 FOREIGN HELP: shift Guido or Orvieto Service 2, or set aside 1 Treachery to shift cylinder to current Levy."""
-    target = args.get("target", "guido_guerra")
-    if target not in ("guido_guerra", "orvieto"):
-        target = "guido_guerra"
-    # Service shift 2 right (which is right for service)
-    if state["lords"][target].get("service_box") is not None:
+    """F17 FOREIGN HELP (Guelph). Two mutually exclusive options:
+
+      mode="service" (default): shift Guido Guerra OR Orvieto Service 2 boxes
+            right (requires that Lord's Service marker on the Calendar).
+      mode="treachery_cylinder": set aside ONE Guelph Treachery card that is
+            already in the Guelph Command deck (acquired, NOT from the Plan) to
+            shift Guido's and/or Orvieto's CYLINDER left into the current Levy
+            box, from anywhere on the Calendar to the right of that box. If only
+            one of the two has an eligible cylinder, only that one may move.
+
+    SMOKE-Inferno-054: the treachery_cylinder branch was previously an
+    unimplemented stub ("Phase 4 simplified") that returned applied=False.
+    Player choices (mode, target(s), which Treachery card) are supplied by the
+    consumer (No-Agent); missing/ambiguous choices return a _manual prompt.
+    """
+    if side != "guelph":
+        return {"applied": False, "reason": "F17 Foreign Help is a Guelph card."}
+    mode = args.get("mode", "service")
+
+    if mode == "service":
+        target = args.get("target", "guido_guerra")
+        if target not in ("guido_guerra", "orvieto"):
+            return _manual("F17", "target must be 'guido_guerra' or 'orvieto'.")
+        if state["lords"][target].get("service_box") is None:
+            return {"applied": False,
+                    "reason": f"{target} has no Service marker on the Calendar."}
         new = _shift_service_right(state, target, boxes=2)
-        return {"applied": True, "target": target, "service_to": new}
-    # Otherwise: try cylinder shift to current Levy if a Treachery is sacrificed
-    # Phase 4 simplified: just shift cylinder left to current Levy box if on Calendar
-    return {"applied": False, "reason": "no service marker on Calendar"}
+        return {"applied": True, "mode": "service", "target": target, "service_to": new}
+
+    if mode == "treachery_cylinder":
+        deck = state["decks"]["guelph"]
+        cmd = deck["command_deck"]
+        levy_box = state["calendar"]["levy_box"]
+        treachery_in_deck = [c for c in cmd if c in cd.TREACHERY_CARDS]
+        # Eligible cylinders: Guido / Orvieto on the Calendar to the RIGHT of the
+        # current Levy box (a higher box number is later / to the right).
+        eligible = [t for t in ("guido_guerra", "orvieto")
+                    if state["lords"][t].get("calendar_box") is not None
+                    and state["lords"][t]["calendar_box"] > levy_box]
+        if not eligible:
+            return {"applied": False,
+                    "reason": "Neither Guido nor Orvieto has a cylinder on the "
+                              "Calendar to the right of the current Levy box."}
+        if not treachery_in_deck:
+            return {"applied": False,
+                    "reason": "No Guelph Treachery card in the Command deck to set aside."}
+        targets = args.get("targets")
+        if targets is None:
+            return _manual("F17",
+                           f"Provide targets (a non-empty subset of {eligible}) and "
+                           f"optionally treachery_card (one of {treachery_in_deck}).")
+        targets = [t for t in targets if t in eligible]
+        if not targets:
+            return _manual("F17", f"targets must be a non-empty subset of {eligible}.")
+        card = args.get("treachery_card", treachery_in_deck[0])
+        if card not in treachery_in_deck:
+            return _manual("F17", f"treachery_card must be one of {treachery_in_deck}.")
+        # Set the chosen Treachery card aside again (Command deck -> set-aside).
+        cmd.remove(card)
+        deck["treachery_set_aside"].append(card)
+        # Shift each chosen cylinder LEFT into the current Levy box.
+        cal_boxes = state["calendar"]["boxes"]
+        moved = []
+        for t in targets:
+            cur = state["lords"][t]["calendar_box"]
+            if str(cur) in cal_boxes and t in cal_boxes[str(cur)]["cylinders"]:
+                cal_boxes[str(cur)]["cylinders"].remove(t)
+            state["lords"][t]["calendar_box"] = levy_box
+            cal_boxes.setdefault(str(levy_box),
+                {"cylinders": [], "services": [], "victory": [], "markers": []})
+            cal_boxes[str(levy_box)]["cylinders"].append(t)
+            moved.append({"lord_id": t, "to_box": levy_box})
+        return {"applied": True, "mode": "treachery_cylinder",
+                "treachery_set_aside": card, "cylinders_moved": moved}
+
+    return _manual("F17", "mode must be 'service' or 'treachery_cylinder'.")
 
 
 @register_event("F18")
