@@ -125,9 +125,14 @@ class TestSpoilsTransfer:
         s["lords"]["firenze"]["assets"] = {"Cart": 1, "Provender": 4, "Loot": 2}
         r = transfer_spoils(s, "firenze", winners=["siena"],
                              retreated=True, conceded=True, withdrew=False)
-        # Concede+Retreat: Loot all transferred; Provender excess (4 - 1 cart = 3) transferred
+        # SMOKE-Inferno-048: Concede+Retreat transfers Loot + Provender BEYOND the
+        # Unladen carry, which is up to 2x Provender per Cart on Road (Commands
+        # 4.3.2). With 1 Cart the loser carries 2 Provender Unladen, so excess =
+        # 4 - 2*1 = 2 transferred, leaving 2 (was wrongly 4 - 1 = 3 / leaving 1).
         assert s["lords"]["firenze"]["assets"]["Loot"] == 0
-        assert s["lords"]["firenze"]["assets"]["Provender"] == 1
+        assert s["lords"]["firenze"]["assets"]["Provender"] == 2
+        assert r["transferred"]["Provender"] == 2
+        assert r["transferred"]["Loot"] == 2
         # Carroccio retained
         assert any(v.get("name") == "Carroccio" for v in s["lords"]["firenze"]["vassals"])
 

@@ -1185,6 +1185,10 @@ def S19_event(state, side, args, rng):
                         'carts_prov' (4 Carts + 4 Provender). Default 'coin'.
     Assets are capped at what the target actually holds (Hidden Mats lets
     the chooser switch bundles; here we transfer what is available).
+
+    SMOKE-Inferno-047 (asset-key fidelity): the 'carts_prov' bundle uses the
+    canonical singular asset key "Cart" (not "Carts"), so the transfer
+    actually moves Carts off a real Lord instead of silently no-op'ing.
     """
     if side != "ghibelline":
         return {"applied": False, "reason": "S19 is a Ghibelline card."}
@@ -1206,7 +1210,7 @@ def S19_event(state, side, args, rng):
                 "reason": f"{target_lid} ({tloc}) not within 2 Locales of {receiver_lid} ({rloc})."}
     bundle = args.get("bundle", "coin")
     plans = {"coin": {"Coin": 2}, "loot": {"Loot": 2},
-             "carts_prov": {"Carts": 4, "Provender": 4}}
+             "carts_prov": {"Cart": 4, "Provender": 4}}
     if bundle not in plans:
         return _manual("S19", "bundle must be 'coin', 'loot', or 'carts_prov'.")
     moved = {}

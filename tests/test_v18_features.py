@@ -252,11 +252,18 @@ class TestS19Brigands:
             s["locales"][old]["lords_present"].remove(gid)
         s["lords"][gid]["location"] = "Firenze"
         s["locales"]["Firenze"]["lords_present"].append(gid)
-        s["lords"][gid]["assets"] = {"Carts": 5, "Provender": 6}
+        # SMOKE-Inferno-047: target holds the CANONICAL singular "Cart" asset;
+        # the carts_prov bundle must move it (the bug used key "Carts" and so
+        # transferred no Carts at all against a real Lord).
+        s["lords"][gid]["assets"] = {"Cart": 5, "Provender": 6}
+        recv_cart_before = s["lords"]["giordano"]["assets"].get("Cart", 0)
         r = ce.apply_event_effect(s, "S19", "ghibelline",
                                   {"target_lord_id": gid, "receiver_lord_id": "giordano",
                                    "bundle": "carts_prov"}, HarnessRNG(seed=1))
         assert r["applied"] is True
-        assert r["transferred"] == {"Carts": 4, "Provender": 4}
-        assert s["lords"][gid]["assets"]["Carts"] == 1
+        assert r["transferred"] == {"Cart": 4, "Provender": 4}
+        # And the Carts actually left the target / arrived at the receiver.
+        assert s["lords"][gid]["assets"].get("Cart", 0) == 1
+        assert s["lords"]["giordano"]["assets"].get("Cart", 0) == recv_cart_before + 4
+        assert s["lords"][gid]["assets"]["Cart"] == 1
         assert s["lords"][gid]["assets"]["Provender"] == 2

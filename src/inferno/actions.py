@@ -573,6 +573,42 @@ def _add_treachery_to_enemy(state, for_lord_id: str, enemy_side: str) -> str | N
     return card
 
 
+def _trigger_combat_removal_revolts(state, removed_lids, rng, context):
+    """1.4.2 / 1.4.3 / 4.4.5: every Lord REMOVED BY COMBAT triggers Revolt-table
+    rolls benefitting the enemy (once for a regular Lord, 3x for a Podesta) and
+    adds that many Treachery cards to the enemy's Command deck. This is the same
+    Revolt & Treachery trigger as a Disband Beyond Service (3.3.1) — defined once
+    here and reused by Battle, Storm-Sack, and Sally removals so the three combat
+    paths can never drift apart.
+
+    SMOKE-Inferno-050: a Lord removed in Battle/Storm/Sally now rolls on the
+    Revolt table (it previously did not — only Disband/Surrender/Sack/Languish
+    were wired). Comune Lords add no Revolt/Treachery (3.3.1), matching Disband.
+    """
+    revolt_rolls = []
+    treachery_added = []
+    for lid in removed_lids:
+        lord = state["lords"].get(lid)
+        if not lord:
+            continue
+        if lord.get("comune_of"):
+            continue  # Comune Lords add no Revolt/Treachery (3.3.1)
+        losing_side = lord["side"]
+        enemy_side = "ghibelline" if losing_side == "guelph" else "guelph"
+        revolt_count = 3 if lord.get("podesta") else 1
+        trig = _revolt.trigger_revolts(state, losing_side=losing_side,
+                                       count=revolt_count, rng=rng,
+                                       context=f"{context}_{lid}")
+        revolt_rolls.extend(trig["revolt_rolls"])
+        for _ in range(revolt_count):
+            t = _add_treachery_to_enemy(state, lid, enemy_side)
+            if t:
+                treachery_added.append({"card": t, "to_side": enemy_side,
+                                        "for_removal_of": lid})
+    return {"combat_removal_revolts": revolt_rolls,
+            "combat_removal_treachery": treachery_added}
+
+
 # =====================================================================
 # Levy 3.4 — Muster (Lord, Vassal, Transport, Capability)
 # =====================================================================
@@ -2089,6 +2125,7 @@ def _apply_post_battle(state, result, attackers: list[str], defenders: list[str]
     winners_alive = [w for w in winners_ids
                      if w in state["lords"] and state["lords"][w]["status"] == "mustered"]
 
+    combat_removed: list[str] = []
     for lid in losers_ids:
         if lid not in state["lords"]:
             continue
@@ -2099,6 +2136,7 @@ def _apply_post_battle(state, result, attackers: list[str], defenders: list[str]
             transfer_spoils(state, lid, winners_alive,
                             retreated=False, conceded=conceded, withdrew=False)
             _disband_beyond_service_limit(state, lid)
+            combat_removed.append(lid)
         elif lord.get("flags", {}).get("in_stronghold"):
             # Withdrew into Stronghold: keep Assets, no Service shift.
             transfer_spoils(state, lid, winners_alive,
@@ -2130,6 +2168,8 @@ def _apply_post_battle(state, result, attackers: list[str], defenders: list[str]
         loss_roll_for_routed(state, lid,
                              harsh_recovery=retreated_no_concede,
                              rng_caller=rng.roll)
+    # 4.4.5 Revolt & Treachery for Lords removed in this Battle.
+    _trigger_combat_removal_revolts(state, combat_removed, rng, context="battle")
     state["meta"]["rng_advance"] = state["meta"].get("rng_advance", 0) + (rng.advance_count - rolls_before)
 
 
@@ -2406,12 +2446,19 @@ def _apply_sack(state, locale_name, side, storm_result, rng):
     ruins_side = "guelph" if loc["allegiance"] == "ghibelline" else "ghibelline"
     state["vp"][ruins_side] = min(state["vp"].get(ruins_side, 0) + 0.5, 17.5)
 
-    # Remove the removed Lords inside per 4.4.5
-    for removed_lid in storm_result.get("removed_lords", []):
-        if removed_lid in state["lords"]:
-            _disband_beyond_service_limit(state, removed_lid)
+    # Remove the removed Lords inside per 4.4.5 (Battle&Storm Sec.13 "REMOVE
+    # LORDS: as if Disbanding Beyond Service, incl. Revolt and Treachery").
+    storm_removed = [rl for rl in storm_result.get("removed_lords", [])
+                     if rl in state["lords"]]
+    for removed_lid in storm_removed:
+        _disband_beyond_service_limit(state, removed_lid)
+    # Per-Lord combat-removal Revolt & Treachery FIRST (Sec.13 lists this
+    # before the separate Sack rolls below).
+    _trigger_combat_removal_revolts(state, storm_removed, rng,
+                                    context=f"storm_{locale_name}")
 
-    # Revolt + Treachery # = Value. `side` (attacker) benefits; `enemy` lost.
+    # Revolt + Treachery # = Value (Sack rolls, SEPARATE from Lord removal).
+    # `side` (attacker) benefits; `enemy` lost.
     _revolt.trigger_revolts(state, losing_side=enemy, count=size,
                             rng=rng, context=f"sack_{locale_name}")
     for _ in range(size):
@@ -2451,9 +2498,11 @@ def _h_cmd_sally(state, side, args, rng) -> dict[str, Any]:
             loc["siege"] = [{"side": loc["siege"][0]["side"], "color": loc["siege"][0]["color"], "count": 1}]
         # Sallying Lord goes back inside (already in_stronghold)
         lord.setdefault("flags", {})["in_stronghold"] = True
-    for removed_lid in result["removed_lords"]:
-        if removed_lid in state["lords"]:
-            _disband_beyond_service_limit(state, removed_lid)
+    sally_removed = [rl for rl in result["removed_lords"] if rl in state["lords"]]
+    for removed_lid in sally_removed:
+        _disband_beyond_service_limit(state, removed_lid)
+    # 4.4.5 Revolt & Treachery for Lords removed in this Sally.
+    _trigger_combat_removal_revolts(state, sally_removed, rng, context="sally")
     return _finish_card_with({"sally_result": result}, state, side,
                               reason="sally_ends_card", citation="4.5.3")
 
@@ -2542,18 +2591,31 @@ def _h_cmd_treachery_revolt(state, side, args, rng) -> dict[str, Any]:
             rolls.append({"context": r.context, "value": r.value})
             if r.value > coin:
                 accepted = False
+    switch = None
+    exiles_required = None
     if accepted:
-        # Pay Coin (0 if Cortona free), flip Allegiance
+        # Pay Coin (0 if Cortona free), then flip Allegiance THROUGH the shared
+        # revolt machinery so VP adjustment and the 1.4.4 Exiles step match an
+        # automatic revolt.
+        # SMOKE-Inferno-049: a successful player-initiated Treachery-Revolt
+        # (4.7.5) flips the Stronghold via revolt.apply_allegiance_switch and
+        # surfaces the 1.4.4 Exiles decision (pending_exiles), exactly like
+        # Disband/Surrender/Sack/Languish/automatic revolts; it no longer
+        # hand-rolls the flip and skips Exiles.
         lord["assets"]["Coin"] = lord["assets"].get("Coin", 0) - coin
-        target["current_allegiance"] = [m for m in target.get("current_allegiance", []) if m.get("side") != enemy]
-        for _ in range(size):
-            target["current_allegiance"].append({"side": side, "value": 1})
-        state["vp"][side] = min(state["vp"].get(side, 0) + size, 17.5)
-        state["vp"][enemy] = max(state["vp"].get(enemy, 0) - size, 0)
+        switch = _revolt.apply_allegiance_switch(state, target_name, side)
+        if switch["exiles_count"] > 0:
+            exiles_required = {
+                "side": switch["exiles_side"],
+                "count": switch["exiles_count"],
+                "candidates": _revolt.legal_exiles_targets(state, switch["exiles_side"]),
+            }
+            state.setdefault("pending_exiles", []).append(exiles_required)
     return _finish_card_with({
         "treachery_revolt": {"target": target_name, "coin": coin, "size": size,
                               "accepted": accepted, "rolls": [r["value"] for r in rolls],
-                              "cortona_free": cortona_free},
+                              "cortona_free": cortona_free,
+                              "switch": switch, "exiles_required": exiles_required},
     }, state, side, reason="treachery_card_ends", citation="4.7.5")
 
 

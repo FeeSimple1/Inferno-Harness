@@ -537,3 +537,81 @@ invariant violations, 0 stalls.
 summary said "12 [NO REVOLT] cells" — the grid has 10 (corrected in the
 repo reference); and the [NO REVOLT]->SUBMISSION relabel is recorded as
 Q-002.
+
+---
+
+## SMOKE-Inferno-047 — S19 Brigands `carts_prov` bundle used asset key "Carts"
+
+**Pattern:** §1/key-mismatch — a value written under a key the rest of the
+game never reads (silent no-op against real state).
+
+**Detected:** v2.0 batch audit (BRIEF "Rules Accuracy Trumps Simplification").
+The S19 BRIGANDS (AoW) `carts_prov` transfer bundle in
+`card_effects.py::S19_event` was `{"Carts": 4, "Provender": 4}`, but the
+canonical Cart asset key everywhere else (static_data Lord assets, battle.py,
+actions.py transport) is the SINGULAR `"Cart"`. A real Lord holds `Cart`, so
+the bundle's `min(4, target.assets["Carts"]=0)` moved zero Carts — only the
+Provender ever transferred.
+
+**Fix (v2.0):** plan dict now uses `"Cart"`. Regression: the existing
+`test_v18_features.py::TestS19Brigands::test_carts_prov_bundle` was rewritten
+to seed the canonical `"Cart"` key and assert the Carts actually leave the
+target and arrive at the receiver.
+
+## SMOKE-Inferno-048 — Concede+Retreat Spoils Unladen carry was prov − Carts
+
+**Pattern:** Pattern-class "off-by-a-rule-constant" + an explicit hedge-word
+("conservative") flag that the BRIEF audit forbids.
+
+**Detected:** v2.0 batch audit. `battle.py::transfer_spoils` Concede+Retreat
+branch transferred Provender beyond `prov - carts` and the comment admitted
+"Unladen carry on Road = up to 2*Carts; conservative". Battle&Storm 11.3
+(4.4.3) gives away Provender BEYOND what the loser could carry Unladen, and
+the Unladen carry is up to 2× Provender per Cart on Road (Commands 4.3.2 — the
+same 2×Carts limit `actions.py` already enforces for Laden movement). So the
+loser keeps `2*carts`, gives `prov - 2*carts`.
+
+**Fix (v2.0):** `excess_prov = max(0, prov - 2 * carts)`, hedge comment
+removed. Regression updated in
+`test_phase3d.py::TestSpoilsTransfer::test_conceded_retreat_keeps_carroccio_loses_only_loot_and_excess_prov`.
+
+## SMOKE-Inferno-049 — Player Treachery-Revolt (4.7.5) skipped the 1.4.4 Exiles step
+
+**Pattern:** §2 rules-predicate re-derived inline instead of reusing the one
+definition — the two copies drifted.
+
+**Detected:** v2.0 batch audit. `actions.py::_h_cmd_treachery_revolt` flipped
+the target's Allegiance with hand-rolled marker/VP code and never produced the
+1.4.4 Exiles requirement, whereas every automatic revolt (via
+`revolt.apply_allegiance_switch` → `_finish_resolved`) surfaces it. A
+successful player Treachery-Revolt therefore let the losing side escape the
+Exiles slides.
+
+**Fix (v2.0):** the success path now calls
+`revolt.apply_allegiance_switch(state, target, side)` and, when
+`exiles_count > 0`, appends the same `pending_exiles` entry shape as automatic
+revolts (resolved by the existing `cmd_resolve_exiles`, which the enumerator
+surfaces and `dispatch` exempts from the turn check). This also correctly
+handles the "revert to printed-Friendly" marker case. Regression:
+`test_v20_features.py::TestTreacheryRevoltExiles`.
+
+## SMOKE-Inferno-050 — Combat removal (4.4.5) did not roll on the Revolt table
+
+**Pattern:** §2 missing trigger — the predicate "this removal triggers Revolt &
+Treachery" was wired for Disband/Surrender/Sack/Languish but not for combat
+removal, and was duplicated across handlers.
+
+**Detected:** v2.0 batch audit. Rules Reference Revolt Triggers + Battle&Storm
+Sec.13 list a Lord "Removed by combat" (once for a regular Lord, 3× for a
+Podesta) as a Revolt-table + Treachery trigger, as if Disbanding Beyond
+Service (3.3.1). The Battle (`_apply_post_battle`) and Sally (`_h_cmd_sally`)
+removal loops only `_disband_beyond_service_limit`'d the Lord; the Storm Sack
+(`_apply_sack`) rolled the SEPARATE Sack revolts but not the per-Lord
+combat-removal ones.
+
+**Fix (v2.0):** new shared `actions._trigger_combat_removal_revolts()` (1×
+regular / 3× Podesta, Comune Lords exempt per 3.3.1) — defined once and called
+from all three combat-removal sites (Storm runs it BEFORE the separate Sack
+rolls, per Sec.13 ordering). Regression:
+`test_v20_features.py::TestCombatRemovalRevolt` (roll/treachery counts,
+Podesta 3×, Comune exemption, all-three-paths wiring).

@@ -1352,9 +1352,13 @@ def transfer_spoils(state, loser_id: str, winners: list[str],
                 "reason": "withdrew"}
     elif conceded and retreated:
         # Concede+Retreat: Loot + (Provender beyond Unladen carry).
+        # SMOKE-Inferno-048: Concede+Retreat Spoils transfer Provender BEYOND
+        # what the loser could carry Unladen (Battle&Storm 11.3 / 4.4.3). The
+        # Unladen carry is up to 2x Provender per Cart on Road (Commands 4.3.2),
+        # so the excess given as Spoils is prov - 2*Carts (was prov - Carts).
         carts = loser["assets"].get("Cart", 0)
         prov = loser["assets"].get("Provender", 0)
-        excess_prov = max(0, prov - carts)  # Unladen carry on Road = up to 2*Carts; conservative
+        excess_prov = max(0, prov - 2 * carts)
         loot = loser["assets"].get("Loot", 0)
         transferred["Loot"] = loot
         transferred["Provender"] = excess_prov
