@@ -890,7 +890,8 @@ def _h_levy_muster_done(state, side, args, rng) -> dict[str, Any]:
 
 
 # =====================================================================
-# Levy 3.5 — Call to Arms (Phase 2 stub: trigger detection + skip only)
+# Levy 3.5 — Call to Arms: decline (skip) handler. Declare + the four
+# sub-steps are the full implementation further below.
 # =====================================================================
 def _h_levy_cta_skip(state, side, args, rng) -> dict[str, Any]:
     """Decline Call to Arms for this side. Per BRIEF, full CtA
@@ -3651,6 +3652,27 @@ def _h_cta_step_skip(state, side, args, rng) -> dict[str, Any]:
     return {"state_changes": {"skipped_cta_substep": sub}, "rule_citation": "3.5"}
 
 
+def _cta_gather_dest_legal(state, side: str, dest_name: str) -> str | None:
+    """3.5.1 Gather destination occupancy/terrain legality, defined ONCE for the
+    handler and the enumerator (SMOKE-Inferno-059). Returns an error code, or
+    None when the destination is legal to Gather into: no Unbesieged/Unbypassed
+    Enemy Lord present, and not an un-Ruined Enemy Stronghold (a Friendly,
+    Ruined, Sieged or Bypassed Stronghold — or an Outpost — is fine)."""
+    enemy = "ghibelline" if side == "guelph" else "guelph"
+    dest = state["locales"].get(dest_name)
+    if dest is None:
+        return "BAD_DEST"
+    for oid in dest.get("lords_present", []):
+        olord = state["lords"].get(oid, {})
+        if olord.get("side") == enemy and not olord.get("flags", {}).get("in_stronghold"):
+            return "ENEMY_LORD_AT_DEST"
+    if dest.get("type") != "outpost" and not dest.get("ruins"):
+        if not _is_friendly_locale(state, dest, side):
+            if not dest.get("siege") and not dest.get("bypass"):
+                return "ENEMY_STRONGHOLD"
+    return None
+
+
 def _h_cta_gather_march(state, side, args, rng) -> dict[str, Any]:
     """3.5.1 GATHER — free March (no Moved/Fought, no Feed). Each Lord
     must end CLOSER to his Leading City. Phase 5: single-Lord per call.
@@ -3694,19 +3716,14 @@ def _h_cta_gather_march(state, side, args, rng) -> dict[str, Any]:
             f"{cur_loc}->{dest_name} doesn't reduce distance ({dist_before}->{dist_after}).",
             "3.5.1",
         )
-    # May NOT enter Locale with Unbesieged/Unbypassed Enemy Lord or un-Ruined Enemy Stronghold
-    enemy = "ghibelline" if side == "guelph" else "guelph"
+    # May NOT enter a Locale with an Unbesieged/Unbypassed Enemy Lord or an
+    # un-Ruined Enemy Stronghold (predicate shared with the enumerator).
     dest = state["locales"][dest_name]
-    for oid in dest.get("lords_present", []):
-        olord = state["lords"][oid]
-        if olord["side"] == enemy and not olord.get("flags", {}).get("in_stronghold"):
-            raise IllegalAction("ENEMY_LORD_AT_DEST", f"{oid} blocks Gather to {dest_name}.", "3.5.1")
-    # Enemy Stronghold check: friendly or Ruined OK
-    if dest["type"] != "outpost" and not dest.get("ruins"):
-        if not _is_friendly_locale(state, dest, side):
-            # If a Siege/Bypass already there, OK
-            if not dest.get("siege") and not dest.get("bypass"):
-                raise IllegalAction("ENEMY_STRONGHOLD", f"{dest_name} un-Ruined enemy stronghold.", "3.5.1")
+    code = _cta_gather_dest_legal(state, side, dest_name)
+    if code == "ENEMY_LORD_AT_DEST":
+        raise IllegalAction("ENEMY_LORD_AT_DEST", f"An Enemy Lord blocks Gather to {dest_name}.", "3.5.1")
+    if code == "ENEMY_STRONGHOLD":
+        raise IllegalAction("ENEMY_STRONGHOLD", f"{dest_name} un-Ruined enemy stronghold.", "3.5.1")
     # Move (NOT marked Moved/Fought; NO Feed)
     src = state["locales"][cur_loc]
     if lid in src.get("lords_present", []):

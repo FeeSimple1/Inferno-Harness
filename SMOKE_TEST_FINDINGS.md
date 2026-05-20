@@ -778,3 +778,35 @@ three combat call sites (Battle/Storm/Sally) were updated to the new name (retur
 keys neutralised to `revolt_rolls` / `treachery_added`). At-Service-Limit Disband
 still triggers nothing. Self-play: 240 games, 0 stalls. Regression:
 `test_v23_features.py::TestFpdDisbandRevolt`.
+
+---
+
+## SMOKE-Inferno-059 — Call to Arms (3.5) was unreachable through the enumerator
+
+**Pattern:** §"enumerator/handler round-trip" — handlers exist but the move
+enumerator never surfaces them, so the feature is dead via the intended
+`enumerate_legal -> dispatch` interface (the "green sweep ≠ no bugs" trap: the
+CtA handlers had tests that dispatched them DIRECTLY, masking the gap).
+
+**Detected:** v2.5 (during a completeness review before smoke testing).
+`legal_moves._enum_cta` returned ONLY the skip move (with a stale "Phase 2 stub"
+description) even though the full Call to Arms is implemented
+(`levy_cta_declare` + the four sub-steps `cta_gather_march` / `cta_commander_arms`
+/ `cta_comune_setup` / `cta_allies`, all registered and tested). A consumer
+playing through the enumerator could only ever DECLINE Call to Arms.
+
+**Fix (v2.5):** `_enum_cta` now surfaces the real moves. When CtA is not active,
+the current side may DECLARE (only if `_cta_trigger_met`) or DECLINE. Once active,
+the side currently in CtA gets that sub-step's concrete moves plus a skip:
+gather (each Lord's Ways that end strictly closer to the Leading City and pass
+the destination-legality predicate), commander_arms (modes valid for the
+Commander's status), comune setup, and allies (auto-/extra-Muster targets). The
+Gather destination check (no Unbesieged Enemy Lord; no un-Ruined Enemy
+Stronghold) was factored into a shared `actions._cta_gather_dest_legal` used by
+BOTH the handler and the enumerator, so the round-trip can't drift.
+
+**Verification:** round-trip sweep over every scenario/seed — 30,086 enumerated
+moves dispatched with 0 illegal emissions across 160 CtA-active steps; greedy
+self-play exercised 41 real CtA declarations with no stalls. Regression:
+`test_v25_features.py::TestCtAEnumeration` (incl. a per-move round-trip and a
+full enumerator-driven CtA walkthrough).

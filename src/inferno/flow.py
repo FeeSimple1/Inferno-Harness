@@ -10,7 +10,8 @@ Sequence (per Inferno_Sequence_of_Play.txt):
     3.2 Pay             — Guelphs Pay (n actions, then done); then Ghib.
     3.3 Disband         — Guelphs auto-process Disbandable Lords; then Ghib.
     3.4 Muster          — Guelphs activate each eligible Mustered Lord; then Ghib.
-    3.5 Call to Arms    — gated; Phase 2 skip-only.
+    3.5 Call to Arms    — declare (if a 3.5 trigger is met) or decline;
+                           if declared, both sides run the four sub-steps.
   CAMPAIGN (4.0):
     A capability_discard — Guelphs then Ghibellines discard excess side-wide Caps.
     B plan               — Guelphs then Ghibellines build Plan stacks (private).

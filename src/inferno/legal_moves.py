@@ -299,11 +299,116 @@ def _enum_muster(state, side) -> list[dict[str, Any]]:
 
 
 def _enum_cta(state, side) -> list[dict[str, Any]]:
-    return [{
-        "action": "levy_cta_skip", "side": side,
-        "description": "Decline Call to Arms (Phase 2 stub; full CtA in Phase 2b).",
+    """3.5 Call to Arms. SMOKE-Inferno-059: the full CtA is now surfaced (it was
+    a skip-only stub even though all handlers existed — an enumerator/handler
+    round-trip gap). When CtA is not yet active, the current side may DECLARE (if
+    a 3.5 trigger is met) or DECLINE. Once active, the side currently in CtA
+    runs the four sub-steps (gather / commander_arms / comune / allies); each
+    sub-step always offers a skip so the flow can never stall."""
+    from . import actions as _a
+    meta = state["meta"]
+    moves: list[dict[str, Any]] = []
+
+    if not meta.get("cta_active"):
+        try:
+            eligible, _reason = _a._cta_trigger_met(state, side)
+        except Exception:
+            eligible = False
+        if eligible:
+            moves.append({
+                "action": "levy_cta_declare", "side": side, "args": {},
+                "description": f"{side} declares Call to Arms (3.5).",
+                "rule_citation": "3.5",
+            })
+        moves.append({
+            "action": "levy_cta_skip", "side": side, "args": {},
+            "description": f"{side} declines Call to Arms (3.5).",
+            "rule_citation": "3.5",
+        })
+        return moves
+
+    sub = meta.get("cta_substep")
+    skip = {
+        "action": "cta_step_skip", "side": side, "args": {},
+        "description": f"{side} skips the CtA {sub} sub-step (3.5).",
         "rule_citation": "3.5",
-    }]
+    }
+
+    if sub == "gather":
+        leading = _a.LEADING_CITY[side]
+        for lid, lord in state["lords"].items():
+            if lord.get("side") != side or lord.get("status") != "mustered":
+                continue
+            cur = lord.get("location")
+            if not cur:
+                continue
+            d0 = _a._bfs_distance(cur, leading)
+            for nbr, way in sd.adjacent_to(cur):
+                if _a._bfs_distance(nbr, leading) >= d0:
+                    continue  # Gather must end closer to the Leading City
+                if _a._cta_gather_dest_legal(state, side, nbr) is not None:
+                    continue  # enemy Lord / un-Ruined enemy Stronghold blocks it
+                moves.append({
+                    "action": "cta_gather_march", "side": side,
+                    "args": {"lord_id": lid, "destination": nbr, "way_type": way},
+                    "description": f"Gather: {lid} marches {cur}->{nbr} (closer to {leading}).",
+                    "rule_citation": "3.5.1",
+                })
+        moves.append(skip)
+        return moves
+
+    if sub == "commander_arms":
+        cmd_id = _a.COMMANDER_LORD[side]
+        st = state["lords"].get(cmd_id, {}).get("status")
+        modes = []
+        if st == "mustered":
+            modes += ["disband_and_remuster", "disband_only"]
+        if st == "on_calendar":
+            modes += ["muster_only"]
+        for m in modes:
+            moves.append({
+                "action": "cta_commander_arms", "side": side, "args": {"mode": m},
+                "description": f"Commander to Arms: {m} (3.5.2).",
+                "rule_citation": "3.5.2",
+            })
+        moves.append(skip)
+        return moves
+
+    if sub == "comune":
+        moves.append({
+            "action": "cta_comune_setup", "side": side, "args": {},
+            "description": "Comune setup (Carroccio + a Sestiere/Terzo) (3.5.3).",
+            "rule_citation": "3.5.3",
+        })
+        moves.append(skip)
+        return moves
+
+    if sub == "allies":
+        cmd_id = _a.COMMANDER_LORD[side]
+        for lid, lord in state["lords"].items():
+            if lord.get("side") != side or lid == cmd_id or lord.get("commander"):
+                continue
+            if lord.get("status") == "on_calendar":
+                for seat in lord.get("seats", []):
+                    moves.append({
+                        "action": "cta_allies", "side": side,
+                        "args": {"mode": "auto_muster", "target_lord_id": lid,
+                                 "target_seat": seat},
+                        "description": f"Allies: auto-Muster {lid} at {seat} (3.5.4).",
+                        "rule_citation": "3.5.4",
+                    })
+            elif lord.get("status") == "mustered":
+                moves.append({
+                    "action": "cta_allies", "side": side,
+                    "args": {"mode": "extra_muster", "target_lord_id": lid},
+                    "description": f"Allies: extra Muster segment for {lid} (3.5.4).",
+                    "rule_citation": "3.5.4",
+                })
+        moves.append(skip)
+        return moves
+
+    moves.append(skip)
+    return moves
 
 
 # =====================================================================
