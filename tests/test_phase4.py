@@ -88,13 +88,18 @@ class TestEventEffects:
         ce.apply_event_effect(s, "S25", "ghibelline", {}, rng)
         assert "ghibelline" in s.get("war_declared_this_levy", [])
 
-    def test_S15_war_loans_adds_coin_to_siena(self):
+    def test_S15_war_loans_lordship_plus_2(self):
+        # SMOKE-Inferno-076: S15 War Loans is NOT a +1 Coin card. It shifts a
+        # listed Lord 2 boxes or gives one of them Lordship +2 this Levy.
         s = load_scenario("A", seed=1)
-        # Siena is Mustered in A
-        before = s["lords"]["siena"]["assets"]["Coin"]
+        coin_before = s["lords"]["siena"]["assets"].get("Coin", 0)
         rng = HarnessRNG(seed=1)
-        ce.apply_event_effect(s, "S15", "ghibelline", {"target": "siena"}, rng)
-        assert s["lords"]["siena"]["assets"]["Coin"] == before + 1
+        r = ce.apply_event_effect(s, "S15", "ghibelline",
+                                  {"target": "siena", "mode": "lordship"}, rng)
+        assert r["applied"] and r["bonus"] == 2
+        assert s["lords"]["siena"]["flags"]["lordship_bonus_pending"] == 2
+        # Coin is unchanged — the old +1 Coin behaviour was a bug.
+        assert s["lords"]["siena"]["assets"].get("Coin", 0) == coin_before
 
 
 class TestFlaggedManual:

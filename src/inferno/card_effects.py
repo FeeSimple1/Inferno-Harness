@@ -138,6 +138,89 @@ def _shift_service_right(state, lord_id: str, boxes: int = 1) -> int | None:
     return new
 
 
+def _shift_cylinder_right(state, lord_id: str, boxes: int = 1) -> int | None:
+    """Shift a Lord's cylinder on the Calendar `boxes` boxes RIGHT (adverse —
+    delays his arrival). Returns the new box (None if it falls off the right
+    edge into off_right)."""
+    lord = state["lords"].get(lord_id)
+    if lord is None:
+        return None
+    cur = lord.get("calendar_box")
+    if cur is None:
+        return None
+    cal_boxes = state["calendar"]["boxes"]
+    if str(cur) in cal_boxes and lord_id in cal_boxes[str(cur)]["cylinders"]:
+        cal_boxes[str(cur)]["cylinders"].remove(lord_id)
+    new = cur + boxes
+    if new > 16:
+        state["calendar"].setdefault("off_right", []).append(lord_id)
+        lord["calendar_box"] = None
+        return None
+    lord["calendar_box"] = new
+    cal_boxes.setdefault(str(new),
+        {"cylinders": [], "services": [], "victory": [], "markers": []})
+    cal_boxes[str(new)]["cylinders"].append(lord_id)
+    return new
+
+
+def _shift_service_left(state, lord_id: str, boxes: int = 1) -> int | None:
+    """Shift a Lord's Service marker `boxes` boxes LEFT. Returns the new box
+    (None if it falls off the left edge into off_left_service)."""
+    lord = state["lords"].get(lord_id)
+    if lord is None:
+        return None
+    cur = lord.get("service_box")
+    if cur is None:
+        return None
+    cal_boxes = state["calendar"]["boxes"]
+    if str(cur) in cal_boxes and lord_id in cal_boxes[str(cur)]["services"]:
+        cal_boxes[str(cur)]["services"].remove(lord_id)
+    new = cur - boxes
+    if new < 1:
+        state["calendar"].setdefault("off_left_service", []).append(lord_id)
+        lord["service_box"] = None
+        return None
+    lord["service_box"] = new
+    cal_boxes.setdefault(str(new),
+        {"cylinders": [], "services": [], "victory": [], "markers": []})
+    cal_boxes[str(new)]["services"].append(lord_id)
+    return new
+
+
+def _shift_cylinder_to_box(state, lord_id: str, target_box: int) -> int | None:
+    """Move a Lord's cylinder to an explicit Calendar box (cards that shift a
+    cylinder 'to the current Levy box'). Only moves a cylinder currently to the
+    RIGHT of target_box (a later box); returns new box or None if ineligible."""
+    lord = state["lords"].get(lord_id)
+    if lord is None:
+        return None
+    cur = lord.get("calendar_box")
+    if cur is None or cur <= target_box:
+        return None
+    cal_boxes = state["calendar"]["boxes"]
+    if str(cur) in cal_boxes and lord_id in cal_boxes[str(cur)]["cylinders"]:
+        cal_boxes[str(cur)]["cylinders"].remove(lord_id)
+    lord["calendar_box"] = target_box
+    cal_boxes.setdefault(str(target_box),
+        {"cylinders": [], "services": [], "victory": [], "markers": []})
+    cal_boxes[str(target_box)]["cylinders"].append(lord_id)
+    return target_box
+
+
+def _set_aside_treachery_from_command(state, side: str, card: str | None = None) -> str | None:
+    """Cost mechanic (S9 Pope at Bay): move a Treachery card already in the
+    side's Command deck back to the set-aside pile. Returns the card moved, or
+    None if no eligible Treachery card is in the Command deck."""
+    cmd = state["decks"][side]["command_deck"]
+    in_deck = [c for c in cmd if c in cd.TREACHERY_CARDS]
+    if not in_deck:
+        return None
+    chosen = card if (card in in_deck) else in_deck[0]
+    cmd.remove(chosen)
+    state["decks"][side]["treachery_set_aside"].append(chosen)
+    return chosen
+
+
 def _add_treachery_from_set_aside(state, side: str, lord_slug: str | None = None) -> str | None:
     """Move a set-aside Treachery card into the side's Command deck.
     If `lord_slug` specified, prefer that Lord's Treachery."""
@@ -154,6 +237,39 @@ def _add_treachery_from_set_aside(state, side: str, lord_slug: str | None = None
     set_aside.remove(chosen)
     state["decks"][side]["command_deck"].append(chosen)
     return chosen
+
+
+def _favorable_shift(state, lord_id: str, boxes: int) -> dict[str, Any]:
+    """Favourable Calendar shift for a friendly Lord: cylinder LEFT if on the
+    cylinder track, else Service RIGHT. Returns a small log dict."""
+    if state["lords"].get(lord_id, {}).get("calendar_box") is not None:
+        return {"cylinder_to": _shift_cylinder_left(state, lord_id, boxes)}
+    elif state["lords"].get(lord_id, {}).get("service_box") is not None:
+        return {"service_to": _shift_service_right(state, lord_id, boxes)}
+    return {"no_marker": True}
+
+
+def _stronghold_marked(state, types, home_side: str, marker_side: str,
+                       names=None) -> bool:
+    """True if any Stronghold of the given type(s), originally `home_side`
+    (its printed Allegiance), now carries at least one `marker_side` Allegiance
+    marker. If `names` is given, restrict to those Locale names (and ignore the
+    home_side filter — used by S25's explicit Locale list)."""
+    if isinstance(types, str):
+        types = (types,)
+    for n, l in state["locales"].items():
+        if names is not None:
+            if n not in names:
+                continue
+        else:
+            if l.get("type") not in types:
+                continue
+            if l.get("allegiance") != home_side:
+                continue
+        if any(m.get("side") == marker_side
+               for m in l.get("current_allegiance", []) or []):
+            return True
+    return False
 
 
 def _manual(card_id: str, note: str) -> dict[str, Any]:
@@ -860,17 +976,32 @@ def F24_event(state, side, args, rng):
 
 @register_event("F25")
 def F25_event(state, side, args, rng):
-    """F25 VAL D'ORCIA — War event. Marks Guelph CtA eligible this Levy."""
-    state.setdefault("war_declared_this_levy", set())
+    """F25 VAL D'ORCIA — War. SMOKE-Inferno-079: 'If a Castle marked Guelph, shift Colle cylinder
+    or Service 3 Calendar boxes. Guelphs may declare Call to Arms.'
+
+    The Calendar shift happens only if an originally-Ghibelline Castle now
+    carries a Guelph 1VP marker (Tips). The Call-to-Arms eligibility is granted
+    regardless of whether the shift applied.
+    """
+    log = {"war_event": "guelph", "shifted": None}
+    if _stronghold_marked(state, "castle", home_side="ghibelline", marker_side="guelph"):
+        log["shifted"] = {"colle": _favorable_shift(state, "colle", 3)}
     state["war_declared_this_levy"] = list(set(state.get("war_declared_this_levy", [])) | {"guelph"})
-    return {"applied": True, "war_event": "guelph"}
+    return {"applied": True, **log}
 
 
 @register_event("F26")
 def F26_event(state, side, args, rng):
-    """F26 MONTALCINO — War event for Guelphs."""
+    """F26 MONTALCINO — War. SMOKE-Inferno-079: 'If a Town marked Guelph, shift Firenze, Arezzo,
+    AND Orvieto cylinder or Service 1 box each. Guelphs may declare Call to
+    Arms.' Shift only if an originally-Ghibelline Town carries a Guelph marker.
+    """
+    log = {"war_event": "guelph", "shifted": None}
+    if _stronghold_marked(state, "town", home_side="ghibelline", marker_side="guelph"):
+        log["shifted"] = {lid: _favorable_shift(state, lid, 1)
+                          for lid in ("firenze", "arezzo", "orvieto")}
     state["war_declared_this_levy"] = list(set(state.get("war_declared_this_levy", [])) | {"guelph"})
-    return {"applied": True, "war_event": "guelph"}
+    return {"applied": True, **log}
 
 
 # =====================================================================
@@ -1001,17 +1132,49 @@ def S8_event(state, side, args, rng):
 
 @register_event("S9")
 def S9_event(state, side, args, rng):
-    """S9 POPE AT BAY: shift Pisa/Siena cylinder/Service or add 1 Treachery (the Ghib mirror of F9)."""
-    if args.get("mode") == "treachery":
-        return {"applied": True, "added": _add_treachery_from_set_aside(state, "ghibelline")}
+    """S9 POPE AT BAY flees to Viterbo.
+
+    SMOKE-Inferno-076: Per AoW Reference (corrected): 'Set aside 1 Treachery to shift any 2 Guelph
+    cylinders or Service 1 Calendar box or Orvieto by 3.' This is an ADVERSE
+    delay on ENEMY (Guelph) Lords, NOT a favourable shift of Ghibelline Lords.
+
+    Cost: set aside ONE Ghibelline Treachery card already in the Ghibelline
+    Command deck (not from the Plan). Without one, the Event cannot be played.
+
+    Modes:
+      'shift' (default): shift any 2 Guelph Lords' cylinder RIGHT or Service
+                         LEFT by 1 box. args.targets = list of 2 guelph lord ids.
+      'orvieto':         shift Orvieto's cylinder RIGHT or Service LEFT by 3.
+    """
+    set_aside = _set_aside_treachery_from_command(
+        state, "ghibelline", args.get("treachery_card"))
+    if set_aside is None:
+        return {"applied": False,
+                "reason": "No Ghibelline Treachery card in the Command deck to set aside."}
+
+    def _adverse(lid, boxes):
+        if state["lords"][lid].get("calendar_box") is not None:
+            return {"cylinder_to": _shift_cylinder_right(state, lid, boxes)}
+        elif state["lords"][lid].get("service_box") is not None:
+            return {"service_to": _shift_service_left(state, lid, boxes)}
+        return {"no_marker": True}
+
+    if args.get("mode") == "orvieto":
+        return {"applied": True, "mode": "orvieto", "treachery_set_aside": set_aside,
+                "shifted": {"orvieto": _adverse("orvieto", 3)}}
+
+    targets = args.get("targets")
+    if not targets:
+        targets = [lid for lid, l in state["lords"].items()
+                   if l.get("side") == "guelph"
+                   and (l.get("calendar_box") is not None or l.get("service_box") is not None)][:2]
     shifts = {}
-    for lid in ("pisa", "siena", "provenzano"):
-        new = _shift_cylinder_left(state, lid, boxes=1)
-        if new is not None or state["lords"][lid].get("calendar_box") is None:
-            shifts[lid] = {"cylinder_to": new}
-        else:
-            shifts[lid] = {"service_to": _shift_service_right(state, lid, boxes=1)}
-    return {"applied": True, "shifts": shifts}
+    for lid in targets[:2]:
+        if state["lords"].get(lid, {}).get("side") != "guelph":
+            continue
+        shifts[lid] = _adverse(lid, 1)
+    return {"applied": True, "mode": "shift", "treachery_set_aside": set_aside,
+            "shifts": shifts}
 
 
 @register_event("S10")
@@ -1044,11 +1207,38 @@ def S10_event(state, side, args, rng):
 
 @register_event("S11")
 def S11_event(state, side, args, rng):
-    """S11 VOLTERRA — Ghib mirror; shift Astimberg or Santa Fiora Service 2 OR add 1 Treachery."""
-    if args.get("mode") == "treachery":
-        return {"applied": True, "added": _add_treachery_from_set_aside(state, "ghibelline")}
-    target = args.get("target", "astimberg")
-    return {"applied": True, "target": target, "service_to": _shift_service_right(state, target, boxes=2)}
+    """S11 VOLTERRA.
+
+    SMOKE-Inferno-077: Per AoW Reference: 'If Volterra Ghibelline, shift Colle Service 2 Calendar
+    boxes or Pisa cylinder left to current Levy or add 1 Treachery.' Playable
+    only if Volterra is free of Guelph Allegiance markers.
+
+    Modes:
+      'colle' (default): shift Colle's Service LEFT 2 boxes (adverse to the
+                         Guelph Lord Colle).
+      'pisa':            shift Pisa's cylinder LEFT to the current Levy box
+                         (only if its cylinder is to the right of that box).
+      'treachery':       add 1 set-aside Ghibelline Treachery card.
+    """
+    volterra = state["locales"].get("Volterra")
+    if volterra is None:
+        return {"applied": False, "reason": "Volterra not in scenario."}
+    if any(m.get("side") == "guelph" for m in volterra.get("current_allegiance", []) or []):
+        return {"applied": False, "reason": "Volterra has Guelph Allegiance markers; not Ghibelline."}
+    mode = args.get("mode", "colle")
+    if mode == "treachery":
+        return {"applied": True, "mode": "treachery",
+                "added": _add_treachery_from_set_aside(state, "ghibelline")}
+    if mode == "pisa":
+        levy_box = state["calendar"]["levy_box"]
+        new = _shift_cylinder_to_box(state, "pisa", levy_box)
+        if new is None:
+            return {"applied": False,
+                    "reason": "Pisa has no cylinder to the right of the current Levy box."}
+        return {"applied": True, "mode": "pisa", "cylinder_to": new}
+    # default 'colle': Service left 2
+    new = _shift_service_left(state, "colle", boxes=2)
+    return {"applied": True, "mode": "colle", "service_to": new}
 
 
 @register_event("S12")
@@ -1096,13 +1286,28 @@ def S14_event(state, side, args, rng):
 
 @register_event("S15")
 def S15_event(state, side, args, rng):
-    """S15 WAR LOANS: +1 Coin to one Ghibelline Lord, or add 1 Treachery."""
-    if args.get("mode") == "treachery":
-        return {"applied": True, "added": _add_treachery_from_set_aside(state, "ghibelline")}
+    """S15 WAR LOANS.
+
+    SMOKE-Inferno-078: Per AoW Reference: 'Shift Siena, Provenzano, Giordano, OR Astimberg cylinder
+    or Service 2 boxes or this Levy give 1 Lordship +2.' One listed Lord's
+    cylinder shifts LEFT or Service RIGHT (favourable), OR give one of them a
+    one-shot +2 Lordship for this Levy's Muster (3.4) / CtA Allies (3.5.4).
+    """
+    eligible = ("siena", "provenzano", "giordano", "astimberg")
     target = args.get("target", "siena")
-    if target in state["lords"]:
-        state["lords"][target]["assets"]["Coin"] = state["lords"][target]["assets"].get("Coin", 0) + 1
-    return {"applied": True, "target": target}
+    if target not in eligible:
+        return {"applied": False, "reason": f"target must be one of {eligible}"}
+    if args.get("mode") == "lordship":
+        state["lords"][target].setdefault("flags", {})["lordship_bonus_pending"] = (
+            state["lords"][target].get("flags", {}).get("lordship_bonus_pending", 0) + 2)
+        return {"applied": True, "mode": "lordship", "lordship_bonus_for": target, "bonus": 2}
+    if state["lords"][target].get("calendar_box") is not None:
+        return {"applied": True, "mode": "shift", "target": target,
+                "cylinder_to": _shift_cylinder_left(state, target, boxes=2)}
+    elif state["lords"][target].get("service_box") is not None:
+        return {"applied": True, "mode": "shift", "target": target,
+                "service_to": _shift_service_right(state, target, boxes=2)}
+    return {"applied": False, "reason": f"{target} has no Calendar marker to shift"}
 
 
 @register_event("S16")
@@ -1429,16 +1634,38 @@ def S24_event(state, side, args, rng):
 
 @register_event("S25")
 def S25_event(state, side, args, rng):
-    """S25 MAREMMA — Ghibelline War event."""
+    """S25 MAREMMA — War. SMOKE-Inferno-079: 'If Grosseto or adjacent Castle Guelph, shift 3
+    Ghibelline cylinders or Service 1 box each. Ghibellines may declare Call
+    to Arms.' Condition (Tips): any of Grosseto, Castiglione della Pescaia,
+    Montemassi, or Montepescali carries a Guelph 1VP marker. Three Ghibelline
+    Lords (player's choice; default first three with a Calendar marker) shift
+    favourably 1 box each.
+    """
+    log = {"war_event": "ghibelline", "shifted": None}
+    maremma = ("Grosseto", "Castiglione della Pescaia", "Montemassi", "Montepescali")
+    if _stronghold_marked(state, None, home_side=None, marker_side="guelph", names=maremma):
+        targets = args.get("targets")
+        if not targets:
+            targets = [lid for lid, l in state["lords"].items()
+                       if l.get("side") == "ghibelline"
+                       and (l.get("calendar_box") is not None or l.get("service_box") is not None)][:3]
+        log["shifted"] = {lid: _favorable_shift(state, lid, 1) for lid in targets[:3]}
     state["war_declared_this_levy"] = list(set(state.get("war_declared_this_levy", [])) | {"ghibelline"})
-    return {"applied": True, "war_event": "ghibelline"}
+    return {"applied": True, **log}
 
 
 @register_event("S26")
 def S26_event(state, side, args, rng):
-    """S26 MONTEPULCIANO — Ghib War event."""
+    """S26 MONTEPULCIANO — War. SMOKE-Inferno-079: 'If a Town marked Guelph, shift Provenzano and
+    Siena cylinder or Service 1 box each. Ghibellines may declare Call to
+    Arms.' Shift only if an originally-Ghibelline Town carries a Guelph marker.
+    """
+    log = {"war_event": "ghibelline", "shifted": None}
+    if _stronghold_marked(state, "town", home_side="ghibelline", marker_side="guelph"):
+        log["shifted"] = {lid: _favorable_shift(state, lid, 1)
+                          for lid in ("provenzano", "siena")}
     state["war_declared_this_levy"] = list(set(state.get("war_declared_this_levy", [])) | {"ghibelline"})
-    return {"applied": True, "war_event": "ghibelline"}
+    return {"applied": True, **log}
 
 
 # =====================================================================

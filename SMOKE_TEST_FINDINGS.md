@@ -1058,3 +1058,89 @@ seeds 1-10, two trials each) produced **0 hits** — `enumerate_legal` never
 constructs the wrong-side end_card, so `dispatch` can never reject one. The
 counts arose from the prior probe re-dispatching moves against a state that had
 already advanced (stale-move probing). No code change.
+
+## v3.2 — Per-card NUMERIC verification of the 52 AoW Events
+
+After v3.1 the user asked for the deepest rules-fidelity pass: verify each AoW
+Event produces the EXACT number its card text specifies, not merely that an
+effect fires. The earlier Audit D (v3.0) confirmed effects were *wired*; it did
+not check the *quantities*. This pass extracted every card's verbatim Text from
+`reference/Inferno_Arts_of_War_Reference.txt`, mapped it to its handler in
+`card_effects.py`, and added `tests/test_v32_card_numbers.py` (18 numeric
+assertions). It surfaced a cluster of Ghibelline-event defects where the
+implementation had been written as a loose "mirror" of a Guelph card and so
+implemented the WRONG effect entirely.
+
+### SMOKE-Inferno-076 — S9 Pope at Bay implemented the opposite effect
+
+**Card:** "Set aside 1 Treachery to shift any 2 Guelph cylinders or Service 1
+Calendar box or Orvieto by 3." **Was:** shifted Pisa/Siena/Provenzano
+(Ghibelline) cylinders LEFT by 1 — favourable to the Ghibellines, the reverse
+of the card. **Now:** sets aside one Ghibelline Treachery card already in the
+Command deck (the enabling cost; without one the Event can't be played), then
+shifts any 2 GUELPH Lords' cylinder RIGHT / Service LEFT by 1 (adverse delay),
+or Orvieto by 3. New adverse-shift helpers `_shift_cylinder_right` /
+`_shift_service_left` and a `_set_aside_treachery_from_command` cost helper.
+
+### SMOKE-Inferno-077 — S11 Volterra targeted the wrong Lords
+
+**Card:** "If Volterra Ghibelline, shift Colle Service 2 boxes or Pisa cylinder
+left to current Levy or add 1 Treachery." **Was:** shifted Astimberg/Santa
+Fiora Service RIGHT 2, with no Volterra condition. **Now:** gated on Volterra
+free of Guelph markers; default shifts Colle Service LEFT 2, `mode="pisa"`
+shifts Pisa's cylinder to the current Levy box (only if to its right),
+`mode="treachery"` adds 1. New `_shift_cylinder_to_box` helper.
+
+### SMOKE-Inferno-078 — S15 War Loans gave +1 Coin instead of a shift / Lordship
+
+**Card:** "Shift Siena, Provenzano, Giordano, OR Astimberg cylinder or Service
+2 boxes or this Levy give 1 Lordship +2." **Was:** added +1 Coin to one Lord
+(an effect that appears nowhere on the card). **Now:** shifts one of the four
+listed Lords favourably 2 boxes, or `mode="lordship"` grants a one-shot +2
+Lordship (`lordship_bonus_pending`). The stale test that asserted the +1-Coin
+bug (`test_S15_war_loans_adds_coin_to_siena`) was rewritten to assert the
+Lordship +2 outcome.
+
+### SMOKE-Inferno-079 — F25/F26/S25/S26 War events dropped their Calendar shift
+
+**Cards** each read "If <Stronghold condition>, shift <named Lords> N boxes.
+<Side> may declare Call to Arms." **Was:** only the Call-to-Arms flag was set;
+the conditional Calendar shift was omitted entirely. **Now:** when the board
+condition holds the named Lords shift favourably — F25 Colle 3 (an originally-
+Ghibelline Castle now carries a Guelph 1VP marker); F26 Firenze/Arezzo/Orvieto
+1 each (originally-Ghibelline Town marked Guelph); S25 three Ghibelline cylinders
+1 each (any of Grosseto / Castiglione della Pescaia / Montemassi / Montepescali
+marked Guelph); S26 Provenzano/Siena 1 each (originally-Ghibelline Town marked
+Guelph). Call-to-Arms is still granted regardless of the condition (per Tips).
+New `_favorable_shift` and `_stronghold_marked` helpers.
+
+**Verification:** `tests/test_v32_card_numbers.py` (18 assertions) + the
+rewritten phase-4 test. Full suite 506 pass.
+
+### DEFERRED (precise specs for a follow-up combat-engine pass)
+
+**F24 / S24 Doctors — wrong mechanic, needs a battle+storm post-combat hook.**
+Card: "Hold: Play in Battle or Storm for [Firenze & Arezzo / Siena & Pisa] each
+to restore to their Forces half of their Lost units (round up)" — applied at the
+end after all 4.4.4 Loss rolls, including Knights who received Quarter. The
+current handler instead rolls each ROUTED unit's Protection die (a different
+mechanic) and does so for ALL Lords of the side rather than the two named ones.
+A faithful fix must: (a) register a battle modifier at 4.4.1 naming the two
+Lords; (b) accumulate each named Lord's Lost+Captured count during loss
+resolution — in BOTH `_apply_post_battle` (battle, actions.py) AND inside
+`resolve_storm` (storm, battle.py), which resolve losses on separate code
+paths; (c) restore ceil(total_lost / 2) units to Forces (and pull restored
+Knights back out of `captured_knights`). Deferred because it spans two combat
+resolvers and carries regression risk; isolated from the deterministic v3.2
+fixes by design.
+
+**F10 / S22 Closed Gates — gold/purple branch asymmetry + ambiguous Revolt
+direction.** Card: "Remove 1 [gold/purple] Ruins or, if none, remove 1
+[purple/gold] Ruins where Stronghold then eligible for Revolt (1.4.1); it
+Revolts (1.4.4)." The current handler triggers a Revolt (placing Allegiance
+markers) on only one of its two branches, and the Tips' fallback ("if there are
+NO Ruins on the map, instead replace a Ruins benefitting your side with
+Allegiance markers equal to Stronghold Value") is not represented. The Revolt
+*direction* of the de-ruined Stronghold (toward the playing side vs. per the
+Revolt table) is not pinned down by the card text alone, so this is left for a
+rules-clarified pass rather than guessed.
