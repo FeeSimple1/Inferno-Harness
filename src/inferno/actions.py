@@ -789,21 +789,52 @@ def _h_levy_muster_vassal(state, side, args, rng) -> dict[str, Any]:
     from .battle import _lord_has_capability
     if not (vname == "Altopascio" and _lord_has_capability(state, lid, "Tau Company")):
         _consume_lordship(state, lid)
-    for v in lord["vassals"]:
-        if v["name"] == vname:
-            target = v
-            break
-    else:
+    target = next((v for v in lord["vassals"] if v["name"] == vname), None)
+    # CONF-001 / SMOKE-Inferno-073: a Commander INSIDE his Leading City may
+    # also Muster a Ready Sestiere/Terzo on the in-play Comune mat via a regular
+    # Levy action, rolling the vassal's Muster die (<= musters; higher wastes
+    # the action). Carroccio is excluded (CtA only).
+    comune_mat = None
+    if target is None:
+        comune_id = COMUNE_LORD.get(side)
+        if (lid == COMMANDER_LORD.get(side) and comune_id
+                and state["lords"].get(comune_id, {}).get("status") == "mustered"):
+            comune_mat = state["lords"][comune_id]
+            target = next((v for v in comune_mat.get("vassals", []) if v["name"] == vname), None)
+    if target is None:
         raise IllegalAction("UNKNOWN_VASSAL", f"{lid} has no Vassal named {vname!r}.", "3.4.2")
+
     if target.get("special"):
-        raise IllegalAction(
-            "SPECIAL_VASSAL_ONLY_VIA_CTA",
-            f"{vname} is a Special Vassal; Muster only via CtA 3.5.3.",
-            "3.4.2",
-        )
+        if vname == "Carroccio":
+            raise IllegalAction("CARROCCIO_CTA_ONLY",
+                                "The Carroccio Musters only via CtA (3.5.3).", "3.4.2")
+        if comune_mat is None:
+            raise IllegalAction("SPECIAL_VASSAL_ONLY_VIA_CTA",
+                                f"{vname} is a Special Vassal; Muster via CtA or as a "
+                                f"Comune Sestiere/Terzo by the Commander.", "3.4.2")
+        if state["lords"][lid].get("location") != LEADING_CITY.get(side):
+            raise IllegalAction("NOT_IN_LEADING_CITY",
+                                f"Commander must be inside {LEADING_CITY.get(side)} to Muster "
+                                f"a Comune {vname}.", "3.4.2")
+        if not target.get("ready"):
+            raise IllegalAction("VASSAL_NOT_READY", f"{vname} is not Ready.", "3.4.2")
+        md = target.get("muster_die")
+        r = rng.roll(f"sestiere_muster_{vname}")
+        if md is None or r.value > md:
+            return {"state_changes": {"lord_id": lid, "vassal": vname, "die": r.value,
+                                      "muster_die": md, "success": False, "wasted_action": True},
+                    "rolls": [{"context": r.context, "value": r.value}], "rule_citation": "3.4.2"}
+        target["ready"] = False
+        target["on_mat"] = True
+        for unit, count in target.get("forces", {}).items():
+            comune_mat["forces"][unit] = comune_mat["forces"].get(unit, 0) + count
+        return {"state_changes": {"lord_id": lid, "comune_vassal": vname, "die": r.value,
+                                  "muster_die": md, "success": True,
+                                  "forces_added": dict(target.get("forces", {}))},
+                "rolls": [{"context": r.context, "value": r.value}], "rule_citation": "3.4.2"}
+
     if not target.get("ready"):
         raise IllegalAction("VASSAL_NOT_READY", f"{vname} is not Ready.", "3.4.2")
-
     # Slide marker into Forces (Ready -> not Ready); add Forces.
     target["ready"] = False
     for unit, count in target.get("forces", {}).items():
