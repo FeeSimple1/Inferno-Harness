@@ -175,7 +175,8 @@ def _enum_pay(state, side) -> list[dict[str, Any]]:
                     })
         if from_lord["assets"].get("Loot", 0) > 0:
             loc = state["locales"].get(from_lord.get("location") or "")
-            if loc and not loc.get("siege"):
+            # SMOKE-Inferno-060: Loot Pay needs a Friendly, unbesieged Locale (3.2.2).
+            if loc and not loc.get("siege") and _is_friendly_locale_quiet(state, loc, side):
                 for tlid, t in own_mustered.items():
                     if t.get("location") == from_lord.get("location") and t.get("service_box") is not None:
                         rate = 2 if t.get("podesta") else 1
@@ -558,8 +559,14 @@ def _enum_command_phase(state, side) -> list[dict[str, Any]]:
     # SMOKE-Inferno-003: pre-check Tax — Lord at Seat, Unbesieged. See CROSS_PROJECT_LESSONS §1.
     tax_ok = False
     try:
-        if loc and not loc.get("siege") and lord.get("location") in lord.get("seats", []):
+        if (loc and not loc.get("siege") and lord.get("location") in lord.get("seats", [])
+                and actions_remaining >= 1):  # SMOKE-Inferno-060: Tax needs an action
             tax_ok = True
+        # SMOKE-Inferno-060: S23 Economic Sanctions blocks all Guelph Tax this Campaign.
+        if side == "guelph" and any(
+                e.get("id") == "S23"
+                for e in (state.get("active_events", {}).get("this_campaign", []) or [])):
+            tax_ok = False
     except (KeyError, AttributeError):
         tax_ok = False
     if tax_ok:
@@ -602,7 +609,8 @@ def _enum_command_phase(state, side) -> list[dict[str, Any]]:
     # SMOKE-Inferno-006: Supply pre-check — at own Seat (Phase 3a simplified).
     try:
         if (lord.get("location") in lord.get("seats", []) and
-                loc and not loc.get("ruins") and actions_remaining >= 1):
+                loc and not loc.get("ruins") and not loc.get("siege") and
+                actions_remaining >= 1):  # SMOKE-Inferno-060: supplier may not be Besieged
             moves.append({
                 "action": "cmd_supply", "side": side, "args": {"lord_id": lid},
                 "description": f"{lid} Supplies at own Seat {lord['location']}.",
@@ -614,7 +622,13 @@ def _enum_command_phase(state, side) -> list[dict[str, Any]]:
     if lord["name"] == "Pisa Podestà":
         try:
             season = sd.SEASON_BY_BOX.get(state["meta"]["turn"], "winter")
-            if (season != "winter" and loc and loc.get("port") and not loc.get("siege")):
+            ships = lord["assets"].get("Ship", 0)
+            horse_units = sum(c for u, c in lord.get("forces", {}).items()
+                              if sd.UNITS.get(u, {}).get("cat") == "horse")
+            ships_needed = horse_units + lord["assets"].get("Provender", 0) + 2 * lord["assets"].get("Loot", 0)
+            # SMOKE-Inferno-060: Sail needs Ships >= Horse + Provender + 2*Loot (4.7.3).
+            if (season != "winter" and loc and loc.get("port") and not loc.get("siege")
+                    and ships_needed <= ships):
                 for dest_name, dest in state["locales"].items():
                     if dest_name == lord.get("location"):
                         continue
@@ -628,9 +642,21 @@ def _enum_command_phase(state, side) -> list[dict[str, Any]]:
         except (KeyError, AttributeError):
             pass
     # SMOKE-Inferno-010: cmd_march pre-checks — adjacency, action cost, Laden.
+    # SMOKE-Inferno-060: a Lord with Provender > 2*Carts MAY NOT MOVE (4.3.2);
+    # do not offer any March for it (the handler raises EXCESS_PROVENDER).
     try:
         cur_loc = lord.get("location")
-        if cur_loc:
+        # Auto-paired Lieutenant + Lower Lord move together (4.1.3); the handler
+        # sums Provender/Carts across that group for the 4.3.2 may-not-move check.
+        _grp = [lid]
+        for _fk in ("has_lower_lord", "lower_lord_of"):
+            _partner = lord.get("flags", {}).get(_fk)
+            if _partner and _partner in state["lords"] and \
+                    state["lords"][_partner].get("location") == cur_loc and _partner not in _grp:
+                _grp.append(_partner)
+        _carts = sum(state["lords"][g]["assets"].get("Cart", 0) for g in _grp)
+        _prov = sum(state["lords"][g]["assets"].get("Provender", 0) for g in _grp)
+        if cur_loc and _prov <= 2 * _carts:
             for neighbour, way_type in sd.adjacent_to(cur_loc):
                 # Skip Outposts unless this Lord has it as a Seat (1.3.1).
                 dest = state["locales"].get(neighbour, {})
@@ -661,7 +687,7 @@ def _enum_command_phase(state, side) -> list[dict[str, Any]]:
             is_enemy = not _is_friendly_locale_quiet(state, loc, side)
             outside = not lord.get("flags", {}).get("in_stronghold")
             if (is_enemy and outside and not loc.get("siege") and not loc.get("bypass")
-                    and actions_remaining >= 0):
+                    and actions_remaining >= 1):  # SMOKE-Inferno-060: needs 1 action
                 for choice in ("besiege", "bypass"):
                     moves.append({
                         "action": "besiege_or_bypass", "side": side,
@@ -702,7 +728,9 @@ def _enum_command_phase(state, side) -> list[dict[str, Any]]:
 
     # SMOKE-Inferno-016: Bypass-state moves (4.3.6) — Depart/Encamp; Sortie if inside.
     try:
-        if lord.get("flags", {}).get("bypassing") and actions_remaining >= 1:
+        if (lord.get("flags", {}).get("bypassing")
+                and lord.get("location") == lord["flags"].get("bypassing")
+                and actions_remaining >= 1):  # SMOKE-Inferno-060: must be AT the Bypass
             # Encamp is always available with 1 action
             moves.append({
                 "action": "cmd_encamp", "side": side, "args": {"lord_id": lid},
@@ -710,7 +738,14 @@ def _enum_command_phase(state, side) -> list[dict[str, Any]]:
                 "rule_citation": "4.3.6",
             })
             # Depart: enumerated via cmd_march above (with bypassing flag)
-        if lord.get("flags", {}).get("in_stronghold") and loc and loc.get("bypass") and actions_remaining >= 1:
+        _enemy_side = "ghibelline" if side == "guelph" else "guelph"
+        _has_bypassing_enemy = bool(loc) and any(
+            state["lords"][oid]["side"] == _enemy_side
+            and state["lords"][oid].get("flags", {}).get("bypassing") == lord.get("location")
+            for oid in (loc.get("lords_present", []) if loc else []))
+        # SMOKE-Inferno-060: Sortie needs a Bypassing Enemy Lord outside (not just a marker).
+        if (lord.get("flags", {}).get("in_stronghold") and loc and loc.get("bypass")
+                and _has_bypassing_enemy and actions_remaining >= 1):
             moves.append({
                 "action": "cmd_sortie", "side": side, "args": {"lord_id": lid},
                 "description": f"{lid} Sorties from {lord['location']}.",
@@ -905,14 +940,19 @@ def _enum_end_campaign(state, side) -> list[dict[str, Any]]:
         total = sum(captured.values())
         if total > 0:
             cost = (total + 5) // 6
-            return [
-                {"action": "end_ransom", "side": side, "args": {"pay": True},
-                 "description": f"Ransom {total} captured units for {cost} Coin; recover ceil(N/2).",
-                 "rule_citation": "4.9.2"},
-                {"action": "end_ransom", "side": side, "args": {"pay": False},
-                 "description": f"Languish: skip Ransom; enemy adds {cost} Treachery/Revolt.",
-                 "rule_citation": "4.9.2"},
-            ]
+            # SMOKE-Inferno-060: only offer PAY if a Mustered Lord can afford `cost`.
+            can_pay = any(l["side"] == side and l["status"] == "mustered"
+                          and l["assets"].get("Coin", 0) >= cost
+                          for l in state["lords"].values())
+            opts = []
+            if can_pay:
+                opts.append({"action": "end_ransom", "side": side, "args": {"pay": True},
+                             "description": f"Ransom {total} captured units for {cost} Coin; recover ceil(N/2).",
+                             "rule_citation": "4.9.2"})
+            opts.append({"action": "end_ransom", "side": side, "args": {"pay": False},
+                         "description": f"Languish: skip Ransom; enemy adds {cost} Treachery/Revolt.",
+                         "rule_citation": "4.9.2"})
+            return opts
         else:
             return [{"action": "end_ransom", "side": side, "args": {"pay": True},
                      "description": "No captures; auto-advance.", "rule_citation": "4.9.2"}]

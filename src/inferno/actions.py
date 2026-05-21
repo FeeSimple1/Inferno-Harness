@@ -1168,8 +1168,21 @@ def _flip_active_side(state) -> None:
 
 
 def _h_cmd_end_card(state, side, args, rng) -> dict[str, Any]:
-    """Active Lord declares end of card's actions. Triggers FPD then flips side."""
-    _require_active_lord(state, side, args.get("lord_id"))
+    """Active Lord declares end of card's actions. Triggers FPD then flips side.
+
+    SMOKE-Inferno-061: ending a card is always legal for the active player,
+    including with 0 actions remaining (you may stop early OR close out a card
+    whose actions are spent) — so this does NOT gate on actions_remaining the
+    way _require_active_lord does."""
+    cur = state.get("current_lord_id")
+    if cur is None:
+        raise IllegalAction("NO_ACTIVE_LORD", "No Lord is currently activated.", "4.2")
+    lord_id = args.get("lord_id")
+    if lord_id and lord_id != cur:
+        raise IllegalAction("WRONG_LORD", f"Active Lord is {cur}; action targeted {lord_id!r}.", "4.2")
+    lord = state["lords"].get(cur)
+    if lord is None or lord["side"] != side:
+        raise IllegalAction("WRONG_LORD_SIDE", f"Active lord {cur!r} not on {side}.", "2.2.4")
     return _finish_card(state, side, reason="end_card", citation="4.2.6")
 
 

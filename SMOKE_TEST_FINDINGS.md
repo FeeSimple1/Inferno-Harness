@@ -810,3 +810,44 @@ moves dispatched with 0 illegal emissions across 160 CtA-active steps; greedy
 self-play exercised 41 real CtA declarations with no stalls. Regression:
 `test_v25_features.py::TestCtAEnumeration` (incl. a per-move round-trip and a
 full enumerator-driven CtA walkthrough).
+
+---
+
+## SMOKE-Inferno-060 — Enumerator over-enumeration (8 round-trip gaps)
+
+**Pattern:** §"enumerator/handler round-trip" — the move enumerator offered moves
+that dispatch then correctly rejected (the engine enforced the rule; the
+enumerator was over-permissive). Found by a randomized self-play smoke test
+(900 games / 271k steps) that flagged every enumerated move dispatch refused.
+
+**Detected & fixed (v2.6):** each enumerator pre-check tightened to mirror its
+handler:
+  - cmd_march EXCESS_PROVENDER — a Lord (or its auto-paired Lieutenant+Lower-Lord
+    group, 4.1.3) with Provender > 2*Carts may not move (4.3.2); the group sum
+    is now checked.
+  - cmd_sail INSUFFICIENT_SHIPS — Sail needs Ships >= Horse + Provender + 2*Loot
+    (4.7.3).
+  - besiege_or_bypass / cmd_tax — require >= 1 action (were ungated).
+  - cmd_supply — supplier may not be Besieged (was unchecked).
+  - cmd_encamp NOT_AT_BYPASS — Lord must be AT its Bypass marker.
+  - cmd_sortie NO_BYPASSERS — a Bypassing Enemy Lord must be present (not just a
+    Bypass marker).
+  - end_ransom INSUFFICIENT_COIN — only offer PAY if a Mustered Lord can afford
+    the Ransom; always offer Languish.
+  - levy_pay LOOT_NOT_FRIENDLY — Loot Pay requires a Friendly Locale (3.2.2).
+  - cmd_tax TAX_BLOCKED_S23 — no Guelph Tax while S23 Economic Sanctions is in
+    play.
+
+**Verification:** randomized smoke sweep across all scenarios/seeds — 900 games,
+271,225 steps, 784 winners, 0 stalls, **0 over-enumerations, 0 invariant
+violations**. Regression: `test_v26_features.py::TestEnumeratorRoundTrip`.
+
+## SMOKE-Inferno-061 — End Card was illegal with 0 actions remaining
+
+**Pattern:** handler over-gate — `_h_cmd_end_card` used `_require_active_lord`,
+which raises NO_ACTIONS_LEFT at 0 actions, so a state with an active Lord and 0
+actions could not be closed out via cmd_end_card (the enumerator offered it).
+
+**Fix (v2.6):** ending a card is always legal for the active player (stop early
+OR close out a spent card); `_h_cmd_end_card` now validates the active Lord/side
+WITHOUT gating on actions_remaining. Regression in `test_v26_features.py`.
