@@ -1000,3 +1000,61 @@ enemy Mustered Vassal) / lapse, and nothing else. Round-trip clean.
 (116,086 steps): 0 over-enumerations, 0 crashes, 0 stalls, and 0 violations of
 VP / forces / calendar-consistency / placement / marker / card-conservation
 invariants. Regression: `test_v29_features.py` (8 tests). Full suite 477 pass.
+
+## SMOKE-Inferno-074 — Crossbow Hits: -2 Armor and SELECT their target
+
+**Found:** Per-card / combat-conformance review after the v3.0 audit. Crossbow
+archery Hits (Balestrieri Armigieri; Balestre Grosse Men-at-Arms in Storm) were
+absorbed by the same routine as melee Hits — full Armor protection and the
+NORMAL forced casualty order (Villici/Light Horse first). The Battle & Storm
+reference is explicit that Crossbow Hits apply **-2 to the target's Armor** and
+that the **firing player SELECTS** which enemy unit each Crossbow Hit strikes
+(so they pick the most valuable still-standing unit, not the cheapest).
+
+**Fix (v3.1):** `_absorb_hits` / `_absorb_garrison_hits` now take a
+`crossbow_hits` count and an `armor_penalty` (default 2). Crossbow Hits resolve
+first against a SELECT order (Ritter -> Cavalieri -> Armigieri -> Men-at-Arms ->
+Berrovieri -> Light Horse -> Militia -> Villici) with each target's protection
+band truncated by `armor_penalty` (`prot[:max(0, len(prot)-2)]`); remaining
+(melee) Hits keep the original NORMAL order and full Armor. Crossbow count per
+striking step is computed by `_crossbow_archery_hits` (Armigieri w/Balestrieri
+= min(arms,3) x 1.0; Men-at-Arms w/Balestre Grosse, Storm only, x 0.5) and
+threaded through `_resolve_step` / `_resolve_storm_step` alongside the
+hills/concede/ceil transforms, and through the Garrison's own crossbow tally.
+Default (`crossbow_hits=0`) reproduces the prior behavior exactly.
+**Verification:** `tests/test_v31_features.py::TestCrossbowMinus2Armor` (a
+Cavalieri with Armor 1-3 routs on a die of 2 when struck by a Crossbow Hit but
+survives the same die from a melee Hit; Crossbow selects Ritter over Villici)
+plus `TestCrossbowArcheryCount`. Full suite 488 pass.
+
+## SMOKE-Inferno-075 — Storm Archery is granted only via Capability, not by default
+
+**Found:** Same review. The Storm strike path granted base Archery Hits to a
+Lord's own Foot units and ALSO double-counted Garrison Archery by merging the
+Garrison into the Lord's unit dict before striking. The reference gives a Lord's
+ordinary Foot units no base Storm Archery — Archery in Storm comes only from a
+Capability (Balestrieri / Balestre Grosse Crossbow, or the Arcieri/Luceria
+Militia-archery cards) — and the Garrison strikes as a separate body.
+
+**Fix (v3.1):** the Storm archery branch (`_strike_hits_storm`, "def_archery")
+now returns `0.0`; the Garrison's contribution is computed separately by
+`_garrison_strike` (archery = sum c x UNITS[u].archery; melee = sum c x
+storm_strikes_defender) and added once, with the Garrison's crossbow Hits
+(Men-at-Arms x 0.5 + Armigieri x 1.0) tracked for the -2 Armor SELECT path.
+**Verification:** `tests/test_v31_features.py::TestStormArchery`
+(`_strike_hits_storm({"Armigieri":3}, "def_archery") == 0.0`;
+`_garrison_strike(castle_garrison, "def_archery") == 1.5`, melee `== 3.0`).
+
+## Note — `cmd_end_card` WRONG_LORD_SIDE / `approach_response` AVOID_INTO_ENEMY_LOCALE (not bugs)
+
+A combat-preferring, all-Capabilities-injected sweep in the v3.1 cycle reported
+`over-enum: {(cmd_end_card, WRONG_LORD_SIDE): 406, (approach_response,
+AVOID_INTO_ENEMY_LOCALE): 1}`. Investigation showed these are **harness
+artifacts, not reachable engine states**. The only path to a wrong-side
+`cmd_end_card` is the defensive branch in `_enum_command_phase` that fires when
+`current_lord_id`'s side != `current_side(state)`. Instrumenting that exact
+condition across 120 capability-injected, combat-heavy games (Scenarios A-F,
+seeds 1-10, two trials each) produced **0 hits** — `enumerate_legal` never
+constructs the wrong-side end_card, so `dispatch` can never reject one. The
+counts arose from the prior probe re-dispatching moves against a state that had
+already advanced (stale-move probing). No code change.

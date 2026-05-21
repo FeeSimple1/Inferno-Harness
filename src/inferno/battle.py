@@ -316,6 +316,7 @@ def _resolve_step(state, step: str, positions, reserve, conceded: str | None,
     # For each potential target slot, compute total Hits aimed at the Lord there
     # from (a) directly-opposed striker, (b) Flanking strikers.
     per_target_hits: dict[str, float] = {s: 0.0 for s in SLOTS}
+    per_target_crossbow: dict[str, float] = {s: 0.0 for s in SLOTS}
     for slot in SLOTS:
         striker_id = positions[striking_side][slot]
         if striker_id is None:
@@ -326,15 +327,18 @@ def _resolve_step(state, step: str, positions, reserve, conceded: str | None,
         # Phase 6: Capability strike modifiers (Feditori, Army Reserve,
         # Arcieri, Luceria, Balestrieri)
         h += _capability_strike_modifier(state, striker_id, units, step, round_n, "battle")
+        cb = _crossbow_archery_hits(state, striker_id, units, step, "battle")
         # Flanking? If yes, target is the flank target; else direct opposite.
         opposite_slot = slot
         if positions[target_side][slot] is not None:
             per_target_hits[opposite_slot] = per_target_hits.get(opposite_slot, 0) + h
+            per_target_crossbow[opposite_slot] = per_target_crossbow.get(opposite_slot, 0) + cb
         else:
             # Find flank entry
             for my_slot, target_slot in flanks[striking_side]:
                 if my_slot == slot:
                     per_target_hits[target_slot] = per_target_hits.get(target_slot, 0) + h
+                    per_target_crossbow[target_slot] = per_target_crossbow.get(target_slot, 0) + cb
                     break
 
     # Phase 5: Hills (F6/S6) — double Archery Hits if striker is the Defending side.
@@ -342,13 +346,16 @@ def _resolve_step(state, step: str, positions, reserve, conceded: str | None,
         mult = _archery_hits_multiplier(state, "defender")
         if mult > 1:
             per_target_hits = {k: v * mult for k, v in per_target_hits.items()}
+            per_target_crossbow = {k: v * mult for k, v in per_target_crossbow.items()}
             hit_log.append({"step": step, "hills_doubled": True})
     # Halve hits if striking side is conceded
     if conceded == striking_side:
         per_target_hits = {k: v / 2 for k, v in per_target_hits.items()}
+        per_target_crossbow = {k: v / 2 for k, v in per_target_crossbow.items()}
 
     # Round up per target
     per_target_hits = {k: math.ceil(v) for k, v in per_target_hits.items()}
+    per_target_crossbow = {k: math.ceil(v) for k, v in per_target_crossbow.items()}
 
     # Apply hits to each target Lord
     for slot, n_hits in per_target_hits.items():
@@ -357,13 +364,16 @@ def _resolve_step(state, step: str, positions, reserve, conceded: str | None,
         target_id = positions[target_side][slot]
         if target_id is None:
             continue
+        cb_n = min(per_target_crossbow.get(slot, 0), n_hits)
         # SMOKE-Inferno-056: Siegeworks-as-Walls for the protected side (Sally).
         if walls_by_side and walls_by_side.get(target_side):
             n_hits = _apply_walls(int(n_hits), walls_by_side[target_side], rng_caller,
                                   f"siegeworks_{locale_name}_{slot}")
+            cb_n = min(cb_n, n_hits)
             if n_hits <= 0:
                 continue
-        _absorb_hits(state, target_id, int(n_hits), rng_caller, hit_log, routed_per_lord)
+        _absorb_hits(state, target_id, int(n_hits), rng_caller, hit_log, routed_per_lord,
+                     crossbow_hits=int(cb_n))
         # Check if target lord routs entirely
         if _all_units_routed(state["lords"][target_id]):
             removed_lords.add(target_id)
@@ -371,63 +381,65 @@ def _resolve_step(state, step: str, positions, reserve, conceded: str | None,
 
 
 def _absorb_hits(state, lord_id: str, n_hits: int, rng_caller,
-                 hit_log: list, routed_per_lord: dict) -> None:
-    """Apply n_hits to lord_id's units. Owner picks; Phase 3b uses a
-    simple priority (Villici first since they auto-remove, then
-    Light Horse/Militia, then armored).
-    """
+                 hit_log: list, routed_per_lord: dict,
+                 crossbow_hits: int = 0, armor_penalty: int = 2) -> None:
+    """Apply n_hits to lord_id's units.
+
+    SMOKE-Inferno-074: `crossbow_hits` of the incoming Hits are CROSSBOW hits
+    (Armigieri/Balestrieri, Men-at-Arms/Balestre Grosse, garrison foot). Per the
+    Forces table these (a) SELECT their target — the attacker assigns them to the
+    most valuable armored units — and (b) apply -2 to that unit's Armor. The
+    remaining (non-crossbow) Hits use the defender-favourable default order at
+    full Armor. With crossbow_hits=0 this is the original behaviour exactly."""
     lord = state["lords"][lord_id]
     forces = lord.setdefault("forces", {})
     routed = lord.setdefault("routed_units", {})
-    # Phase 3b absorption order: Villici, Unarmored (Light Horse, Militia),
-    # Armored (Berrovieri, Armigieri, Men-at-Arms, Cavalieri, Ritter)
-    absorb_order = ["Villici", "Light Horse", "Militia",
-                    "Berrovieri", "Armigieri", "Men-at-Arms",
-                    "Cavalieri", "Ritter"]
-    hits_remaining = n_hits
-    while hits_remaining > 0:
-        # Find a unit to absorb
-        absorbing_unit = None
-        for u in absorb_order:
-            if forces.get(u, 0) > 0:
-                absorbing_unit = u
-                break
-        if absorbing_unit is None:
-            # Phase 5: F16 Bloody Red Stream — first Lord to Rout this Battle
-            # may pause and roll Protection on Routed units for recovery.
+    # Defender-favourable default order (cheap/unarmored first).
+    NORMAL_ORDER = ["Villici", "Light Horse", "Militia", "Berrovieri",
+                    "Armigieri", "Men-at-Arms", "Cavalieri", "Ritter"]
+    # Crossbow "select target": attacker hits the most valuable armored units
+    # first (since -2 Armor negates their protection).
+    CROSSBOW_ORDER = ["Ritter", "Cavalieri", "Armigieri", "Men-at-Arms",
+                      "Berrovieri", "Light Horse", "Militia", "Villici"]
+
+    def _absorb_one(order, penalty):
+        unit = next((u for u in order if forces.get(u, 0) > 0), None)
+        if unit is None:
             rr = _check_rout_recovery(state, lord_id, rng_caller)
-            if rr and rr["recovered"]:
+            if rr and rr.get("recovered"):
                 hit_log.append({"lord_id": lord_id, "bloody_red_stream_recovered": rr["recovered"]})
-                continue  # re-pick absorbing unit now that some are unrouted
-            break  # nothing left
-        # Apply 1 hit to this unit
-        if absorbing_unit == "Villici":
+                unit = next((u for u in order if forces.get(u, 0) > 0), None)
+            if unit is None:
+                return False
+        if unit == "Villici":
             forces["Villici"] -= 1
             if forces["Villici"] <= 0:
                 forces.pop("Villici", None)
             hit_log.append({"lord_id": lord_id, "unit": "Villici", "removed": True})
-            hits_remaining -= 1
-            continue
-        # Roll Protection
-        u = sd.UNITS[absorbing_unit]
-        prot_range = u.get("protection", [])
-        r = rng_caller(f"protect_{lord_id}_{absorbing_unit}")
-        survived = r.value in prot_range
-        hit_log.append({
-            "lord_id": lord_id, "unit": absorbing_unit,
-            "die": r.value, "protection": prot_range, "survived": survived,
-        })
-        if survived:
-            # Unit absorbed the hit and is fine; can absorb more
-            hits_remaining -= 1
-        else:
-            # Routed: slide to routed_units
-            forces[absorbing_unit] -= 1
-            if forces[absorbing_unit] <= 0:
-                forces.pop(absorbing_unit, None)
-            routed[absorbing_unit] = routed.get(absorbing_unit, 0) + 1
-            routed_per_lord.setdefault(lord_id, []).append(absorbing_unit)
-            hits_remaining -= 1
+            return True
+        u = sd.UNITS[unit]
+        prot = u.get("protection", [])
+        eff = prot[:max(0, len(prot) - penalty)] if penalty else prot
+        r = rng_caller(f"protect_{lord_id}_{unit}")
+        survived = r.value in eff
+        hit_log.append({"lord_id": lord_id, "unit": unit, "die": r.value,
+                        "protection": eff, "survived": survived,
+                        "crossbow": penalty > 0})
+        if not survived:
+            forces[unit] -= 1
+            if forces[unit] <= 0:
+                forces.pop(unit, None)
+            routed[unit] = routed.get(unit, 0) + 1
+            routed_per_lord.setdefault(lord_id, []).append(unit)
+        return True
+
+    cb = max(0, min(crossbow_hits, n_hits))
+    for _ in range(cb):
+        if not _absorb_one(CROSSBOW_ORDER, armor_penalty):
+            break
+    for _ in range(n_hits - cb):
+        if not _absorb_one(NORMAL_ORDER, 0):
+            break
 
 
 def _all_units_routed(lord: dict) -> bool:
@@ -685,6 +697,23 @@ ARMY_RESERVE_ELIGIBLE = {
 # Feditori eligible Lords (per S6 Tip: Siena, Provenzano, Pisa, Santa Fiora;
 # F-side Feditori is "Any Guelph").
 FEDITORI_S_ELIGIBLE = {"siena", "siena_comune", "provenzano", "pisa", "santa_fiora"}
+
+
+def _crossbow_archery_hits(state, lord_id, units, step, mode) -> float:
+    """SMOKE-Inferno-074: count of a striker's CROSSBOW archery Hits this step
+    (which apply -2 Armor + select target). Lord-mat Armigieri with Balestrieri
+    (<=3) are full Crossbow; Men-at-Arms with Balestre Grosse are half Crossbow
+    in Storm. Militia Archery (Arcieri/Luceria) is NON-crossbow and excluded.
+    Garrison Crossbows are added by the Storm caller."""
+    if not lord_id or "archery" not in step:
+        return 0.0
+    cb = 0.0
+    if units.get("Armigieri", 0) > 0 and _lord_has_capability(state, lord_id, "Balestrieri"):
+        cb += min(units["Armigieri"], 3) * 1.0
+    if mode == "storm" and units.get("Men-at-Arms", 0) > 0 \
+            and _lord_has_capability(state, lord_id, "Balestre Grosse"):
+        cb += units["Men-at-Arms"] * 0.5
+    return cb
 
 
 def _capability_strike_modifier(state, lord_id: str, units: dict[str, int],
@@ -952,15 +981,13 @@ def _strike_hits_storm(units: dict[str, int], step: str) -> float:
     units that have it (Garrison rules let Foot units use their Archery
     rating in Storm)."""
     if step.endswith("archery"):
-        total = 0.0
-        for unit, count in units.items():
-            u = sd.UNITS.get(unit)
-            if not u:
-                continue
-            # In a Garrison context Archery fires for Foot units.
-            # Phase 3c: Garrison units always Archery-eligible per 4.5.2.
-            total += count * u.get("archery", 0)
-        return total
+        # SMOKE-Inferno-075: a Lord's own Foot units have NO base Archery in Storm
+        # (it fires only via a Capability — Balestrieri/Balestre Grosse/Arcieri/
+        # Luceria — added by _capability_strike_modifier, exactly as in Battle).
+        # Garrison Archery is added separately by _garrison_strike. (Previously
+        # this granted every Foot unit Archery, over-granting Lord units AND
+        # double-counting Capability units.)
+        return 0.0
     if step.endswith("all_melee"):
         total = 0.0
         for unit, count in units.items():
@@ -973,6 +1000,17 @@ def _strike_hits_storm(units: dict[str, int], step: str) -> float:
             field = "storm_strikes_attacker" if step.startswith("atk") else "storm_strikes_defender"
             total += count * u.get(field, 0)
         return total
+    return 0.0
+
+
+def _garrison_strike(garr: dict, step: str) -> float:
+    """SMOKE-Inferno-075: Garrison Forces' Storm Strike contribution. Archery:
+    each Foot unit fires its Archery (Men-at-Arms ½ + Armigieri full Crossbow,
+    Militia full regular). Melee: each unit's defending Storm Melee value."""
+    if step.endswith("archery"):
+        return sum(c * sd.UNITS.get(u, {}).get("archery", 0) for u, c in garr.items())
+    if step.endswith("all_melee"):
+        return sum(c * sd.UNITS.get(u, {}).get("storm_strikes_defender", 0) for u, c in garr.items())
     return 0.0
 
 
@@ -1342,24 +1380,30 @@ def _resolve_storm_step(state, step, positions, reserve, conceded,
     target_side = "defender" if striking_side == "attacker" else "attacker"
 
     per_target_hits: dict[str, float] = {s: 0.0 for s in SLOTS}
+    per_target_crossbow: dict[str, float] = {s: 0.0 for s in SLOTS}
     for slot in SLOTS:
         striker_id = positions[striking_side][slot]
         if striker_id is None:
             continue
-        striker_lord = state["lords"][striker_id]
-        units = _live_units(striker_lord)
+        lord_units = _live_units(state["lords"][striker_id])
+        # Lord units: Storm melee + Capability archery (no base Lord archery).
+        h = _strike_hits_storm(lord_units, step)
+        h += _capability_strike_modifier(state, striker_id, lord_units, step, 1, "storm")
+        cb = _crossbow_archery_hits(state, striker_id, lord_units, step, "storm")
+        # SMOKE-Inferno-075: the Defender's Garrison strikes separately (Melee +
+        # Archery); its Men-at-Arms / Armigieri Archery are Crossbows.
         if striking_side == "defender":
-            units = dict(units)
-            for u, c in state["storm_garrison"][locale_name].items():
-                units[u] = units.get(u, 0) + c
-        h = _strike_hits_storm(units, step)
-        # Phase 6: Capability strike modifiers in Storm context
-        h += _capability_strike_modifier(state, striker_id, units, step, 1, "storm")
-        # In Storm Array, only Center is used; direct opposite.
+            garr = state["storm_garrison"].get(locale_name, {})
+            h += _garrison_strike(garr, step)
+            if step.endswith("archery"):
+                cb += garr.get("Men-at-Arms", 0) * 0.5 + garr.get("Armigieri", 0) * 1.0
         per_target_hits[slot] = per_target_hits.get(slot, 0) + h
+        per_target_crossbow[slot] = per_target_crossbow.get(slot, 0) + cb
     if conceded == striking_side:
         per_target_hits = {k: v / 2 for k, v in per_target_hits.items()}
+        per_target_crossbow = {k: v / 2 for k, v in per_target_crossbow.items()}
     per_target_hits = {k: math.ceil(v) for k, v in per_target_hits.items()}
+    per_target_crossbow = {k: math.ceil(v) for k, v in per_target_crossbow.items()}
 
     for slot, n_hits in per_target_hits.items():
         if n_hits <= 0:
@@ -1367,16 +1411,22 @@ def _resolve_storm_step(state, step, positions, reserve, conceded,
         target_id = positions[target_side][slot]
         if target_id is None:
             continue
+        cb_n = min(per_target_crossbow.get(slot, 0), n_hits)
         # Apply Walls/Siegeworks roll before unit-Protection.
         if target_side == "defender" and walls_die:
             n_hits = _apply_walls(int(n_hits), walls_die, rng_roll, f"walls_{locale_name}")
         elif target_side == "attacker" and siegeworks_die:
             n_hits = _apply_walls(int(n_hits), siegeworks_die, rng_roll, f"siegeworks_{locale_name}")
-        # Defender: assign Hits to GARRISON first until exhausted.
+        cb_n = min(cb_n, n_hits)
+        # Defender: assign Hits to GARRISON first until exhausted (Crossbow -2 too).
         if target_side == "defender" and locale_name in state["storm_garrison"]:
-            n_hits = _absorb_garrison_hits(state, locale_name, int(n_hits), rng_roll, hit_log)
+            absorbed = int(n_hits)
+            n_hits = _absorb_garrison_hits(state, locale_name, absorbed, rng_roll, hit_log,
+                                           crossbow_hits=int(cb_n))
+            cb_n = max(0, cb_n - (absorbed - n_hits))  # crossbows used on garrison
         if n_hits > 0:
-            _absorb_hits(state, target_id, int(n_hits), rng_roll, hit_log, routed_per_lord)
+            _absorb_hits(state, target_id, int(n_hits), rng_roll, hit_log, routed_per_lord,
+                         crossbow_hits=int(cb_n))
             if _all_units_routed(state["lords"][target_id]):
                 removed_lords.add(target_id)
                 positions[target_side][slot] = None
@@ -1392,41 +1442,44 @@ def _apply_walls(n_hits: int, walls_range: list[int], rng_roll, ctx: str) -> int
     return surviving
 
 
-def _absorb_garrison_hits(state, locale_name: str, n_hits: int, rng_roll, hit_log) -> int:
-    """Per 4.5.2: Defender MUST assign Hits to Garrison units until they
-    are Routed; then to Lord units. Returns hits remaining after Garrison."""
+def _absorb_garrison_hits(state, locale_name: str, n_hits: int, rng_roll, hit_log,
+                          crossbow_hits: int = 0, armor_penalty: int = 2) -> int:
+    """Per 4.5.2: Defender MUST assign Hits to Garrison units until Routed; then
+    to Lord units. Returns hits remaining after Garrison. SMOKE-Inferno-074:
+    the first `crossbow_hits` apply -2 Armor (select-target -> valuable first)."""
     garrison = state["storm_garrison"][locale_name]
-    # Same absorption order as Lord units
-    order = ["Villici", "Light Horse", "Militia", "Berrovieri", "Armigieri",
-             "Men-at-Arms", "Cavalieri", "Ritter"]
+    normal_order = ["Villici", "Light Horse", "Militia", "Berrovieri", "Armigieri",
+                    "Men-at-Arms", "Cavalieri", "Ritter"]
+    crossbow_order = ["Ritter", "Cavalieri", "Armigieri", "Men-at-Arms",
+                      "Berrovieri", "Light Horse", "Militia", "Villici"]
+    cb_left = max(0, min(crossbow_hits, n_hits))
     while n_hits > 0:
-        absorbing = None
-        for u in order:
-            if garrison.get(u, 0) > 0:
-                absorbing = u
-                break
+        penalty = armor_penalty if cb_left > 0 else 0
+        order = crossbow_order if cb_left > 0 else normal_order
+        absorbing = next((u for u in order if garrison.get(u, 0) > 0), None)
         if absorbing is None:
             break
+        if cb_left > 0:
+            cb_left -= 1
         if absorbing == "Villici":
             garrison["Villici"] -= 1
+            if garrison["Villici"] <= 0:
+                garrison.pop("Villici", None)
             n_hits -= 1
             hit_log.append({"garrison_unit": "Villici", "removed": True, "locale": locale_name})
             continue
         u = sd.UNITS[absorbing]
         prot = u.get("protection", [])
+        eff = prot[:max(0, len(prot) - penalty)] if penalty else prot
         r = rng_roll(f"garrison_{absorbing}_{locale_name}")
-        survived = r.value in prot
-        hit_log.append({
-            "garrison_unit": absorbing, "die": r.value,
-            "protection": prot, "survived": survived, "locale": locale_name,
-        })
-        if survived:
-            n_hits -= 1
-        else:
+        survived = r.value in eff
+        hit_log.append({"garrison_unit": absorbing, "die": r.value, "protection": eff,
+                        "survived": survived, "locale": locale_name, "crossbow": penalty > 0})
+        if not survived:
             garrison[absorbing] -= 1
             if garrison[absorbing] <= 0:
                 garrison.pop(absorbing, None)
-            n_hits -= 1
+        n_hits -= 1
     return n_hits
 
 
