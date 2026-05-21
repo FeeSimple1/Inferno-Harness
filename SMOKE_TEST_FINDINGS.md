@@ -902,3 +902,50 @@ requires a Besieging Enemy Lord present.
 **Verification:** randomized smoke sweep — 990 games, 298,939 steps, 857 winners,
 0 over-enumerations, 0 stalls, 0 invariant violations (capability actions
 exercised hundreds of times). Regression: `test_v27_features.py`.
+
+---
+
+## Smoke-test campaign (v2.8) — 10 rounds, 3 bugs found & fixed
+
+Ten diverse probe rounds (~1.5M dispatched steps total): R1 large randomized
+self-play; R2 exhaustive enumerator round-trip; R3 replay determinism + strict
+JSON portability; R4 combat-heavy; R5 all-capabilities injection; R6 VP/scoring
+conservation; R7 state-schema validation every step; R8 multi-turn
+calendar/season integrity; R9 biased single-subsystem policies; R10 board
+placement consistency.
+
+## SMOKE-Inferno-068 — empty/short AoW deck dead-locked the Levy
+
+**Found:** R5 (all 52 Capabilities injected -> reshuffled AoW deck empty).
+`_h_levy_aow_draw` raised EMPTY_DECK when the deck had < 2 cards, but the
+enumerator still offered `levy_aow_draw`, so the Levy could not advance
+(reachable in long games per the SMOKE-025 note). **Fix:** 3.1 draws UP TO 2
+cards — draw `min(2, len(deck))` (0-2) and proceed.
+
+## SMOKE-Inferno-069 — running VP not initialised from the starting board
+
+**Found:** R6 (end-game VP recompute jumped from a running 0 to 8+). Every
+scenario set `vp = {0, 0}` while the starting board markers were worth real VP
+(e.g. Scenario C: 14 vs 5), so mid-game VP-dependent logic (Call to Arms
+"VP lag >= 4") was wrong from Turn 1. **Fix:** `load_scenario` now initialises
+the running VP track from the board's marker tally
+(`_init_vp_from_markers`: Allegiance +1, Ruins/Ravaged +1/2; NOT the end-game
+Scenario-E/C modifiers, which belong to the 5.1 final recompute).
+
+## SMOKE-Inferno-070 — calendar cylinder/service lists drifted from Lord boxes
+
+**Found:** R8 (a Lord listed in box N's `services` while its `service_box` was a
+different box or None). A whole CLASS of bug: several sites changed a Lord's
+`service_box`/`calendar_box` without updating the calendar's `services`/
+`cylinders` lists — `_disband_at_service_limit` (called by CtA Commander-to-Arms
+with a marker NOT at the Levy box) and, most pervasively, `revolt.apply_exiles`
+(the 1.4.4 slide changed only the `*_box` field). **Fix:** centralised
+`_place_service` / `_place_cylinder` helpers (remove from EVERY box first, then
+place) now used by `_shift_service_right`, Muster, both Disband paths, the FPD
+unfed shift, and both CtA musters; `apply_exiles` got an equivalent
+`_slide_marker`. **Verification (post-fix sweep):** 135,556 steps, 0 calendar
+violations; 0 placement violations over 117,683 steps (R10).
+
+Regression: `test_v28_features.py` (8 tests). Full suite 469 pass. Final
+all-checks sweep across the 10 rounds: 0 crashes, 0 over-enumerations, 0 stalls,
+0 invariant/schema/calendar/placement violations.

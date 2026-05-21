@@ -300,6 +300,18 @@ def _finish_resolved(state, base, switch):
     return res
 
 
+def _slide_marker(state, lid, list_key, new_box, field) -> None:
+    """Move a Lord's cylinder/service marker to `new_box`, removing it from
+    every calendar box's `list_key` list first (SMOKE-Inferno-070)."""
+    for b in state["calendar"]["boxes"].values():
+        if lid in b.get(list_key, []):
+            b[list_key].remove(lid)
+    state["lords"][lid][field] = new_box
+    box = state["calendar"]["boxes"].setdefault(
+        str(new_box), {"cylinders": [], "services": [], "victory": [], "markers": []})
+    box[list_key].append(lid)
+
+
 def apply_exiles(state: dict, side: str, slides: list[dict[str, Any]]) -> dict[str, Any]:
     """Apply the losing side's chosen Exiles slides (1.4.4): cylinders one
     box LEFT, Service markers one box RIGHT, each slide = one box. `slides`
@@ -312,11 +324,14 @@ def apply_exiles(state: dict, side: str, slides: list[dict[str, Any]]) -> dict[s
         lord = state["lords"].get(lid)
         if not lord or lord.get("side") != side:
             continue
+        # SMOKE-Inferno-070: move the marker AND keep the calendar's
+        # cylinders/services lists consistent (this previously changed only the
+        # *_box field, leaving a stale entry in the old box).
         if kind == "cylinder" and lord.get("calendar_box") is not None:
-            lord["calendar_box"] = max(1, lord["calendar_box"] - 1)
+            _slide_marker(state, lid, "cylinders", max(1, lord["calendar_box"] - 1), "calendar_box")
             applied.append({"lord_id": lid, "kind": "cylinder", "to": lord["calendar_box"]})
         elif kind == "service" and lord.get("service_box") is not None:
-            lord["service_box"] = min(16, lord["service_box"] + 1)
+            _slide_marker(state, lid, "services", min(16, lord["service_box"] + 1), "service_box")
             applied.append({"lord_id": lid, "kind": "service", "to": lord["service_box"]})
     return {"applied_exiles": applied}
 

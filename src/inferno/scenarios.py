@@ -84,7 +84,29 @@ def load_scenario(scenario_id: str, seed: int, hidden_mats: bool = False, advanc
         "card_action_consumed_by_entire_card": False,
     }
     _wire_lords_into_locales(state)
+    # SMOKE-Inferno-069: initialise the running VP track to the starting board's
+    # marker tally (Allegiance +1, Ruins/Ravaged +1/2) rather than 0/0, so that
+    # mid-game VP-dependent logic (e.g. Call to Arms "VP lag >= 4") is correct
+    # from Turn 1. End-game-only modifiers (Scenario E doubling / C +3) are NOT
+    # applied to the running track — they belong to the 5.1 final recompute.
+    state["vp"] = _init_vp_from_markers(state)
     return state
+
+
+def _init_vp_from_markers(state) -> dict[str, float]:
+    vp = {"guelph": 0.0, "ghibelline": 0.0}
+    for loc in state["locales"].values():
+        for m in loc.get("current_allegiance", []) or []:
+            sd2 = m.get("side")
+            if sd2 in vp:
+                vp[sd2] += m.get("value", 1)
+        if loc.get("ruins"):
+            vp["guelph" if loc["ruins"] == "gold" else "ghibelline"] += 0.5
+        if loc.get("ravaged"):
+            vp["guelph" if loc["ravaged"] == "gold" else "ghibelline"] += 0.5
+    for sd2 in vp:
+        vp[sd2] = max(0.0, min(vp[sd2], 17.5))
+    return vp
 
 
 # ---------------------------------------------------------------- meta

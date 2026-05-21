@@ -141,12 +141,11 @@ def _h_levy_aow_draw(state, side: str, args, rng) -> dict[str, Any]:
     # from Turn 9 onward.
     _maybe_exhaustion_roll(state, rng)
     deck = state["decks"][side]["aow_deck"]
-    if len(deck) < 2:
-        raise IllegalAction("EMPTY_DECK", f"AoW deck for {side} has < 2 cards.", "3.1")
-
-    # Deterministic "shuffle and draw" — use rng to choose 2 cards by index.
+    # SMOKE-Inferno-068: 3.1 draws UP TO 2 AoW cards. If the reshuffled deck has
+    # fewer than 2 (many Capabilities/Held Events in play in a long game), draw
+    # what is available (0-2) and proceed instead of dead-locking the Levy.
     drawn = []
-    for _ in range(2):
+    for _ in range(min(2, len(deck))):
         idx = rng.roll("aow_draw_index").value
         idx = (idx - 1) % len(deck)
         drawn.append(deck.pop(idx))
@@ -366,18 +365,12 @@ def _shift_service_right(state, lord_id: str, boxes: int) -> int | str:
         # Marker is somewhere off-Calendar (e.g., off_right_service);
         # Phase 1+ keeps that as a sentinel; Phase 2's Pay step rules don't allow shifting an off-Calendar marker.
         raise IllegalAction("SHIFT_OFF_CAL", f"{lord_id} has no Service marker on Calendar.", "3.2")
-    # Update calendar boxes structure too.
-    boxes_state = state["calendar"]["boxes"]
-    if str(cur) in boxes_state and lord_id in boxes_state[str(cur)]["services"]:
-        boxes_state[str(cur)]["services"].remove(lord_id)
     target = cur + boxes
     if target > 16:
+        _place_service(state, lord_id, None)
         state["calendar"]["off_right_service"].append(lord_id)
-        lord["service_box"] = None
         return "off_right_service"
-    lord["service_box"] = target
-    boxes_state.setdefault(str(target), {"cylinders": [], "services": [], "victory": [], "markers": []})
-    boxes_state[str(target)]["services"].append(lord_id)
+    _place_service(state, lord_id, target)
     return target
 
 
@@ -505,12 +498,8 @@ def _disband_beyond_service_limit(state, lid: str) -> None:
     loc = state["locales"].get(lord.get("location") or "")
     if loc and lid in loc.get("lords_present", []):
         loc["lords_present"].remove(lid)
-    # Pop Service marker
-    svc = lord.get("service_box")
-    if svc is not None:
-        boxes = state["calendar"]["boxes"]
-        if str(svc) in boxes and lid in boxes[str(svc)]["services"]:
-            boxes[str(svc)]["services"].remove(lid)
+    # Pop Service marker (SMOKE-Inferno-070: clear from whichever box holds it).
+    _place_service(state, lid, None)
     # 'This Lord' Capabilities: return to side's AoW deck.
     side = lord["side"]
     aow_deck = state["decks"][side]["aow_deck"]
@@ -522,7 +511,6 @@ def _disband_beyond_service_limit(state, lid: str) -> None:
     lord["assets"] = {}
     lord["vassals"] = []
     lord["location"] = None
-    lord["service_box"] = None
 
     if lord.get("podesta"):
         # Place cylinder Service-Rating boxes ahead of current Turn.
@@ -530,13 +518,38 @@ def _disband_beyond_service_limit(state, lid: str) -> None:
         turn = state["meta"]["turn"]
         new_box = min(turn + sr, 16)
         lord["status"] = "on_calendar"
-        lord["calendar_box"] = new_box
-        state["calendar"]["boxes"].setdefault(str(new_box),
-            {"cylinders": [], "services": [], "victory": [], "markers": []})
-        state["calendar"]["boxes"][str(new_box)]["cylinders"].append(lid)
+        _place_cylinder(state, lid, new_box)
     else:
         lord["status"] = "removed"
-        lord["calendar_box"] = None
+        _place_cylinder(state, lid, None)
+
+
+def _box(state, n):
+    boxes = state["calendar"]["boxes"]
+    return boxes.setdefault(str(n), {"cylinders": [], "services": [], "victory": [], "markers": []})
+
+
+def _place_service(state, lid, box) -> None:
+    """SMOKE-Inferno-070: move a Lord's Service marker to `box` (or None),
+    keeping calendar `services` lists consistent by first removing the Lord
+    from EVERY box's services list. Defined once; used by every Service move."""
+    for b in state["calendar"]["boxes"].values():
+        if lid in b.get("services", []):
+            b["services"].remove(lid)
+    state["lords"][lid]["service_box"] = box
+    if box is not None:
+        _box(state, box)["services"].append(lid)
+
+
+def _place_cylinder(state, lid, box) -> None:
+    """SMOKE-Inferno-070: move a Lord's cylinder to calendar `box` (or None),
+    keeping `cylinders` lists consistent (remove from every box first)."""
+    for b in state["calendar"]["boxes"].values():
+        if lid in b.get("cylinders", []):
+            b["cylinders"].remove(lid)
+    state["lords"][lid]["calendar_box"] = box
+    if box is not None:
+        _box(state, box)["cylinders"].append(lid)
 
 
 def _disband_at_service_limit(state, lid: str, levy_box: int) -> None:
@@ -547,24 +560,19 @@ def _disband_at_service_limit(state, lid: str, levy_box: int) -> None:
     loc = state["locales"].get(lord.get("location") or "")
     if loc and lid in loc.get("lords_present", []):
         loc["lords_present"].remove(lid)
-    # Pop Service marker (it's at levy_box)
-    boxes = state["calendar"]["boxes"]
-    if str(levy_box) in boxes and lid in boxes[str(levy_box)]["services"]:
-        boxes[str(levy_box)]["services"].remove(lid)
+    # Pop Service marker from its ACTUAL box (SMOKE-Inferno-070).
+    _place_service(state, lid, None)
     # Clear mat.
     lord["capabilities"] = []
     lord["forces"] = {}
     lord["assets"] = {}
     lord["vassals"] = []
     lord["location"] = None
-    lord["service_box"] = None
-    # Cylinder placed S boxes right of current Turn (Errata: +1 in Campaign; here we're in Levy).
+    # Cylinder placed S boxes right of current Turn.
     sr = lord.get("ratings", {}).get("S", 0)
     new_box = min(levy_box + sr, 16)
     lord["status"] = "on_calendar"
-    lord["calendar_box"] = new_box
-    boxes.setdefault(str(new_box), {"cylinders": [], "services": [], "victory": [], "markers": []})
-    boxes[str(new_box)]["cylinders"].append(lid)
+    _place_cylinder(state, lid, new_box)
 
 
 def _h_cmd_resolve_revolt(state, side, args, rng) -> dict[str, Any]:
@@ -720,19 +728,11 @@ def _h_levy_muster_lord(state, side, args, rng) -> dict[str, Any]:
         # Place cylinder at target_seat, place mat with starting Forces/Assets/Vassals.
         target_lord["status"] = "mustered"
         target_lord["location"] = target_seat
-        # Remove cylinder from Calendar box
-        cur_box = target_lord.get("calendar_box")
-        boxes = state["calendar"]["boxes"]
-        if cur_box is not None and str(cur_box) in boxes:
-            if tlid in boxes[str(cur_box)]["cylinders"]:
-                boxes[str(cur_box)]["cylinders"].remove(tlid)
-        target_lord["calendar_box"] = None
-        # Place Service marker Service-Rating boxes right of current Turn.
+        # Remove cylinder from Calendar box; place Service marker S boxes right.
+        _place_cylinder(state, tlid, None)
         sr = target_lord.get("ratings", {}).get("S", 0)
         new_svc = min(state["meta"]["turn"] + sr, 16)
-        target_lord["service_box"] = new_svc
-        boxes.setdefault(str(new_svc), {"cylinders": [], "services": [], "victory": [], "markers": []})
-        boxes[str(new_svc)]["services"].append(tlid)
+        _place_service(state, tlid, new_svc)
         # Starting Forces/Assets/Vassals from static_data
         canonical = target_lord["name"]
         if canonical in sd.LORDS:
@@ -1700,16 +1700,11 @@ def _run_fpd(state) -> dict[str, Any]:
             cur = lord.get("service_box")
             if cur is not None:
                 new = cur - 1
-                boxes = state["calendar"]["boxes"]
-                if str(cur) in boxes and lid in boxes[str(cur)]["services"]:
-                    boxes[str(cur)]["services"].remove(lid)
                 if new < 1:
+                    _place_service(state, lid, None)
                     state["calendar"]["off_left_service"].append(lid)
-                    lord["service_box"] = None
                 else:
-                    lord["service_box"] = new
-                    boxes.setdefault(str(new), {"cylinders": [], "services": [], "victory": [], "markers": []})
-                    boxes[str(new)]["services"].append(lid)
+                    _place_service(state, lid, new)
             summary["feed"].append({"lord_id": lid, "units": units, "need": need, "fed": False, "service_shift": -1})
 
     # 4.8.2 PAY (optional, Guelphs then Ghibellines). SMOKE-Inferno-057: the Pay
@@ -4021,20 +4016,12 @@ def _h_cta_commander_arms(state, side, args, rng) -> dict[str, Any]:
     if mode in ("disband_and_remuster", "muster_only"):
         # Muster Commander at Leading City from ANY Calendar box
         if commander["status"] == "on_calendar":
-            cur_box = commander.get("calendar_box")
-            cal_boxes = state["calendar"]["boxes"]
-            if cur_box and str(cur_box) in cal_boxes:
-                if commander_id in cal_boxes[str(cur_box)]["cylinders"]:
-                    cal_boxes[str(cur_box)]["cylinders"].remove(commander_id)
             commander["status"] = "mustered"
             commander["location"] = LEADING_CITY[side]
-            commander["calendar_box"] = None
+            _place_cylinder(state, commander_id, None)
             sr = commander.get("ratings", {}).get("S", 0)
             new_svc = min(state["meta"]["turn"] + sr, 16)
-            commander["service_box"] = new_svc
-            cal_boxes.setdefault(str(new_svc),
-                {"cylinders": [], "services": [], "victory": [], "markers": []})
-            cal_boxes[str(new_svc)]["services"].append(commander_id)
+            _place_service(state, commander_id, new_svc)
             # Starting Forces/Assets/Vassals
             canonical = commander["name"]
             if canonical in sd.LORDS:
@@ -4164,20 +4151,12 @@ def _h_cta_allies(state, side, args, rng) -> dict[str, Any]:
         if seat not in tlord.get("seats", []):
             raise IllegalAction("BAD_SEAT", f"{target}'s seats: {tlord.get('seats')}.", "3.5.4")
         # Auto-Muster (no Fealty roll, no action cost)
-        cur_box = tlord.get("calendar_box")
-        cal_boxes = state["calendar"]["boxes"]
-        if cur_box and str(cur_box) in cal_boxes:
-            if target in cal_boxes[str(cur_box)]["cylinders"]:
-                cal_boxes[str(cur_box)]["cylinders"].remove(target)
         tlord["status"] = "mustered"
         tlord["location"] = seat
-        tlord["calendar_box"] = None
+        _place_cylinder(state, target, None)
         sr = tlord.get("ratings", {}).get("S", 0)
         new_svc = min(state["meta"]["turn"] + sr, 16)
-        tlord["service_box"] = new_svc
-        cal_boxes.setdefault(str(new_svc),
-            {"cylinders": [], "services": [], "victory": [], "markers": []})
-        cal_boxes[str(new_svc)]["services"].append(target)
+        _place_service(state, target, new_svc)
         canonical = tlord["name"]
         base = sd.LORDS.get(canonical, {})
         tlord["forces"] = copy.deepcopy(base.get("forces", {}))
