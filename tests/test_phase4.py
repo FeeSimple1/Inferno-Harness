@@ -68,13 +68,31 @@ class TestEventEffects:
         ce.apply_event_effect(s, "F9", "guelph", {"mode": "treachery"}, rng)
         assert len(s["decks"]["guelph"]["command_deck"]) == before + 1
 
-    def test_F10_closed_gates_removes_gold_ruins(self):
+    def test_F10_closed_gates_flips_gold_ruins_to_guelph(self):
+        # SMOKE-082: a GOLD Ruins sits on an originally-Ghibelline Stronghold and
+        # is worth 1/2 VP to Guelph. F10 removes it; the de-ruined enemy
+        # Stronghold Revolts (1.4.4) to Guelph (Size Allegiance markers).
+        from inferno import static_data as sd
         s = load_scenario("A", seed=1)
-        s["locales"]["Cortona"]["ruins"] = "gold"
-        rng = HarnessRNG(seed=1)
-        r = ce.apply_event_effect(s, "F10", "guelph", {"locale": "Cortona"}, rng)
-        assert r["applied"] is True
-        assert s["locales"]["Cortona"]["ruins"] is None
+        # Pick an originally-Ghibelline Town, clear it, place a gold Ruins, and
+        # guarantee eligibility (no Lord at/adjacent).
+        target = next(n for n, l in s["locales"].items()
+                      if l.get("type") == "town" and l.get("allegiance") == "ghibelline")
+        for n in [target] + [a for a, _ in sd.adjacent_to(target)]:
+            if n in s["locales"]:
+                s["locales"][n]["lords_present"] = []
+        s["locales"][target]["current_allegiance"] = []
+        s["locales"][target]["ruins"] = "gold"
+        size = sd.STRONGHOLDS[s["locales"][target]["type"]]["size"]
+        g_before = s["vp"]["guelph"]
+        r = ce.apply_event_effect(s, "F10", "guelph", {"locale": target}, HarnessRNG(seed=1))
+        assert r["applied"] is True and r["mode"] == "revolt"
+        assert s["locales"][target]["ruins"] is None
+        # Size Guelph markers placed.
+        assert sum(1 for m in s["locales"][target]["current_allegiance"]
+                   if m.get("side") == "guelph") == size
+        # VP: -0.5 for the removed gold Ruins, +Size for the Allegiance.
+        assert s["vp"]["guelph"] == g_before - 0.5 + size
 
     def test_F25_war_event_flags_guelph_cta(self):
         s = load_scenario("A", seed=1)
@@ -383,14 +401,27 @@ class TestDeflaggedCards:
         # Either applied or skipped (both Mustered = ambiguous which to shift)
         assert r["applied"] is True
 
-    def test_s22_closed_gates_mirror_f10(self):
+    def test_s22_closed_gates_flips_purple_ruins_to_ghibelline(self):
+        # SMOKE-082 mirror: a PURPLE Ruins sits on an originally-Guelph
+        # Stronghold (1/2 VP Ghibelline). S22 removes it; the de-ruined enemy
+        # Stronghold Revolts (1.4.4) to Ghibelline.
         from inferno.scenarios import load_scenario
+        from inferno import static_data as sd
         s = load_scenario("A", seed=1)
-        s["locales"]["Cortona"]["ruins"] = "purple"
-        rng = HarnessRNG(seed=1)
-        r = ce.apply_event_effect(s, "S22", "ghibelline", {"locale": "Cortona"}, rng)
-        assert r["applied"] is True
-        assert s["locales"]["Cortona"]["ruins"] is None
+        target = "Cortona"  # originally Guelph
+        for n in [target] + [a for a, _ in sd.adjacent_to(target)]:
+            if n in s["locales"]:
+                s["locales"][n]["lords_present"] = []
+        s["locales"][target]["current_allegiance"] = []
+        s["locales"][target]["ruins"] = "purple"
+        size = sd.STRONGHOLDS[s["locales"][target]["type"]]["size"]
+        h_before = s["vp"]["ghibelline"]
+        r = ce.apply_event_effect(s, "S22", "ghibelline", {"locale": target}, HarnessRNG(seed=1))
+        assert r["applied"] is True and r["mode"] == "revolt"
+        assert s["locales"][target]["ruins"] is None
+        assert sum(1 for m in s["locales"][target]["current_allegiance"]
+                   if m.get("side") == "ghibelline") == size
+        assert s["vp"]["ghibelline"] == h_before - 0.5 + size
 
 
 class TestBattleModifierFlags:

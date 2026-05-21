@@ -1183,3 +1183,44 @@ today, F24/S24 played in a Storm currently restore nothing — faithful
 Storm-Doctors is gated on this gap. Deferred to its own focused pass (it spans
 `resolve_storm`, `resolve_sally`, `_apply_sack`, changes RNG consumption, and
 needs care around harsh recovery + garrison Knights' Quarter) rather than rushed.
+
+## v3.4 — SMOKE-Inferno-082: F10/S22 Closed Gates (resolves the deferred item)
+
+The v3.2 pass deferred Closed Gates as "Revolt-direction ambiguous." Resolved by
+grounding it in three core rules rather than the card's loose colour wording:
+  - Sack rule: a Ruins marker is the colour OPPOSITE the Stronghold's printed
+    Allegiance, worth 1/2 VP. So a GOLD Ruins (1/2 VP Guelph) sits on an
+    originally-Ghibelline Stronghold; a PURPLE Ruins (1/2 VP Ghibelline) on an
+    originally-Guelph one — matching `scenarios._init_vp_from_markers`.
+  - 1.4.1: only an Enemy Stronghold with no Enemy Lord there or adjacent Revolts.
+  - 1.4.4: a Revolt places Size Allegiance markers of the side OPPOSITE the
+    printed Allegiance, and the loser slides Exiles.
+
+Two bugs in the prior implementation: (1) the gold/purple VP sides were
+INVERTED (gold decremented Ghibelline, purple decremented Guelph — backwards
+from rule 413 and scenarios.py); (2) the 1.4.4 Revolt was skipped on the primary
+branch and mis-placed markers on the fallback.
+
+**Now (shared `_closed_gates(state, side, args)`):**
+  - PRIMARY — remove the playing side's own-colour Ruins (Guelph=gold,
+    Ghibelline=purple) sitting on an originally-ENEMY Stronghold. Once de-ruined
+    it is an eligible Enemy Stronghold (1.4.1) that Revolts (1.4.4) to the
+    playing side via `revolt.apply_allegiance_switch` — Size markers placed,
+    correct VP (own side: -0.5 for the removed Ruins, +Size for the Allegiance),
+    and the loser's Exiles surfaced as a `pending_exiles` decision (No-Agent).
+  - FALLBACK ("or, if none") — remove one enemy-colour Ruins to DENY the enemy
+    its 1/2 VP. Enemy-colour Ruins sit on the playing side's own-home
+    Strongholds, which revert to printed-Friendly on de-ruining (no markers).
+  - Reconciles card text ("remove gold ... or if none purple"), the Tips
+    ("remove a Ruins giving the other side 1/2 VP"), and 1.4.1/1.4.4: the
+    primary trades your 1/2 VP Ruins for a full Size flip; the fallback denies
+    the enemy their 1/2 VP.
+
+**Verification:** `tests/test_v32_card_numbers.py::TestClosedGates` (4) + the two
+rewritten phase-4 tests (which had used invalid boards with a Ruins and
+Allegiance markers coexisting). Full suite 519 pass; a live sweep firing F10/S22
+across all scenarios with seeded Ruins held VP in [0, 17.5] and never produced a
+Locale with both a Ruins and Allegiance markers.
+
+With this, the remaining open AoW item is SMOKE-081 (Storm/Sally do not perform
+4.4.4 Loss rolls), which gates faithful Storm-Doctors.

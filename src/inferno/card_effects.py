@@ -442,29 +442,65 @@ def F9_event(state, side, args, rng):
     return {"applied": True, "mode": "shift", "shifts": shifts}
 
 
+def _closed_gates(state, side, args):
+    """Shared F10/S22 CLOSED GATES — SMOKE-Inferno-082.
+
+    Ruins markers are the OPPOSITE colour of a Stronghold's printed Allegiance
+    (rules "Sack"): a GOLD Ruins (1/2 VP Guelph) sits on an originally-
+    Ghibelline Stronghold; a PURPLE Ruins (1/2 VP Ghibelline) on an originally-
+    Guelph one.
+
+    PRIMARY: remove an own-colour Ruins (Guelph=gold, Ghibelline=purple) sitting
+    on an originally-ENEMY Stronghold; once de-ruined it is an eligible Enemy
+    Stronghold (1.4.1, no Enemy Lord there or adjacent) that Revolts (1.4.4) to
+    the playing side — Size Allegiance markers placed, the loser slides Exiles.
+    Net: trade the 1/2 VP Ruins for Size VP of Allegiance.
+
+    FALLBACK ("or, if none"): remove one enemy-colour Ruins to DENY the enemy
+    its 1/2 VP. Enemy-colour Ruins sit on the playing side's own-home
+    Strongholds, so de-ruining reverts them to printed-Friendly (no markers).
+
+    The prior implementation had the gold/purple VP sides inverted (vs rule 413
+    and scenarios._init_vp_from_markers) and skipped the 1.4.4 Revolt.
+    """
+    from . import revolt as _rv
+    enemy = "ghibelline" if side == "guelph" else "guelph"
+    own_color = "gold" if side == "guelph" else "purple"      # 1/2 VP for `side`
+    enemy_color = "purple" if side == "guelph" else "gold"    # 1/2 VP for `enemy`
+
+    own = [n for n, l in state["locales"].items()
+           if l.get("ruins") == own_color and l.get("type") != "outpost"]
+    pref = [args["locale"]] if args.get("locale") in own else own
+    for n in pref:
+        loc = state["locales"][n]
+        prev = loc.get("ruins")
+        loc["ruins"] = None
+        if _rv.is_eligible_for_revolt(state, n, side):
+            state["vp"][side] = max(state["vp"].get(side, 0) - 0.5, 0)
+            switch = _rv.apply_allegiance_switch(state, n, side)
+            exiles = None
+            if switch["exiles_count"] > 0:
+                exiles = {"side": switch["exiles_side"], "count": switch["exiles_count"],
+                          "candidates": _rv.legal_exiles_targets(state, switch["exiles_side"])}
+                state.setdefault("pending_exiles", []).append(exiles)
+            return {"applied": True, "mode": "revolt", "revolted_at": n,
+                    "switch": switch, "exiles_required": exiles}
+        loc["ruins"] = prev  # not eligible — restore and try the next
+
+    en = [n for n, l in state["locales"].items()
+          if l.get("ruins") == enemy_color and l.get("type") != "outpost"]
+    if en:
+        n = args["locale"] if args.get("locale") in en else en[0]
+        state["locales"][n]["ruins"] = None
+        state["vp"][enemy] = max(state["vp"].get(enemy, 0) - 0.5, 0)
+        return {"applied": True, "mode": "deny", "removed_enemy_ruins_at": n}
+    return {"applied": False, "reason": "no Ruins to remove"}
+
+
 @register_event("F10")
 def F10_event(state, side, args, rng):
-    """F10 CLOSED GATES: remove 1 gold Ruins, or if none, remove 1 purple Ruins where eligible -> Revolt."""
-    gold_ruins = [n for n, l in state["locales"].items() if l.get("ruins") == "gold"]
-    if gold_ruins:
-        loc_name = args.get("locale") or gold_ruins[0]
-        state["locales"][loc_name]["ruins"] = None
-        state["vp"]["ghibelline"] = max(state["vp"].get("ghibelline", 0) - 0.5, 0)
-        return {"applied": True, "removed_ruins_at": loc_name}
-    purple_ruins = [n for n, l in state["locales"].items() if l.get("ruins") == "purple"]
-    if purple_ruins:
-        loc_name = args.get("locale") or purple_ruins[0]
-        loc = state["locales"][loc_name]
-        size = sd.STRONGHOLDS.get(loc["type"], {}).get("size", 1)
-        loc["ruins"] = None
-        state["vp"]["guelph"] = max(state["vp"].get("guelph", 0) - 0.5, 0)
-        # Revolt: place Guelph allegiance markers
-        loc["current_allegiance"] = [m for m in loc.get("current_allegiance", []) if m.get("side") != "ghibelline"]
-        for _ in range(size):
-            loc["current_allegiance"].append({"side": "guelph", "value": 1})
-        state["vp"]["guelph"] = min(state["vp"].get("guelph", 0) + size, 17.5)
-        return {"applied": True, "revolted_at": loc_name, "size": size}
-    return {"applied": False, "reason": "no eligible Ruins"}
+    """F10 CLOSED GATES (Guelph) — see _closed_gates."""
+    return _closed_gates(state, "guelph", args)
 
 
 @register_event("F11")
@@ -1560,31 +1596,8 @@ def S21_event(state, side, args, rng):
 
 @register_event("S22")
 def S22_event(state, side, args, rng):
-    """S22 CLOSED GATES (Ghib mirror of F10).
-
-    Remove 1 purple (Ghib-owned) Ruins, else remove 1 gold Ruins
-    where Stronghold eligible for Revolt -> Revolts to Ghibelline.
-    """
-    purple_ruins = [n for n, l in state["locales"].items() if l.get("ruins") == "purple"]
-    if purple_ruins:
-        loc_name = args.get("locale") or purple_ruins[0]
-        state["locales"][loc_name]["ruins"] = None
-        state["vp"]["guelph"] = max(state["vp"].get("guelph", 0) - 0.5, 0)
-        return {"applied": True, "removed_ruins_at": loc_name}
-    gold_ruins = [n for n, l in state["locales"].items() if l.get("ruins") == "gold"]
-    if gold_ruins:
-        loc_name = args.get("locale") or gold_ruins[0]
-        loc = state["locales"][loc_name]
-        from . import static_data as sd
-        size = sd.STRONGHOLDS.get(loc["type"], {}).get("size", 1)
-        loc["ruins"] = None
-        state["vp"]["ghibelline"] = max(state["vp"].get("ghibelline", 0) - 0.5, 0)
-        loc["current_allegiance"] = [m for m in loc.get("current_allegiance", []) if m.get("side") != "guelph"]
-        for _ in range(size):
-            loc["current_allegiance"].append({"side": "ghibelline", "value": 1})
-        state["vp"]["ghibelline"] = min(state["vp"].get("ghibelline", 0) + size, 17.5)
-        return {"applied": True, "revolted_at": loc_name, "size": size}
-    return {"applied": False, "reason": "no eligible Ruins"}
+    """S22 CLOSED GATES (Ghibelline mirror of F10) — see _closed_gates."""
+    return _closed_gates(state, "ghibelline", args)
 
 
 @register_event("S23")

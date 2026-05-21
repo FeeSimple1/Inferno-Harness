@@ -221,3 +221,68 @@ class TestExistingNumericAnchors:
         # No Guelph Siege -> not applicable.
         r = ce.apply_event_effect(s, "F14", "guelph", {}, _rng())
         assert r["applied"] is False
+
+
+# =====================================================================
+# SMOKE-082 — F10/S22 Closed Gates: correct VP sign + 1.4.4 Revolt/Exiles
+# =====================================================================
+class TestClosedGates:
+    def _isolate(self, s, name):
+        from inferno import static_data as sd
+        for n in [name] + [a for a, _ in sd.adjacent_to(name)]:
+            if n in s["locales"]:
+                s["locales"][n]["lords_present"] = []
+
+    def test_F10_primary_flips_gold_to_guelph_and_surfaces_exiles(self):
+        from inferno import static_data as sd
+        s = load_scenario("A", 1)
+        target = next(n for n, l in s["locales"].items()
+                      if l.get("type") == "town" and l.get("allegiance") == "ghibelline")
+        self._isolate(s, target)
+        s["locales"][target]["current_allegiance"] = []
+        s["locales"][target]["ruins"] = "gold"
+        size = sd.STRONGHOLDS[s["locales"][target]["type"]]["size"]
+        g0 = s["vp"]["guelph"]
+        r = ce.apply_event_effect(s, "F10", "guelph", {"locale": target}, _rng())
+        assert r["mode"] == "revolt"
+        assert s["vp"]["guelph"] == g0 - 0.5 + size
+        # 1.4.4 Exiles for the losing (Ghibelline) side were surfaced as pending.
+        assert any(e.get("side") == "ghibelline" for e in s.get("pending_exiles", []))
+
+    def test_F10_fallback_denies_enemy_half_vp(self):
+        # No gold Ruins -> remove an enemy-colour (purple) Ruins to deny
+        # Ghibelline its 1/2 VP; no markers placed (own-home reverts to Friendly).
+        s = load_scenario("A", 1)
+        # Strip any gold Ruins so the primary cannot fire.
+        for l in s["locales"].values():
+            if l.get("ruins") == "gold":
+                l["ruins"] = None
+        target = next(n for n, l in s["locales"].items()
+                      if l.get("type") == "town" and l.get("allegiance") == "guelph")
+        s["locales"][target]["current_allegiance"] = []
+        s["locales"][target]["ruins"] = "purple"
+        h0 = s["vp"]["ghibelline"]
+        r = ce.apply_event_effect(s, "F10", "guelph", {"locale": target}, _rng())
+        assert r["mode"] == "deny"
+        assert s["locales"][target]["ruins"] is None
+        assert s["vp"]["ghibelline"] == h0 - 0.5  # enemy 1/2 VP denied
+
+    def test_S22_mirror_flips_purple_to_ghibelline(self):
+        from inferno import static_data as sd
+        s = load_scenario("A", 1)
+        target = "Cortona"  # originally Guelph
+        self._isolate(s, target)
+        s["locales"][target]["current_allegiance"] = []
+        s["locales"][target]["ruins"] = "purple"
+        size = sd.STRONGHOLDS[s["locales"][target]["type"]]["size"]
+        h0 = s["vp"]["ghibelline"]
+        r = ce.apply_event_effect(s, "S22", "ghibelline", {"locale": target}, _rng())
+        assert r["mode"] == "revolt"
+        assert s["vp"]["ghibelline"] == h0 - 0.5 + size
+
+    def test_no_ruins_not_applicable(self):
+        s = load_scenario("A", 1)
+        for l in s["locales"].values():
+            l["ruins"] = None
+        r = ce.apply_event_effect(s, "F10", "guelph", {}, _rng())
+        assert r["applied"] is False
