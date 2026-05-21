@@ -949,3 +949,54 @@ violations; 0 placement violations over 117,683 steps (R10).
 Regression: `test_v28_features.py` (8 tests). Full suite 469 pass. Final
 all-checks sweep across the 10 rounds: 0 crashes, 0 over-enumerations, 0 stalls,
 0 invariant/schema/calendar/placement violations.
+
+---
+
+## Smoke-test campaign II (v2.9) — 30 rounds, 2 bug classes found & fixed
+
+Twenty new probe lenses (R11-R30) on top of the v2.8 ten: R11 failed-dispatch
+atomicity; R12 AoW card conservation; R13 deck dup integrity; R14 enumerate
+no-mutation; R15 marker integrity; R16 asset bounds; R17 mid-game JSON save/load
+continuation equivalence; R18 hidden_mats mode; R19 advanced_vassal_service mode;
+R20 same-seed reproducibility; R21 longest-game accumulation; R22 pending-decision
+exclusivity; R23 capability combos; R24 Storm/Sack post-conditions; R25 Bribe;
+R26 Avoid/Withdraw/Approach; R27 Lord status-transition legality; R28 plan-size
+caps; R29 unit bounds; R30 final-scoring/tie. Most came back clean on the first
+pass; two bug classes surfaced.
+
+## SMOKE-Inferno-071 — AoW card conservation (dup & loss)
+
+**Found:** R12 (per-side 26-card multiset drifted). Four distinct leaks:
+  - the Levy reshuffle (`_maybe_reshuffle_aow_deck`) excluded Held + side-wide
+    Capabilities but NOT Capabilities on Lord mats (`lord["capabilities"]`), so a
+    this-Lord Capability duplicated back into the draw deck (could be drawn and
+    deployed a second time — a real double-effect risk);
+  - `_disband_at_service_limit` cleared `lord["capabilities"]` WITHOUT returning
+    the cards to the AoW deck (lost on every at-limit / CtA-remuster Disband);
+  - the initial deck (`_init_decks`) included Capabilities already in play at
+    setup (Scenario C Manfredi / E Taglia) -> duplicate until first reshuffle;
+  - `end_reset` dropped `active_events` wholesale instead of returning their
+    cards to the discard.
+
+**Fix (v2.9):** reshuffle now also excludes Lord-mat Capabilities; disband-at
+returns Capabilities to the deck; `_init_decks` excludes `capabilities_in_play`;
+`end_reset` returns expiring event cards to the discard. **Verification:**
+card conservation held over 135,116 steps (was failing within ~50).
+
+## SMOKE-Inferno-072 — Treachery Revolt/Bribe unreachable via the enumerator
+
+**Found:** R25 (Bribe exercised 0 times). Revealing a Treachery card called
+`_finish_card` ("Phase 3a does not implement Revolt or Bribe") and auto-passed,
+so the implemented `cmd_treachery_revolt` / `cmd_treachery_bribe` handlers were
+unreachable through `enumerate_legal -> dispatch` (only callable directly in
+tests — the same masking trap as the CtA gap, SMOKE-059).
+
+**Fix (v2.9):** `command_reveal` of a Treachery card now sets up an active
+Treachery context for the card's (Mustered) Lord; the command-phase enumerator
+surfaces Revolt (eligible target Locales, gated on >= 1 Coin) / Bribe (Path-A
+enemy Mustered Vassal) / lapse, and nothing else. Round-trip clean.
+
+**Final campaign verification:** comprehensive all-checks randomized sweep
+(116,086 steps): 0 over-enumerations, 0 crashes, 0 stalls, and 0 violations of
+VP / forces / calendar-consistency / placement / marker / card-conservation
+invariants. Regression: `test_v29_features.py` (8 tests). Full suite 477 pass.

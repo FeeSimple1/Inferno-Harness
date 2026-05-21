@@ -556,6 +556,64 @@ def _enum_command_phase(state, side) -> list[dict[str, Any]]:
     actions_remaining = state.get("actions_remaining") or 0
     moves: list[dict[str, Any]] = []
     loc = state["locales"].get(lord.get("location") or "")
+
+    # SMOKE-Inferno-072: Treachery card active -> only Revolt (4.7.5) / Bribe
+    # (4.7.6) for eligible targets, or let it lapse (end the card). Normal
+    # Command actions are not available on a Treachery card.
+    cur_card = state.get("current_card") or ""
+    if isinstance(cur_card, str) and cur_card.startswith("treachery_"):
+        tmoves: list[dict[str, Any]] = []
+        enemy = "ghibelline" if side == "guelph" else "guelph"
+        cur = lord.get("location")
+        adj = [n for n, _ in sd.adjacent_to(cur)] if cur else []
+        candidates = ([cur] if cur else []) + adj
+        for tname in candidates:
+            tl = state["locales"].get(tname)
+            if not tl or tl.get("ruins") or tl.get("type") == "outpost":
+                continue
+            if _is_friendly_locale_quiet(state, tl, side):
+                continue
+            # No Enemy Mustered Lord at the target or adjacent to it (4.7.5/1.4.1).
+            danger = [tname] + [n for n, _ in sd.adjacent_to(tname)]
+            blocked = any(
+                state["lords"][oid]["side"] == enemy
+                and state["lords"][oid].get("status") == "mustered"
+                for dn in danger for oid in state["locales"].get(dn, {}).get("lords_present", []))
+            if blocked:
+                continue
+            # SMOKE-Inferno-072: Revolt commits >= 1 Coin (4.7.5), so only offer
+            # it when the acting Lord actually has a Coin to commit.
+            if lord.get("assets", {}).get("Coin", 0) >= 1:
+                tmoves.append({
+                    "action": "cmd_treachery_revolt", "side": side,
+                    "args": {"lord_id": lid, "target_locale": tname, "coin": 1},
+                    "description": f"{lid} Treachery-Revolt at {tname} (commit 1 Coin).",
+                    "rule_citation": "4.7.5",
+                })
+        # Bribe Path-A: an Enemy Mustered Lord at/adjacent with a non-Special
+        # on-mat Vassal; the acting Lord needs >= 1 Coin.
+        if lord.get("assets", {}).get("Coin", 0) >= 1:
+            for tname in candidates:
+                for oid in state["locales"].get(tname, {}).get("lords_present", []):
+                    ol = state["lords"][oid]
+                    if ol.get("side") != enemy or ol.get("status") != "mustered":
+                        continue
+                    for v in ol.get("vassals", []) or []:
+                        if v.get("on_mat") and not v.get("special"):
+                            tmoves.append({
+                                "action": "cmd_treachery_bribe", "side": side,
+                                "args": {"lord_id": lid, "target_lord_id": oid, "vassal": v["name"]},
+                                "description": f"{lid} Treachery-Bribe {v['name']} of {oid}.",
+                                "rule_citation": "4.7.6",
+                            })
+        # Always allow the Treachery card to lapse (end the card).
+        tmoves.append({
+            "action": "cmd_end_card", "side": side, "args": {"lord_id": lid},
+            "description": f"{lid} lets the Treachery card lapse.",
+            "rule_citation": "4.2.3",
+        })
+        return tmoves
+
     # SMOKE-Inferno-003: pre-check Tax — Lord at Seat, Unbesieged. See CROSS_PROJECT_LESSONS §1.
     tax_ok = False
     try:

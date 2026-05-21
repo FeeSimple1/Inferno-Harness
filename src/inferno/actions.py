@@ -562,6 +562,11 @@ def _disband_at_service_limit(state, lid: str, levy_box: int) -> None:
         loc["lords_present"].remove(lid)
     # Pop Service marker from its ACTUAL box (SMOKE-Inferno-070).
     _place_service(state, lid, None)
+    # SMOKE-Inferno-071: return this-Lord Capability cards to the AoW deck (a
+    # Disband takes them out of play); previously they were cleared and lost.
+    aow_deck = state["decks"][lord["side"]]["aow_deck"]
+    for cid in lord.get("capabilities", []) or []:
+        aow_deck.append(cid)
     # Clear mat.
     lord["capabilities"] = []
     lord["forces"] = {}
@@ -1144,11 +1149,23 @@ def _h_command_reveal(state, side, args, rng) -> dict[str, Any]:
         }
 
     if cid.startswith("treachery_"):
-        # 4.2.3 Treachery card — Lord takes Revolt/Bribe/Pass; Phase 3a does
-        # not implement Revolt or Bribe (those are 4.7.5 / 4.7.6, Phase 3c).
-        # For Phase 3a the only legal response to a Treachery card is to
-        # let it lapse (treat as Pass).
-        return _finish_card(state, side, reason="treachery_pass_phase_3a", citation="4.2.3")
+        # 4.2.3 Treachery card — its Lord may conduct Revolt (4.7.5) or Bribe
+        # (4.7.6), or let the card lapse. SMOKE-Inferno-072: set up an active
+        # Treachery context so the enumerator can surface those moves (the
+        # handlers existed but were unreachable — revealing a Treachery card
+        # auto-passed). If the card's Lord is not Mustered, it simply lapses.
+        owner = cid[len("treachery_"):]
+        olord = state["lords"].get(owner)
+        if olord is None or olord.get("status") != "mustered" or olord.get("side") != side:
+            return _finish_card(state, side, reason="treachery_lapsed_no_lord", citation="4.2.3")
+        state["current_lord_id"] = owner
+        state["current_card"] = cid
+        state["actions_remaining"] = 1
+        state["card_action_consumed_by_entire_card"] = False
+        return {
+            "state_changes": {"card_revealed": cid, "lord_id": owner, "treachery": True},
+            "rule_citation": "4.2.3",
+        }
 
     raise IllegalAction("UNKNOWN_CARD_ON_TOP", f"Unrecognized card on top: {cid!r}.", "4.2")
 
@@ -3655,7 +3672,15 @@ def _h_end_reset(state, side, args, rng) -> dict[str, Any]:
         lord.get("flags", {}).pop("has_lower_lord", None)
         lord.get("flags", {}).pop("lower_lord_of", None)
         lord.get("flags", {}).pop("astrologers_rolled_this_campaign", None)
-    # Discard 'This Campaign' Events
+    # Discard 'This Campaign' Events. SMOKE-Inferno-071: return their AoW cards
+    # to the owning side's discard so card conservation holds (the next Levy
+    # reshuffle reforms the deck from these anyway).
+    ae = state.get("active_events", {}) or {}
+    for kind in ("immediate", "this_levy", "this_campaign"):
+        for e in ae.get(kind, []) or []:
+            cid = e.get("id"); esd = e.get("side")
+            if isinstance(cid, str) and esd in state["decks"] and cid[:1] in ("F", "S"):
+                state["decks"][esd]["aow_discard"].append(cid)
     state.pop("active_events", None)
     # Advance Calendar
     cal = state["calendar"]
@@ -4256,10 +4281,16 @@ def _maybe_reshuffle_aow_deck(state, side: str) -> None:
     held = set(deck.get("aow_held") or [])
     in_play = {c["id"] for c in state.get("capabilities_in_play", [])
                if c.get("side") == side}
+    # SMOKE-Inferno-071: a Capability deployed onto a Lord's mat (this_lord,
+    # `lord["capabilities"]`) is also IN PLAY and must be excluded from the
+    # reshuffle, else it duplicates back into the draw deck.
+    on_mats = {cid for lid, l in state["lords"].items()
+               if l.get("side") == side
+               for cid in (l.get("capabilities") or [])}
     from . import card_data as cd
     all_side_cards = {c["id"] for c in
                       (cd.GUELPH_CARDS if side == "guelph" else cd.GHIBELLINE_CARDS)}
-    available = sorted(all_side_cards - held - in_play)
+    available = sorted(all_side_cards - held - in_play - on_mats)
     deck["aow_deck"] = available
     deck["aow_discard"] = []
     state["meta"][flag] = True

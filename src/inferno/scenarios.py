@@ -319,6 +319,12 @@ def _init_decks(scenario_data: dict[str, Any]) -> dict[str, DeckState]:
     from .card_data import CARDS_BY_SIDE, TREACHERY_LORD_IDS
 
     held = scenario_data.get("map", {}).get("held_events", {}) or {}
+    # SMOKE-Inferno-071: cards already in play as Capabilities at setup (e.g.
+    # Scenario C Manfredi / E Taglia) must NOT also sit in the draw deck.
+    cip_by_side = {"guelph": set(), "ghibelline": set()}
+    for c in scenario_data.get("map", {}).get("capabilities_in_play", []) or []:
+        if c.get("side") in cip_by_side:
+            cip_by_side[c["side"]].add(c.get("id"))
     decks: dict[str, DeckState] = {}
 
     # Map side -> Lord-ids on that side (for Command/Treachery decks)
@@ -330,8 +336,9 @@ def _init_decks(scenario_data: dict[str, Any]) -> dict[str, DeckState]:
 
     for side in ("guelph", "ghibelline"):
         held_cards = list(held.get(side, []))
-        # Held events leave the AoW deck (3.1.1: exclude Held Events).
-        aow_deck = [cid for cid in CARDS_BY_SIDE[side] if cid not in held_cards]
+        # Held events AND already-in-play Capabilities leave the AoW deck (3.1.1).
+        _excluded = set(held_cards) | cip_by_side[side]
+        aow_deck = [cid for cid in CARDS_BY_SIDE[side] if cid not in _excluded]
         decks[side] = DeckState(
             aow_deck=aow_deck,
             aow_discard=[],
