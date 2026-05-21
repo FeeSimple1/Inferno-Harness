@@ -940,11 +940,17 @@ def resolve_battle(state, attacker_ids: list[str], defender_ids: list[str],
     for lid in attacker_ids + defender_ids:
         state["lords"][lid].setdefault("flags", {})["moved_fought"] = True
 
+    # SMOKE-Inferno-080: capture any Doctors (F24/S24) restore-half modifiers
+    # before the 4.4.6 cleanup discards them, so the post-Battle loss step can
+    # consume them after the 4.4.4 Loss rolls.
+    doctors_mods = [dict(m) for m in state.get("battle_modifiers_pending", [])
+                    if m.get("effect") == "doctors_restore_half_lost"]
     # Phase 5: clear consumed Hold Events per 4.4.6 Aftermath.
     _clear_battle_modifiers(state)
     return {
         "locale": locale_name,
         "winner": winner,
+        "doctors": doctors_mods,
         "pre_modifiers": pre_modifiers,
         "loser": loser,
         "conceded": conceded,

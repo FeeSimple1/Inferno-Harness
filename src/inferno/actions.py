@@ -2489,6 +2489,52 @@ def _finalize_approach(state, locale_name, approaching_lord, defender_side) -> d
     }
 
 
+_DOCTORS_RESTORE_PRIORITY = ["Ritter", "Cavalieri", "Armigieri", "Men-at-Arms",
+                             "Berrovieri", "Light Horse", "Militia", "Villici"]
+
+
+def _apply_doctors_restoration(state, doctors_mods, loss_results) -> None:
+    """SMOKE-Inferno-080: F24/S24 Doctors. For each Doctors modifier, every
+    named Lord that fought restores to Forces ceil(L/2) of his Lost units this
+    combat, where L counts both units Lost to the pool AND Knights who received
+    Quarter (Captured). Most valuable units are restored first; restored
+    Captured Knights are pulled back out of the owner's Captured Knights box."""
+    import math
+    for mod in doctors_mods or []:
+        for lid in mod.get("lord_ids", []):
+            res = loss_results.get(lid)
+            if not res:
+                continue
+            lord = state["lords"].get(lid)
+            if lord is None or lord.get("status") != "mustered":
+                continue
+            lost = dict(res.get("lost", {}))
+            captured = dict(res.get("captured", {}))
+            total = sum(lost.values()) + sum(captured.values())
+            if total <= 0:
+                continue
+            to_restore = math.ceil(total / 2)
+            forces = lord.setdefault("forces", {})
+            cap_ledger = state.get("captured_knights", {}).get(lord["side"], {})
+            restored: list[str] = []
+            for unit in _DOCTORS_RESTORE_PRIORITY:
+                while to_restore > 0 and (lost.get(unit, 0) > 0 or captured.get(unit, 0) > 0):
+                    if lost.get(unit, 0) > 0:
+                        lost[unit] -= 1
+                    else:
+                        captured[unit] -= 1
+                        if cap_ledger.get(unit, 0) > 0:
+                            cap_ledger[unit] -= 1
+                            if cap_ledger[unit] <= 0:
+                                cap_ledger.pop(unit, None)
+                    forces[unit] = forces.get(unit, 0) + 1
+                    restored.append(unit)
+                    to_restore -= 1
+                if to_restore <= 0:
+                    break
+            mod.setdefault("restored_for", {})[lid] = restored
+
+
 def _apply_post_battle(state, result, attackers: list[str], defenders: list[str]) -> None:
     """4.4.3 - 4.4.5 post-Battle bookkeeping: Spoils + Service shifts +
     Loss rolls (with Knights' Quarter) + Lord removal.
@@ -2543,6 +2589,7 @@ def _apply_post_battle(state, result, attackers: list[str], defenders: list[str]
                 rng_caller=rng.roll,
             )
     # Loss rolls for ALL participants (winners + losers) with their Routed piles
+    loss_results: dict[str, dict] = {}
     for lid in attackers + defenders:
         if lid not in state["lords"]:
             continue
@@ -2554,9 +2601,11 @@ def _apply_post_battle(state, result, attackers: list[str], defenders: list[str]
             and not state["lords"][lid].get("flags", {}).get("in_stronghold")
             and not conceded
         )
-        loss_roll_for_routed(state, lid,
-                             harsh_recovery=retreated_no_concede,
-                             rng_caller=rng.roll)
+        loss_results[lid] = loss_roll_for_routed(
+            state, lid, harsh_recovery=retreated_no_concede, rng_caller=rng.roll)
+    # SMOKE-Inferno-080: F24/S24 Doctors — restore half (round up) of each named
+    # Lord's Lost units (incl. Knights who received Quarter) after Loss rolls.
+    _apply_doctors_restoration(state, result.get("doctors", []), loss_results)
     # 4.4.5 Revolt & Treachery for Lords removed in this Battle.
     _trigger_disband_revolt_and_treachery(state, combat_removed, rng, context="battle")
     state["meta"]["rng_advance"] = state["meta"].get("rng_advance", 0) + (rng.advance_count - rolls_before)

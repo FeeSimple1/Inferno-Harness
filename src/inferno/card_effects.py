@@ -952,26 +952,20 @@ def F23_event(state, side, args, rng):
 
 @register_event("F24")
 def F24_event(state, side, args, rng):
-    """F24 DOCTORS: roll for each Routed Guelph unit; recoveries return to mat."""
-    log = []
-    for lid, lord in state["lords"].items():
-        if lord["side"] != "guelph":
-            continue
-        routed = dict(lord.get("routed_units", {}))
-        for unit, count in routed.items():
-            if unit == "Villici":
-                continue
-            u = sd.UNITS.get(unit, {})
-            prot = u.get("protection", [])
-            for _ in range(count):
-                r = rng.roll(f"doctors_{lid}_{unit}")
-                if r.value in prot:
-                    lord["routed_units"][unit] = lord["routed_units"].get(unit, 0) - 1
-                    if lord["routed_units"][unit] <= 0:
-                        lord["routed_units"].pop(unit, None)
-                    lord["forces"][unit] = lord["forces"].get(unit, 0) + 1
-                    log.append({"lord": lid, "unit": unit, "recovered": True})
-    return {"applied": True, "recoveries": log}
+    """F24 DOCTORS (Hold) — SMOKE-Inferno-080.
+
+    Per AoW Reference: 'Play in Battle or Storm for Firenze and Arezzo each to
+    restore to their Forces half of their Lost units (round up)' — at the END,
+    after all 4.4.4 Loss rolls, for whichever of Arezzo, Firenze Podestà, and
+    Firenze Comune are in the combat, INCLUDING any Knights who received
+    Quarter. This registers a battle modifier consumed by the post-combat loss
+    step; it is NOT a per-Routed-unit Protection re-roll (the prior behaviour).
+    """
+    state.setdefault("battle_modifiers_pending", []).append({
+        "id": "F24", "side": "guelph", "effect": "doctors_restore_half_lost",
+        "lord_ids": ["firenze", "firenze_comune", "arezzo"],
+    })
+    return {"applied": True, "flag_set": "F24_pending"}
 
 
 @register_event("F25")
@@ -1610,26 +1604,19 @@ def S23_event(state, side, args, rng):
 
 @register_event("S24")
 def S24_event(state, side, args, rng):
-    """S24 DOCTORS (Ghib): roll Protection for each Routed Ghib unit."""
-    log = []
-    for lid, lord in state["lords"].items():
-        if lord["side"] != "ghibelline":
-            continue
-        routed = dict(lord.get("routed_units", {}))
-        for unit, count in routed.items():
-            if unit == "Villici":
-                continue
-            u = sd.UNITS.get(unit, {})
-            prot = u.get("protection", [])
-            for _ in range(count):
-                r = rng.roll(f"doctors_{lid}_{unit}")
-                if r.value in prot:
-                    lord["routed_units"][unit] -= 1
-                    if lord["routed_units"][unit] <= 0:
-                        lord["routed_units"].pop(unit, None)
-                    lord["forces"][unit] = lord["forces"].get(unit, 0) + 1
-                    log.append({"lord": lid, "unit": unit, "recovered": True})
-    return {"applied": True, "recoveries": log}
+    """S24 DOCTORS (Ghibelline mirror of F24) — SMOKE-Inferno-080.
+
+    Per AoW Reference: 'for Siena and Pisa each to restore to their Forces half
+    of their Lost units (round up)' at the END after all 4.4.4 Loss rolls, for
+    whichever of Pisa, Siena Podestà, and Siena Comune are in the combat,
+    including Knights who received Quarter. Registers a battle modifier consumed
+    by the post-combat loss step.
+    """
+    state.setdefault("battle_modifiers_pending", []).append({
+        "id": "S24", "side": "ghibelline", "effect": "doctors_restore_half_lost",
+        "lord_ids": ["siena", "siena_comune", "pisa"],
+    })
+    return {"applied": True, "flag_set": "S24_pending"}
 
 
 @register_event("S25")

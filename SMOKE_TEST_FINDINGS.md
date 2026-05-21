@@ -1144,3 +1144,42 @@ Allegiance markers equal to Stronghold Value") is not represented. The Revolt
 *direction* of the de-ruined Stronghold (toward the playing side vs. per the
 Revolt table) is not pinned down by the card text alone, so this is left for a
 rules-clarified pass rather than guessed.
+
+## v3.3 — F24/S24 Doctors (Battle) + a newly-found Storm/Sally loss-roll gap
+
+### SMOKE-Inferno-080 — Doctors now restores half of Lost units (Battle), not a Protection re-roll
+
+The v3.2 numeric pass flagged F24/S24 Doctors as using the wrong mechanic. Fixed
+for the Battle path. The Event handler no longer rolls each Routed unit's
+Protection for every Lord of the side; instead it registers a battle modifier at
+the 4.4.1 outset naming the eligible Lords (F24: Firenze, Firenze Comune,
+Arezzo; S24: Siena, Siena Comune, Pisa). `resolve_battle` preserves that
+modifier onto its result before the 4.4.6 cleanup discards it, and the
+post-Battle loss step (`_apply_post_battle` -> `_apply_doctors_restoration`)
+restores ceil(L/2) units to each named Lord that fought, where L counts both
+units Lost to the pool AND Knights who received Quarter (Captured). The most
+valuable units are restored first; restored Captured Knights are pulled back out
+of the owner's Captured Knights box. Lords removed in the combat are skipped.
+**Verification:** `tests/test_v33_doctors.py` (9 tests) — ceil math (even/odd),
+named-lord scoping, Knights'-Quarter inclusion + ledger pull-back, and the
+modifier surviving `resolve_battle`'s cleanup onto its result. Full suite 515.
+
+### SMOKE-Inferno-081 — Storm and Sally do not perform the 4.4.4 Loss rolls (gap)
+
+Discovered while implementing Doctors. Battle resolves 4.4.4 Losses in
+`_apply_post_battle` (`loss_roll_for_routed` per participant). Storm
+(`_h_cmd_storm` -> `resolve_storm` / `_apply_sack`) and Sally (`_h_cmd_sally` ->
+`resolve_sally`) determine outcomes from routs but never roll losses for the
+routed units, so Routed units after a Storm/Sally are neither recovered nor
+removed — they linger in `routed_units` until the Lord's NEXT Battle rolls them
+(at the wrong time, with the wrong harsh-recovery context). Per
+`reference/Inferno_Battle_and_Storm.txt` §12, "After Retreat/Withdraw/Removal,
+BOTH SIDES determine the fate of Routed units" applies to Storm as well, with
+harsh recovery for Storm Attackers and Knights' Quarter handled on a Sack
+(§12.3: garrison Cavalieri = Stronghold Size, plus all Cavalieri/Ritter of Lords
+who lost Defending inside, are Captured; Attackers in Storm never lose units to
+Quarter). **Consequence for Doctors:** because Storm produces no "Lost" units
+today, F24/S24 played in a Storm currently restore nothing — faithful
+Storm-Doctors is gated on this gap. Deferred to its own focused pass (it spans
+`resolve_storm`, `resolve_sally`, `_apply_sack`, changes RNG consumption, and
+needs care around harsh recovery + garrison Knights' Quarter) rather than rushed.
