@@ -629,8 +629,15 @@ def _enum_command_phase(state, side) -> list[dict[str, Any]]:
             # SMOKE-Inferno-060: Sail needs Ships >= Horse + Provender + 2*Loot (4.7.3).
             if (season != "winter" and loc and loc.get("port") and not loc.get("siege")
                     and ships_needed <= ships):
+                _es = "ghibelline" if side == "guelph" else "guelph"
                 for dest_name, dest in state["locales"].items():
                     if dest_name == lord.get("location"):
+                        continue
+                    # SMOKE-Inferno-067: cannot Sail into a Locale with an Unbesieged Enemy Lord.
+                    if any(state["lords"][o]["side"] == _es
+                           and state["lords"][o]["status"] == "mustered"
+                           and not state["lords"][o].get("flags", {}).get("in_stronghold")
+                           for o in dest.get("lords_present", [])):
                         continue
                     if dest.get("port") and _is_friendly_locale_quiet(state, dest, side):
                         moves.append({
@@ -657,18 +664,28 @@ def _enum_command_phase(state, side) -> list[dict[str, Any]]:
         _carts = sum(state["lords"][g]["assets"].get("Cart", 0) for g in _grp)
         _prov = sum(state["lords"][g]["assets"].get("Provender", 0) for g in _grp)
         if cur_loc and _prov <= 2 * _carts:
+            # SMOKE-Inferno-067: mirror the handler's group-aware + Road-Works
+            # Laden/cost logic exactly (carts/prov/loot summed across the group).
+            _loot = sum(state["lords"][g]["assets"].get("Loot", 0) for g in _grp)
+            _road_works = any(
+                e.get("id") in ("F5", "S5") and e.get("side") == side
+                for e in (state.get("active_events", {}).get("this_campaign", []) or []))
+            _first_march = not lord.get("flags", {}).get("first_march_used_this_card", False)
             for neighbour, way_type in sd.adjacent_to(cur_loc):
                 # Skip Outposts unless this Lord has it as a Seat (1.3.1).
                 dest = state["locales"].get(neighbour, {})
                 if dest.get("type") == "outpost" and neighbour not in lord.get("seats", []):
                     continue
-                # Cost estimation: 0 if Unladen first-March on road, 1 normal, 2 Laden.
-                carts = lord["assets"].get("Cart", 0)
-                prov = lord["assets"].get("Provender", 0)
-                loot = lord["assets"].get("Loot", 0)
-                laden = loot > 0 or (way_type == "track" and prov > carts) or (way_type == "road" and prov > carts and loot > 0)
-                first_march = not lord.get("flags", {}).get("first_march_used_this_card", False)
-                cost = 2 if laden else (0 if (first_march and way_type == "road") else 1)
+                effective_way = "road" if (_road_works and way_type == "track") else way_type
+                if _road_works:
+                    laden = False
+                elif _loot > 0:
+                    laden = True
+                elif way_type == "track":
+                    laden = _prov > _carts
+                else:
+                    laden = (_prov > _carts) and (_loot > 0)
+                cost = 2 if laden else (0 if (_first_march and effective_way == "road") else 1)
                 if cost <= actions_remaining:
                     moves.append({
                         "action": "cmd_march", "side": side,
@@ -717,7 +734,14 @@ def _enum_command_phase(state, side) -> list[dict[str, Any]]:
         pass
     # SMOKE-Inferno-015: cmd_sally when Besieged inside (4.5.3).
     try:
-        if lord.get("flags", {}).get("in_stronghold") and loc and loc.get("siege"):
+        _es = "ghibelline" if side == "guelph" else "guelph"
+        _besiegers = bool(loc) and any(
+            state["lords"][o]["side"] == _es
+            and not state["lords"][o].get("flags", {}).get("in_stronghold")
+            for o in (loc.get("lords_present", []) if loc else []))
+        # SMOKE-Inferno-067: Sally needs a Besieging Enemy Lord present.
+        if (lord.get("flags", {}).get("in_stronghold") and loc and loc.get("siege")
+                and _besiegers):
             moves.append({
                 "action": "cmd_sally", "side": side, "args": {"lord_id": lid},
                 "description": f"{lid} Sallies from {lord['location']}.",
@@ -761,6 +785,84 @@ def _enum_command_phase(state, side) -> list[dict[str, Any]]:
             "args": {"lord_id": lid, "count": 1},
             "description": f"{lid} Passes 1 action.",
             "rule_citation": "4.7.7",
+        })
+    # SMOKE-Inferno-062..066: persistent AoW Capability actions (only surfaced
+    # when the active Lord actually holds the Capability and its preconditions
+    # are met, so dispatch always accepts them).
+    from . import actions as _a
+    from .battle import _lord_has_capability as _hascap
+    _enemy = "ghibelline" if side == "guelph" else "guelph"
+    cur_name = lord.get("location")
+    cur_loc = state["locales"].get(cur_name or "")
+    # F20/S20 Masnadieri — a 0-action Ravage (no Loot) at the current Locale.
+    if (_hascap(state, lid, "Masnadieri") and cur_loc and actions_remaining >= 1
+            and not cur_loc.get("ravaged")
+            and not _is_friendly_locale_quiet(state, cur_loc, side)
+            and cur_loc.get("type") != "outpost"):
+        moves.append({
+            "action": "cmd_ravage", "side": side,
+            "args": {"lord_id": lid, "masnadieri": True},
+            "description": f"{lid} Masnadieri-Ravages {cur_name} (0 actions, no Loot).",
+            "rule_citation": "F20/S20 / 4.7.2",
+        })
+    # F18/S18 La Cavallata — entire card, 1 Provender (Shared), Ravage adjacent.
+    if (_hascap(state, lid, "La Cavallata") and cur_name and actions_remaining >= 1
+            and _a._share_available(state, lid, "Provender") >= 1):
+        for nbr, _w in sd.adjacent_to(cur_name):
+            t = state["locales"].get(nbr, {})
+            if (t and not t.get("ravaged") and t.get("type") != "outpost"
+                    and not _is_friendly_locale_quiet(state, t, side)
+                    and not any(state["lords"][o]["side"] == _enemy
+                                and state["lords"][o].get("status") == "mustered"
+                                and not state["lords"][o].get("flags", {}).get("in_stronghold")
+                                for o in t.get("lords_present", []))):
+                moves.append({
+                    "action": "cmd_la_cavallata", "side": side,
+                    "args": {"lord_id": lid, "target_locale": nbr},
+                    "description": f"{lid} La Cavallata Ravages adjacent {nbr}.",
+                    "rule_citation": "F18/S18",
+                })
+    # F26/S26 Costruttori — entire card, 1 Coin + 3 Provender (Shared), remove Ruins.
+    if (_hascap(state, lid, "Costruttori") and cur_loc and cur_loc.get("ruins")
+            and actions_remaining >= 1
+            and _a._share_available(state, lid, "Coin") >= 1
+            and _a._share_available(state, lid, "Provender") >= 3):
+        moves.append({
+            "action": "cmd_costruttori", "side": side, "args": {"lord_id": lid},
+            "description": f"{lid} Costruttori removes Ruins at {cur_name}.",
+            "rule_citation": "F26/S26",
+        })
+    # F2/S2 Guastatori (besieged) — Pass to clear Enemy Siege and Bypass them.
+    if (_hascap(state, lid, "Guastatori") and lord.get("flags", {}).get("in_stronghold")
+            and cur_loc and cur_loc.get("siege") and actions_remaining >= 1):
+        moves.append({
+            "action": "cmd_guastatori_pass", "side": side, "args": {"lord_id": lid},
+            "description": f"{lid} Guastatori-Pass: clear Enemy Siege at {cur_name}.",
+            "rule_citation": "F2/S2 / 4.7.7",
+        })
+    # F5/S5 War Engineers (besieged) — entire card, reduce Enemy Siege to 1.
+    if (_hascap(state, lid, "War Engineers") and lord.get("flags", {}).get("in_stronghold")
+            and cur_loc and actions_remaining >= 1
+            and sum(x.get("count", 1) for x in (cur_loc.get("siege") or [])) > 1):
+        moves.append({
+            "action": "cmd_war_engineers_reduce", "side": side, "args": {"lord_id": lid},
+            "description": f"{lid} War Engineers reduce Enemy Siege to 1 at {cur_name}.",
+            "rule_citation": "F5/S5",
+        })
+    # F25/S25 Reinforced Walls — Tax variant that places a Walls +1 marker.
+    if (_hascap(state, lid, "Reinforced Walls") and cur_loc and actions_remaining >= 1
+            and cur_name in lord.get("seats", []) and not cur_loc.get("siege")
+            and not cur_loc.get("ruins") and cur_loc.get("type") != "outpost"
+            and not cur_loc.get("walls_plus_one")
+            and sum(1 for l in state["locales"].values() if l.get("walls_plus_one") == side) < 4
+            and not (side == "guelph" and any(
+                e.get("id") == "S23"
+                for e in (state.get("active_events", {}).get("this_campaign", []) or [])))):
+        moves.append({
+            "action": "cmd_tax", "side": side,
+            "args": {"lord_id": lid, "reinforced_walls": True},
+            "description": f"{lid} Reinforced Walls: Tax to place Walls +1 at {cur_name}.",
+            "rule_citation": "F25/S25",
         })
     # End card is always available (active Lord may stop early)
     moves.append({

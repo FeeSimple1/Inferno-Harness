@@ -976,11 +976,22 @@ def _strike_hits_storm(units: dict[str, int], step: str) -> float:
     return 0.0
 
 
-def _garrison_for(stronghold_type: str) -> dict[str, int]:
+def _garrison_for(stronghold_type: str, state=None, defender_side=None) -> dict[str, int]:
     """Per 4.5.2: Garrisons by Stronghold tier (see STRONGHOLDS table).
     Castle has Militia (1) instead of Armigieri.
+
+    SMOKE-Inferno-065: S21 SOVRINTENDENTE (side-wide Ghibelline) replaces a
+    Ghibelline-held Castle Garrison's Militia with a Crossbow Armigeri.
     """
     g = dict(sd.STRONGHOLDS.get(stronghold_type, {}).get("garrison", {}))
+    if (state is not None and defender_side == "ghibelline"
+            and stronghold_type == "castle" and g.get("Militia", 0) > 0):
+        from . import card_effects as ce
+        if ce.capability_in_play(state, "S21", "ghibelline"):
+            g["Militia"] = g.get("Militia", 0) - 1
+            if g["Militia"] <= 0:
+                g.pop("Militia", None)
+            g["Armigieri"] = g.get("Armigieri", 0) + 1
     return g
 
 
@@ -1033,8 +1044,11 @@ def resolve_storm(state, attackers: list[str], defenders: list[str],
     if locale.get("walls_plus_one"):
         walls_die = walls_die + [max(walls_die) + 1 if walls_die else 5]
 
-    # Garrison Forces (separate from Defending Lord(s))
-    garrison = _garrison_for(stronghold_type)
+    # Garrison Forces (separate from Defending Lord(s)). Defender = the side
+    # holding the Stronghold (opposite the Storming attacker).
+    _atk_side = state["lords"][active_id]["side"] if active_id in state["lords"] else None
+    _def_side = "guelph" if _atk_side == "ghibelline" else ("ghibelline" if _atk_side else None)
+    garrison = _garrison_for(stronghold_type, state=state, defender_side=_def_side)
     state.setdefault("storm_garrison", {})[locale_name] = dict(garrison)
 
     # Storm Array: 1 Lord per side at Center; others Reserve.

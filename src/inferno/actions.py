@@ -779,7 +779,11 @@ def _h_levy_muster_vassal(state, side, args, rng) -> dict[str, Any]:
     lord = _require_lord(state, lid, side)
     if lord["status"] != "mustered":
         raise IllegalAction("LORD_NOT_ON_MAP", f"{lid} is not Mustered.", "3.4")
-    _consume_lordship(state, lid)
+    # SMOKE-Inferno-066: F22 TAU COMPANY lets Firenze/Lucca Muster Altopascio for
+    # 0 Lordship (3.4.2 ALTOPASCIO); otherwise a Vassal Muster costs 1 Lordship.
+    from .battle import _lord_has_capability
+    if not (vname == "Altopascio" and _lord_has_capability(state, lid, "Tau Company")):
+        _consume_lordship(state, lid)
     for v in lord["vassals"]:
         if v["name"] == vname:
             target = v
@@ -1221,13 +1225,30 @@ def _h_cmd_tax(state, side, args, rng) -> dict[str, Any]:
             f"Tax requires Lord at one of his Seats. {lid} is at {lord['location']!r}; seats={lord.get('seats')}.",
             "4.7.4",
         )
-    gain = 2 if lord.get("podesta") else 1
-    lord["assets"]["Coin"] = lord["assets"].get("Coin", 0) + gain
+    # SMOKE-Inferno-064: F25/S25 REINFORCED WALLS — a Tax may instead place a
+    # Walls +1 marker (side colour) at the Seat (no Coin). Seat must not be
+    # Ruins/Outpost/already marked; max 4 such markers per side.
+    from .battle import _lord_has_capability
+    reinforced = bool(args.get("reinforced_walls")) and _lord_has_capability(state, lid, "Reinforced Walls")
+    if reinforced:
+        if loc.get("ruins"):
+            raise IllegalAction("WALLS_AT_RUINS", f"{loc['name']} is Ruins.", "F25/S25 / 1.3.1")
+        if loc.get("type") == "outpost":
+            raise IllegalAction("WALLS_AT_OUTPOST", f"{loc['name']} is an Outpost.", "F25/S25 / 1.3.1")
+        if loc.get("walls_plus_one"):
+            raise IllegalAction("ALREADY_WALLS_PLUS_ONE", f"{loc['name']} already has Walls +1.", "F25/S25")
+        if sum(1 for l in state["locales"].values() if l.get("walls_plus_one") == side) >= 4:
+            raise IllegalAction("WALLS_PLUS_ONE_LIMIT", f"{side} already has 4 Walls +1 markers.", "1.3.1")
+        loc["walls_plus_one"] = side
+        payload = {"taxed": lid, "reinforced_walls_at": loc["name"]}
+    else:
+        gain = 2 if lord.get("podesta") else 1
+        lord["assets"]["Coin"] = lord["assets"].get("Coin", 0) + gain
+        payload = {"taxed": lid, "coin_gained": gain}
     # Tax uses the entire card — consume all remaining actions.
     state["actions_remaining"] = 0
     state["card_action_consumed_by_entire_card"] = True
-    # Mark Moved/Fought? Tax doesn't mark per rules — but the card ends.
-    return _finish_card_with({"taxed": lid, "coin_gained": gain}, state, side,
+    return _finish_card_with(payload, state, side,
                               reason="tax_entire_card", citation="4.7.4")
 
 
@@ -1279,6 +1300,77 @@ def _h_cmd_forage(state, side, args, rng) -> dict[str, Any]:
     return _maybe_end_card({"forage": result, "lord_id": lid}, state, side, citation="4.7.1")
 
 
+def _share_available(state, lid, asset) -> int:
+    """Total of `asset` available to the active Lord via Sharing (1.5.2): its own
+    plus that of Friendly Mustered Lords at the same Locale."""
+    lord = state["lords"][lid]
+    loc = lord.get("location")
+    side = lord.get("side")
+    total = 0
+    for oid, ol in state["lords"].items():
+        if ol.get("side") == side and ol.get("status") == "mustered" \
+                and ol.get("location") == loc:
+            total += ol.get("assets", {}).get(asset, 0)
+    return total
+
+
+def _pay_from_locale(state, lid, asset, amount) -> bool:
+    """Spend `amount` of `asset` from the active Lord first, then Shared from
+    Friendly Mustered Lords at the same Locale (1.5.2). Returns False (no spend)
+    if insufficient."""
+    if _share_available(state, lid, asset) < amount:
+        return False
+    lord = state["lords"][lid]
+    side = lord.get("side"); loc = lord.get("location")
+    need = amount
+    take = min(need, lord["assets"].get(asset, 0))
+    lord["assets"][asset] = lord["assets"].get(asset, 0) - take
+    need -= take
+    for oid, ol in state["lords"].items():
+        if need <= 0:
+            break
+        if oid == lid:
+            continue
+        if ol.get("side") == side and ol.get("status") == "mustered" and ol.get("location") == loc:
+            t = min(need, ol.get("assets", {}).get(asset, 0))
+            if t:
+                ol["assets"][asset] -= t
+                need -= t
+    return True
+
+
+def _ravage_doubled(state, lid) -> bool:
+    """4.7.2 Ravage doubling: gains double if the Lord has a Berrovieri unit on
+    its mat, OR has the F19/S19 GUALDANA Capability and any Horse unit (Gualdana
+    treats any Horse as Berrovieri for Ravage). SMOKE-Inferno-062."""
+    from .battle import _lord_has_capability
+    lord = state["lords"].get(lid, {})
+    forces = lord.get("forces", {}) or {}
+    if forces.get("Berrovieri", 0) > 0:
+        return True
+    if _lord_has_capability(state, lid, "Gualdana"):
+        if any(sd.UNITS.get(u, {}).get("cat") == "horse" and c > 0
+               for u, c in forces.items()):
+            return True
+    return False
+
+
+def _apply_ravage_gains(state, lid, target_type, no_loot=False) -> dict[str, int]:
+    """Apply Ravage Provender/Loot to the Lord's mat per 4.7.2, doubling for
+    Berrovieri/Gualdana (F19/S19). Castle: Provender only; Town/City: Provender
+    + Loot. `no_loot` (F20 Masnadieri 0-action Ravage) suppresses Loot."""
+    lord = state["lords"][lid]
+    mult = 2 if _ravage_doubled(state, lid) else 1
+    prov = 1 * mult
+    loot = (1 * mult) if (target_type in ("town", "city") and not no_loot) else 0
+    lord["assets"]["Provender"] = min(lord["assets"].get("Provender", 0) + prov, 16)
+    gains = {"Provender": prov}
+    if loot:
+        lord["assets"]["Loot"] = min(lord["assets"].get("Loot", 0) + loot, 8)
+        gains["Loot"] = loot
+    return gains
+
+
 def _h_cmd_ravage(state, side, args, rng) -> dict[str, Any]:
     """4.7.2 RAVAGE: 1 action at Castle, 2 actions at Town/City.
     Locale must be Enemy aligned and not already Ravaged."""
@@ -1295,7 +1387,11 @@ def _h_cmd_ravage(state, side, args, rng) -> dict[str, Any]:
     if _is_friendly_locale(state, target, side):
         raise IllegalAction("FRIENDLY_LOCALE", f"Cannot Ravage Friendly {target_name}.", "4.7.2")
 
-    cost = 2 if target["type"] in ("town", "city") else 1
+    # SMOKE-Inferno-062: F20/S20 MASNADIERI — the Lord MAY Ravage for 0 actions,
+    # taking no Loot (the consumer opts in via masnadieri=True).
+    from .battle import _lord_has_capability
+    masnadieri = bool(args.get("masnadieri")) and _lord_has_capability(state, lid, "Masnadieri")
+    cost = 0 if masnadieri else (2 if target["type"] in ("town", "city") else 1)
     if state["actions_remaining"] < cost:
         raise IllegalAction(
             "INSUFFICIENT_ACTIONS",
@@ -1304,14 +1400,8 @@ def _h_cmd_ravage(state, side, args, rng) -> dict[str, Any]:
         )
     # Mark Ravaged (color = OPPOSITE printed Allegiance).
     target["ravaged"] = "purple" if target["allegiance"] == "guelph" else "gold"
-    # Gains:
-    if target["type"] == "castle":
-        lord["assets"]["Provender"] = min(lord["assets"].get("Provender", 0) + 1, 16)
-        gains = {"Provender": 1}
-    else:
-        lord["assets"]["Provender"] = min(lord["assets"].get("Provender", 0) + 1, 16)
-        lord["assets"]["Loot"] = min(lord["assets"].get("Loot", 0) + 1, 8)
-        gains = {"Provender": 1, "Loot": 1}
+    # Gains (doubled for Berrovieri/Gualdana; Masnadieri 0-action takes no Loot).
+    gains = _apply_ravage_gains(state, lid, target["type"], no_loot=masnadieri)
     # VP: 1/2 to side opposite of printed
     ravager_side = "guelph" if target["allegiance"] == "ghibelline" else "ghibelline"
     state["vp"][ravager_side] = min(state["vp"].get(ravager_side, 0.0) + 0.5, 17.5)
@@ -1794,6 +1884,130 @@ def cd_PASS_CARD_ID():
 # =====================================================================
 # Register Campaign handlers
 # =====================================================================
+def _h_cmd_guastatori_pass(state, side, args, rng) -> dict[str, Any]:
+    """F2/S2 GUASTATORI (besieged): a Besieged Lord with Guastatori may Pass
+    (4.7.7, doing nothing else) to remove ALL Enemy Siege markers at his Locale
+    and place Bypass on the Enemy Lords there. SMOKE-Inferno-063."""
+    lid = _require_active_lord(state, side, args.get("lord_id"))
+    lord = state["lords"][lid]
+    from .battle import _lord_has_capability
+    if not _lord_has_capability(state, lid, "Guastatori"):
+        raise IllegalAction("NO_GUASTATORI", f"{lid} lacks Guastatori.", "F2/S2")
+    if not lord.get("flags", {}).get("in_stronghold"):
+        raise IllegalAction("NOT_BESIEGED", f"{lid} is not Besieged.", "F2/S2")
+    loc_name = lord.get("location"); loc = state["locales"][loc_name]
+    enemy = "ghibelline" if side == "guelph" else "guelph"
+    if not loc.get("siege"):
+        raise IllegalAction("NO_SIEGE_HERE", f"No Enemy Siege at {loc_name}.", "F2/S2")
+    loc["siege"] = []  # remove all Enemy Siege markers
+    # Place Bypass on the Enemy (Besieging) Lords still outside.
+    besiegers = [oid for oid in loc.get("lords_present", [])
+                 if state["lords"][oid]["side"] == enemy
+                 and not state["lords"][oid].get("flags", {}).get("in_stronghold")]
+    if besiegers:
+        loc["bypass"] = [{"side": side, "color": "gold" if side == "guelph" else "purple",
+                          "count": 1}]
+        for oid in besiegers:
+            state["lords"][oid].setdefault("flags", {})["bypassing"] = loc_name
+    lord.setdefault("flags", {})["moved_fought"] = True
+    state["actions_remaining"] = 0
+    state["card_action_consumed_by_entire_card"] = True
+    return _finish_card_with({"guastatori_pass": {"locale": loc_name, "bypassed": besiegers}},
+                             state, side, reason="guastatori_pass", citation="F2/S2 / 4.7.7")
+
+
+def _h_cmd_war_engineers_reduce(state, side, args, rng) -> dict[str, Any]:
+    """F5/S5 WAR ENGINEERS (besieged): a Besieged Lord may devote his ENTIRE
+    Command card to remove all but ONE Enemy Siege marker at his Locale.
+    SMOKE-Inferno-063."""
+    lid = _require_active_lord(state, side, args.get("lord_id"))
+    lord = state["lords"][lid]
+    from .battle import _lord_has_capability
+    if not _lord_has_capability(state, lid, "War Engineers"):
+        raise IllegalAction("NO_WAR_ENGINEERS", f"{lid} lacks War Engineers.", "F5/S5")
+    if not lord.get("flags", {}).get("in_stronghold"):
+        raise IllegalAction("NOT_BESIEGED", f"{lid} is not Besieged.", "F5/S5")
+    loc_name = lord.get("location"); loc = state["locales"][loc_name]
+    if not loc.get("siege"):
+        raise IllegalAction("NO_SIEGE_HERE", f"No Enemy Siege at {loc_name}.", "F5/S5")
+    sg = loc["siege"][0]
+    loc["siege"] = [{"side": sg["side"], "color": sg["color"], "count": 1}]
+    lord.setdefault("flags", {})["moved_fought"] = True
+    state["actions_remaining"] = 0
+    state["card_action_consumed_by_entire_card"] = True
+    return _finish_card_with({"war_engineers_reduce": {"locale": loc_name, "siege_after": 1}},
+                             state, side, reason="war_engineers_reduce", citation="F5/S5")
+
+
+def _h_cmd_la_cavallata(state, side, args, rng) -> dict[str, Any]:
+    """F18/S18 LA CAVALLATA Capability: spend 1 Provender (own or Shared) and use
+    the ENTIRE Command card to Ravage an ADJACENT Locale that has no Unbesieged
+    Enemy Lord. SMOKE-Inferno-062. args: lord_id, target_locale."""
+    lid = _require_active_lord(state, side, args.get("lord_id"))
+    lord = state["lords"][lid]
+    from .battle import _lord_has_capability
+    if not _lord_has_capability(state, lid, "La Cavallata"):
+        raise IllegalAction("NO_CAVALLATA", f"{lid} lacks La Cavallata.", "F18/S18")
+    cur = lord.get("location")
+    target_name = args.get("target_locale")
+    if not target_name or target_name not in state["locales"]:
+        raise IllegalAction("BAD_DEST", "Provide an adjacent target_locale.", "F18/S18")
+    if target_name not in [n for n, _ in sd.adjacent_to(cur)]:
+        raise IllegalAction("NOT_ADJACENT", f"{target_name} not adjacent to {cur}.", "F18/S18")
+    target = state["locales"][target_name]
+    if target.get("ravaged"):
+        raise IllegalAction("ALREADY_RAVAGED", f"{target_name} already Ravaged.", "4.7.2")
+    if _is_friendly_locale(state, target, side):
+        raise IllegalAction("FRIENDLY_LOCALE", f"Cannot Ravage Friendly {target_name}.", "4.7.2")
+    enemy = "ghibelline" if side == "guelph" else "guelph"
+    for oid in target.get("lords_present", []):
+        ol = state["lords"][oid]
+        if (ol["side"] == enemy and ol["status"] == "mustered"
+                and not ol.get("flags", {}).get("in_stronghold")):
+            raise IllegalAction("ENEMY_LORD_AT_TARGET",
+                                f"{target_name} has Unbesieged Enemy Lord {oid}.", "F18/S18")
+    if not _pay_from_locale(state, lid, "Provender", 1):
+        raise IllegalAction("NO_PROVENDER", "La Cavallata needs 1 Provender (own or Shared).", "F18/S18")
+    target["ravaged"] = "purple" if target["allegiance"] == "guelph" else "gold"
+    gains = _apply_ravage_gains(state, lid, target["type"])
+    ravager_side = "guelph" if target["allegiance"] == "ghibelline" else "ghibelline"
+    state["vp"][ravager_side] = min(state["vp"].get(ravager_side, 0.0) + 0.5, 17.5)
+    lord.setdefault("flags", {})["moved_fought"] = True
+    state["actions_remaining"] = 0
+    state["card_action_consumed_by_entire_card"] = True
+    return _finish_card_with({"la_cavallata": {"target": target_name, "gains": gains}},
+                             state, side, reason="la_cavallata_entire_card", citation="F18/S18")
+
+
+def _h_cmd_costruttori(state, side, args, rng) -> dict[str, Any]:
+    """F26/S26 COSTRUTTORI Capability: spend 1 Coin + 3 Provender (own or Shared)
+    and use the ENTIRE Command card to remove a Ruins marker at the Lord's
+    current Locale. SMOKE-Inferno-062."""
+    lid = _require_active_lord(state, side, args.get("lord_id"))
+    lord = state["lords"][lid]
+    from .battle import _lord_has_capability
+    if not _lord_has_capability(state, lid, "Costruttori"):
+        raise IllegalAction("NO_COSTRUTTORI", f"{lid} lacks Costruttori.", "F26/S26")
+    loc_name = lord.get("location")
+    loc = state["locales"].get(loc_name or "")
+    if not loc or not loc.get("ruins"):
+        raise IllegalAction("NO_RUINS", f"No Ruins at {loc_name}.", "F26/S26")
+    if _share_available(state, lid, "Coin") < 1 or _share_available(state, lid, "Provender") < 3:
+        raise IllegalAction("INSUFFICIENT_ASSETS",
+                            "Costruttori needs 1 Coin + 3 Provender (own or Shared).", "F26/S26")
+    _pay_from_locale(state, lid, "Coin", 1)
+    _pay_from_locale(state, lid, "Provender", 3)
+    ruins_color = loc["ruins"]
+    ruins_side = "guelph" if ruins_color == "gold" else "ghibelline"
+    state["vp"][ruins_side] = max(state["vp"].get(ruins_side, 0.0) - 0.5, 0)
+    loc["ruins"] = None
+    lord.setdefault("flags", {})["moved_fought"] = True
+    state["actions_remaining"] = 0
+    state["card_action_consumed_by_entire_card"] = True
+    return _finish_card_with({"costruttori": {"locale": loc_name, "ruins_removed": ruins_color}},
+                             state, side, reason="costruttori_entire_card", citation="F26/S26")
+
+
 _HANDLERS.update({
     "campaign_discard_capability":   _h_campaign_discard_capability,
     "campaign_discard_done":         _h_campaign_discard_done,
@@ -1803,6 +2017,10 @@ _HANDLERS.update({
     "cmd_tax":                       _h_cmd_tax,
     "cmd_forage":                    _h_cmd_forage,
     "cmd_ravage":                    _h_cmd_ravage,
+    "cmd_la_cavallata":              _h_cmd_la_cavallata,
+    "cmd_costruttori":               _h_cmd_costruttori,
+    "cmd_guastatori_pass":           _h_cmd_guastatori_pass,
+    "cmd_war_engineers_reduce":      _h_cmd_war_engineers_reduce,
     "cmd_supply":                    _h_cmd_supply,
     "cmd_sail":                      _h_cmd_sail,
     "cmd_pass":                      _h_cmd_pass,
@@ -2428,11 +2646,17 @@ def _h_cmd_siege(state, side, args, rng) -> dict[str, Any]:
             surrender = False
     # Step 2 Siegeworks if no Surrender
     if surrender is not True:
+        from .battle import _lord_has_capability
         own_lords_here = [oid for oid in loc.get("lords_present", [])
                           if state["lords"][oid]["side"] == side
                           and not state["lords"][oid].get("flags", {}).get("in_stronghold")]
-        if len(own_lords_here) >= sd.STRONGHOLDS[loc["type"]]["size"]:
-            new_count = min(siege_count + 1, 4)
+        # SMOKE-Inferno-063: F5/S5 WAR ENGINEERS adds a marker regardless of
+        # Stronghold Size / Lord count; F2/S2 GUASTATORI adds 2 markers (not 1).
+        war_engineers = _lord_has_capability(state, lid, "War Engineers")
+        guastatori = _lord_has_capability(state, lid, "Guastatori")
+        if war_engineers or len(own_lords_here) >= sd.STRONGHOLDS[loc["type"]]["size"]:
+            add = 2 if guastatori else 1
+            new_count = min(siege_count + add, 4)
             loc["siege"] = [{"side": side, "color": "gold" if side == "guelph" else "purple", "count": new_count}]
     # All Lords here marked Fought
     for oid in loc.get("lords_present", []):
@@ -2948,8 +3172,11 @@ def _consume_lordship(state, mustering_lord_id: str) -> None:
             f"{mustering_lord_id} has used all {rating} Lordship actions this Muster segment.",
             "3.4",
         )
-    # Apply Lordship bonus from F11 Poggio Bonizio / etc.
+    # Apply Lordship bonus from F11 Poggio Bonizio (one-shot) PLUS persistent
+    # Capability bonuses (F22/S22 Tau Company: Firenze/Lucca Lordship +1).
+    # SMOKE-Inferno-066.
     bonus = lord.get("flags", {}).get("lordship_bonus_pending", 0)
+    bonus += _capability_bonus_lordship(state, mustering_lord_id)
     effective = rating + bonus
     if used >= effective:
         raise IllegalAction(

@@ -851,3 +851,54 @@ actions could not be closed out via cmd_end_card (the enumerator offered it).
 **Fix (v2.6):** ending a card is always legal for the active player (stop early
 OR close out a spent card); `_h_cmd_end_card` now validates the active Lord/side
 WITHOUT gating on actions_remaining. Regression in `test_v26_features.py`.
+
+---
+
+## SMOKE-Inferno-062..066 — Persistent AoW Capabilities (bottom-half) implemented
+
+**Pattern:** §"missing implementation" — all 52 AoW Event halves were wired, but
+9 distinct persistent Capability effects were no-ops (their `register_capability`
+hooks were empty/unconsumed). The capability *names* are documented in the
+reference's GUELPH/GHIBELLINE CAPABILITIES sections; consumption is by name via
+`battle._lord_has_capability`.
+
+**Audit:** 24 distinct capability_names; 15 were already consumed (Arcieri, Army
+Reserve, Astrologers, Balestre Grosse, Balestrieri, Distringitores, Feditori,
+Luceria, Palvesari, Siege Towers, Stores & Well Water, Taglia, Trebuchets, Via
+Francigena, Manfredi-via-VP). The other 9 were implemented in v2.7:
+
+  - SMOKE-062 Ravage cluster — F19/S19 GUALDANA (Ravage gains double when the
+    Lord has a Horse unit) plus the base Berrovieri doubling; F20/S20 MASNADIERI
+    (0-action Ravage taking no Loot); F18/S18 LA CAVALLATA (new entire-card
+    action: 1 Provender Shared, Ravage adjacent); F26/S26 COSTRUTTORI (new
+    entire-card action: 1 Coin + 3 Provender, remove Ruins). Shared
+    `_apply_ravage_gains` / `_share_available` / `_pay_from_locale` helpers.
+  - SMOKE-063 Siege — F2/S2 GUASTATORI (Siege adds 2 markers; besieged Pass
+    clears Enemy Siege and Bypasses them) and F5/S5 WAR ENGINEERS (Siege adds a
+    marker at any Stronghold Size; besieged entire-card reduces Enemy Siege to 1).
+  - SMOKE-064 F25/S25 REINFORCED WALLS — Tax variant places a Walls +1 marker
+    (no Coin); Seat must not be Ruins/Outpost/already-marked; max 4 per side;
+    blocked for Guelphs by S23.
+  - SMOKE-065 S21 SOVRINTENDENTE — Ghibelline-held Castle Garrisons swap their
+    Militia for a Crossbow Armigeri (`_garrison_for` is now state/side-aware).
+  - SMOKE-066 F22 TAU COMPANY — Firenze/Lucca Lordship +1 (wired
+    `_capability_bonus_lordship` into `_consume_lordship`) and free (0-Lordship)
+    Altopascio Muster.
+
+All new actions/modes are surfaced by the command-phase enumerator only when the
+Lord holds the Capability and preconditions are met.
+
+## SMOKE-Inferno-067 — Round-trip gaps surfaced by the wider capability sweep
+
+**Pattern:** §enumerator/handler round-trip (continuation of SMOKE-060), exposed
+by a larger randomized sweep once Capabilities were exercised.
+
+**Fixed (v2.7):** the new capability actions gained the same `actions_remaining`
+gate their handlers enforce; the March cost estimate in the enumerator now
+mirrors the handler exactly (group-summed Carts/Provender/Loot + Road-Works);
+cmd_sail no longer offers a Port holding an Unbesieged Enemy Lord; cmd_sally now
+requires a Besieging Enemy Lord present.
+
+**Verification:** randomized smoke sweep — 990 games, 298,939 steps, 857 winners,
+0 over-enumerations, 0 stalls, 0 invariant violations (capability actions
+exercised hundreds of times). Regression: `test_v27_features.py`.
