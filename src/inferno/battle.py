@@ -1196,10 +1196,22 @@ def resolve_storm(state, attackers: list[str], defenders: list[str],
         if lid in state["lords"]:
             state["lords"][lid].setdefault("flags", {})["moved_fought"] = True
 
+    # SMOKE-Inferno-080/081: capture and consume the Doctors (F24/S24) restore-
+    # half modifiers so the post-Storm loss step can apply them after the 4.4.4
+    # Loss rolls. (Only Doctors mods are touched here; Storm's other modifier
+    # handling is unchanged.)
+    doctors_mods = [dict(m) for m in state.get("battle_modifiers_pending", [])
+                    if m.get("effect") == "doctors_restore_half_lost"]
+    if doctors_mods:
+        state["battle_modifiers_pending"] = [
+            m for m in state.get("battle_modifiers_pending", [])
+            if m.get("effect") != "doctors_restore_half_lost"]
+
     return {
         "locale": locale_name,
         "mode": "storm",
         "winner": winner,
+        "doctors": doctors_mods,
         "loser": loser,
         "outcome": outcome,
         "conceded": conceded,
@@ -1492,7 +1504,8 @@ def _absorb_garrison_hits(state, locale_name: str, n_hits: int, rng_roll, hit_lo
 # =====================================================================
 # Phase 3d: post-Battle Loss rolls, Service shifts, Spoils, Knights' Quarter
 # =====================================================================
-def loss_roll_for_routed(state, lord_id: str, harsh_recovery: bool, rng_caller) -> dict:
+def loss_roll_for_routed(state, lord_id: str, harsh_recovery: bool, rng_caller,
+                         capture_knights: bool = True) -> dict:
     """4.4.4 Roll for each Routed unit after Battle/Storm/Sally.
 
     Standard: roll 1d6; if within unit's INHERENT Protection range, unit
@@ -1503,6 +1516,11 @@ def loss_roll_for_routed(state, lord_id: str, harsh_recovery: bool, rng_caller) 
     Knights' Quarter (4.4.4): Cavalieri / Ritter that were Routed AND
     LOST on a 3-6 are CAPTURED to OWNER'S Captured Knights box (used
     for 4.9.2 Ransom). Captured-by-side recorded separately.
+
+    SMOKE-Inferno-081: `capture_knights` gates the per-unit Knights' Quarter.
+    Set False for STORM loss rolls — Storm Knights' Quarter happens ONLY on a
+    Sack (handled by `_apply_sack`), and Attackers in Storm NEVER lose units to
+    Quarter (their failed Knights are simply Lost). Battle and Sally keep True.
 
     Villici don't roll (already removed when Hit).
     """
@@ -1528,7 +1546,7 @@ def loss_roll_for_routed(state, lord_id: str, harsh_recovery: bool, rng_caller) 
                 # Knights' Quarter for Cavalieri/Ritter on 3-6 (Battle only,
                 # via the standard 4.4.4 Capture trigger; Storm Garrison
                 # capture is handled separately).
-                if unit in ("Cavalieri", "Ritter") and r.value >= 3:
+                if capture_knights and unit in ("Cavalieri", "Ritter") and r.value >= 3:
                     captured[unit] = captured.get(unit, 0) + 1
                 else:
                     lost[unit] = lost.get(unit, 0) + 1

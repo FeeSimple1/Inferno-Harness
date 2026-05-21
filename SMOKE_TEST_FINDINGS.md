@@ -1224,3 +1224,45 @@ Locale with both a Ruins and Allegiance markers.
 
 With this, the remaining open AoW item is SMOKE-081 (Storm/Sally do not perform
 4.4.4 Loss rolls), which gates faithful Storm-Doctors.
+
+## v3.5 — SMOKE-Inferno-081 resolved: Storm & Sally 4.4.4 Loss rolls (+ Storm-Doctors)
+
+The Doctors work (v3.3) surfaced that Storm and Sally never performed the 4.4.4
+Loss rolls that Battle does — routed units lingered in `routed_units` until the
+Lord's next Battle. Now closed.
+
+**Shared helper** `_roll_routed_losses(state, specs, capture_knights)` rolls the
+4.4.4 Losses for a set of (lord_id, harsh) using a fresh RNG built from the
+current `rng_advance` (so it composes after a resolver that already advanced the
+stream). `loss_roll_for_routed` gained a `capture_knights` flag.
+
+**Storm** (`_h_cmd_storm`): after `resolve_storm`, the Attacker (besieger) rolls
+with HARSH recovery (Attacking in Storm, §12.1b); on `attacker_loss` the
+Defenders roll Standard. `capture_knights=False` for both — Storm Knights'
+Quarter happens ONLY on a Sack and Attackers are never Captured, so a failed
+Knight here is simply Lost.
+
+**Sack Knights' Quarter** (`_apply_sack`, §13): before removing the inside
+losers, ALL their Cavalieri/Ritter PLUS the Garrison's Cavalieri (# = Stronghold
+Size) are Captured to the losing (owner) side's Captured Knights box for Ransom.
+
+**Sally** (`_h_cmd_sally`): Sally uses Battle procedure (Battle&Storm 2.3), so
+the routed units roll with Standard recovery and Battle Knights' Quarter
+(`capture_knights=True`); Harsh Recovery does not apply (no side "Retreats
+without Conceding" in a raid).
+
+**Storm-Doctors** (SMOKE-080 completion): `resolve_storm` now stashes the
+`doctors_restore_half_lost` modifiers onto its result (and consumes them from
+pending), and `_h_cmd_storm` calls `_apply_doctors_restoration` after the Loss
+rolls — so F24/S24 work in Storm as well as Battle. (Sally is left out: the card
+text enumerates "Battle or Storm," not Sally.)
+
+**Verification:** `tests/test_v35_storm_sally_losses.py` (6 tests: capture-knights
+gate, routed-pile resolution + conservation, resolve_storm doctors stash, Sack
+Knights' Quarter counts, Storm-Doctors restoration). Full suite 525 pass. A
+combat sweep across all scenarios drove 57 live Storms with 0 invariant breaks
+(no negative forces/routed, VP in [0, 17.5]) and confirmed routed units no
+longer linger.
+
+With this, all AoW Events are numerically verified and Battle/Storm/Sally all
+perform the 4.4.4 Loss rolls. No known AoW or combat-loss gaps remain open.

@@ -2489,6 +2489,25 @@ def _finalize_approach(state, locale_name, approaching_lord, defender_side) -> d
     }
 
 
+def _roll_routed_losses(state, specs, capture_knights: bool = True) -> dict:
+    """SMOKE-Inferno-081: roll the 4.4.4 Loss rolls for a set of Lords' Routed
+    units. `specs` is a list of (lord_id, harsh_recovery). Builds a fresh RNG
+    from the current state meta so it composes after a combat resolver that
+    already advanced rng_advance. Returns {lord_id: loss_result}."""
+    from .battle import loss_roll_for_routed
+    from .rng import HarnessRNG
+    rng = HarnessRNG(state["meta"]["rng_seed"], advance=state["meta"].get("rng_advance", 0))
+    before = rng.advance_count
+    results: dict[str, dict] = {}
+    for lid, harsh in specs:
+        if lid in state["lords"] and state["lords"][lid].get("routed_units"):
+            results[lid] = loss_roll_for_routed(
+                state, lid, harsh_recovery=harsh, rng_caller=rng.roll,
+                capture_knights=capture_knights)
+    state["meta"]["rng_advance"] = state["meta"].get("rng_advance", 0) + (rng.advance_count - before)
+    return results
+
+
 _DOCTORS_RESTORE_PRIORITY = ["Ritter", "Cavalieri", "Armigieri", "Men-at-Arms",
                              "Berrovieri", "Light Horse", "Militia", "Villici"]
 
@@ -2802,11 +2821,24 @@ def _h_cmd_storm(state, side, args, rng) -> dict[str, Any]:
         active_id=lid, locale_name=locale_name,
         scripted_decisions=args.get("scripted_decisions"),
     )
+    # SMOKE-Inferno-081: 4.4.4 Loss rolls for Routed units. The Attacker is
+    # "Attacking in Storm" -> Harsh Recovery; Storm Knights' Quarter happens
+    # ONLY on a Sack (handled by _apply_sack) and Attackers are never Captured,
+    # so per-unit captures are disabled here (failed Knights are Lost).
     if result["outcome"] == "sack":
         _apply_sack(state, locale_name, side, result, rng)
+        # Inside losers are removed by the Sack; only the Attacker's own Routed
+        # units remain to roll (Harsh).
+        loss_results = _roll_routed_losses(state, [(lid, True)], capture_knights=False)
     elif result["outcome"] == "attacker_loss":
         # Per 4.5.2: Attackers neither Retreat nor give Spoils. Siege markers stay.
-        pass
+        # No Sack -> no Knights' Quarter. Attacker Harsh, Defenders Standard.
+        specs = [(lid, True)] + [(d, False) for d in defenders]
+        loss_results = _roll_routed_losses(state, specs, capture_knights=False)
+    else:
+        loss_results = {}
+    # SMOKE-Inferno-080: Doctors restoration now also fires in Storm.
+    _apply_doctors_restoration(state, result.get("doctors", []), loss_results)
     # Card ends (4.4.6)
     return _finish_card_with({
         "storm_result": result,
@@ -2893,6 +2925,27 @@ def _apply_sack(state, locale_name, side, storm_result, rng):
     ruins_side = "guelph" if loc["allegiance"] == "ghibelline" else "ghibelline"
     state["vp"][ruins_side] = min(state["vp"].get(ruins_side, 0) + 0.5, 17.5)
 
+    # SMOKE-Inferno-081: Knights' Quarter (Sec.13). BEFORE removing the inside
+    # losers, all their Cavalieri and Ritter PLUS the Garrison's Cavalieri
+    # (# = Stronghold Size) are Captured to the losing (owner) side's Captured
+    # Knights box for Ransom (4.9.2). Attackers in Storm are never Captured.
+    kq = state.setdefault("captured_knights", {}).setdefault(enemy, {})
+    captured_kq: dict[str, int] = {}
+    for ilid in inside_losers:
+        ilord = state["lords"][ilid]
+        for pool_key in ("forces", "routed_units"):
+            pool = ilord.get(pool_key, {})
+            for u in ("Cavalieri", "Ritter"):
+                c = pool.get(u, 0)
+                if c > 0:
+                    kq[u] = kq.get(u, 0) + c
+                    captured_kq[u] = captured_kq.get(u, 0) + c
+                    pool.pop(u, None)
+    if size > 0:
+        kq["Cavalieri"] = kq.get("Cavalieri", 0) + size
+        captured_kq["Cavalieri"] = captured_kq.get("Cavalieri", 0) + size
+    spoils_log["knights_quarter_captured"] = captured_kq
+
     # Remove the removed Lords inside per 4.4.5 (Battle&Storm Sec.13 "REMOVE
     # LORDS: as if Disbanding Beyond Service, incl. Revolt and Treachery").
     storm_removed = [rl for rl in storm_result.get("removed_lords", [])
@@ -2949,6 +3002,13 @@ def _h_cmd_sally(state, side, args, rng) -> dict[str, Any]:
     sally_removed = [rl for rl in result["removed_lords"] if rl in state["lords"]]
     for removed_lid in sally_removed:
         _disband_beyond_service_limit(state, removed_lid)
+    # SMOKE-Inferno-081: 4.4.4 Loss rolls for surviving participants' Routed
+    # units. Sally uses Battle procedure (Battle&Storm 2.3), so Knights' Quarter
+    # applies (capture_knights=True) and recovery is Standard — neither side
+    # "Retreats without Conceding" in a Sally (the Sallying Lord returns inside;
+    # the Besiegers hold their ground), so Harsh Recovery does not apply.
+    _roll_routed_losses(state, [(p, False) for p in [lid] + besiegers],
+                        capture_knights=True)
     # 4.4.5 Revolt & Treachery for Lords removed in this Sally.
     _trigger_disband_revolt_and_treachery(state, sally_removed, rng, context="sally")
     return _finish_card_with({"sally_result": result}, state, side,
