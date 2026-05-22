@@ -1371,3 +1371,25 @@ turn 10 on.
 
 **Verification:** `tests/test_v38_caps_battle_cta.py` (11 tests). Full suite 567
 pass.
+
+## v3.9 — 20-round aggressive smoke campaign (no engine defects)
+
+Ran 20 distinct probes across all six scenarios: (R1) invariants under random
+play, (R2) exhaustive enumerator/handler round-trip, (R3) replay determinism,
+(R4) combat-heavy (49 live Storms), (R5) all-capabilities injection, (R6) VP
+half-step conservation, (R7) state-schema validation every step, (R8) multi-turn
+progression, (R9) biased greedy policies (ravage/tax/treachery/muster/supply),
+(R10) AoW card conservation, (R11) routed-pile runaway guard, (R12) captured-
+knights shape, (R13) calendar cylinder/service consistency, (R14) atomicity
+(rejected dispatch must not mutate), (R15) no-deadlock, (R16) end-campaign
+substep integrity, (R17) RNG-advance monotonicity, (R18) JSON round-trip,
+(R19) Hidden Mats option, (R20) Advanced Vassal Service option.
+
+Result: **no engine defects.** The only flag (R10, Scenario F) was a HARNESS
+counting artifact — the probe's card multiset omitted `state['active_events']`,
+where a card drawn as a This-Campaign/This-Levy Event lives until `end_reset`
+returns it to the discard. Re-running with `active_events` counted showed exact
+conservation at every step (0 drift across 6 scenarios x 6 seeds). Locked with
+`tests/test_v39_conservation.py` (asserts the exact per-side total of 26 holds
+every step, counting all pools including active_events — catching both loss and
+duplication). Full suite 573 pass.
