@@ -1040,9 +1040,9 @@ def F26_event(state, side, args, rng):
 register_capability("F1", {"supply_max_from_seat": 4, "supply_while_besieged_at_own_seat": True,
                           "applies_to_side": "guelph"})
 register_capability("F2", {"siege_extra_marker": 1, "this_lord": True})
-register_capability("F3", {"storm_walls_minus": 1, "this_lord": True})  # Siege Towers
-register_capability("F4", {"siege_extra_marker": 1, "this_lord": True})  # Trebuchets
-register_capability("F5", {"siege_walls_minus_1_storm": True, "this_lord": True})  # War Engineers
+register_capability("F3", {"siege_towers_strike_first": True, "this_lord": True})  # Siege Towers: Storm Attacker R2+ strikes first (name-driven; SMOKE-085)
+register_capability("F4", {"trebuchets_walls_minus": True, "this_lord": True})  # Trebuchets: Walls/Siegeworks -1 at 3-4 Siege (name-driven; SMOKE-085)
+register_capability("F5", {"war_engineers": True, "this_lord": True})  # War Engineers: any-size Siege + reduce-to-1 (name-driven; SMOKE-085)
 register_capability("F6", {"hills": True, "applies_to_side": "guelph"})  # Hills Capability (battle modifier — flagged)
 register_capability("F7", {"greek_fire": True, "this_lord": True})  # flagged
 register_capability("F8", {"crossbow_for_units": ["Men-at-Arms"], "this_lord": True})  # Balestre Grosse
@@ -1674,9 +1674,9 @@ def S26_event(state, side, args, rng):
 register_capability("S1", {"supply_max_from_seat": 4, "supply_while_besieged_at_own_seat": True,
                           "applies_to_side": "ghibelline"})
 register_capability("S2", {"siege_extra_marker": 1, "this_lord": True})
-register_capability("S3", {"storm_walls_minus": 1, "this_lord": True})
-register_capability("S4", {"siege_extra_marker": 1, "this_lord": True})
-register_capability("S5", {"siege_walls_minus_1_storm": True, "this_lord": True})
+register_capability("S3", {"siege_towers_strike_first": True, "this_lord": True})  # SMOKE-085
+register_capability("S4", {"trebuchets_walls_minus": True, "this_lord": True})  # SMOKE-085
+register_capability("S5", {"war_engineers": True, "this_lord": True})  # SMOKE-085
 register_capability("S6", {"feditori": True, "this_lord": True})  # extra Cavalieri strike Battle
 register_capability("S7", {"luceria": True, "this_lord": True})    # extra Militia archery
 register_capability("S8", {"crossbow_for_units": ["Men-at-Arms"], "this_lord": True})

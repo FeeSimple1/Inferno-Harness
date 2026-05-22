@@ -142,3 +142,13 @@ Feed/Grow/Repair/Waste/Reset, Scoring 5.x (incl. Scenario E doubling / C +3),
 Forage/Supply/Tax/Ravage, Sail, and Pursuit (= Concede halving). FIXED two
 Ransom (4.9.2) defects: recovery over-count (SMOKE-083) and Languish double
 penalty (SMOKE-084). See SMOKE_TEST_FINDINGS.md v3.6.
+
+
+## F. Capabilities / Battle / Call-to-Arms audit (v3.8)
+Numeric microscope. CONFORMANT: all combat Capability strike numerics (Feditori
+4/3, Army Reserve R3+, Luceria x1.5 cap 3, Arcieri, Balestrieri, Balestre
+Grosse) and siege/storm Capabilities (Guastatori +2, War Engineers, Trebuchets,
+Siege Towers — all name-driven); 6-step Battle initiative; Retreat service-shift
+die; CtA triggers + Comune-without-rolling + Allies. FIXED: capability hook
+mislabel / latent walls bug (SMOKE-085) and missing Scenario D Escalation CtA
+rule (SMOKE-086). See SMOKE_TEST_FINDINGS.md v3.8.

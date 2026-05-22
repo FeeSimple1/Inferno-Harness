@@ -1319,3 +1319,55 @@ the split).
 recovery half-of-total even/odd, Languish default-all-Revolt + split, Repair
 Castle exclusion, Scenario E doubling, Scenario C +3, Ravage Berrovieri
 doubling). Full suite 533 pass.
+
+## v3.8 — Audit: 52 AoW Capabilities, core Battle mechanics, Call to Arms
+
+Numeric microscope over the last three structural-only subsystems. Most
+conformant; two defects.
+
+### SMOKE-Inferno-085 — Capability hooks mislabeled (latent walls bug)
+
+The combat strike-modifier Capabilities are all correct by NAME (verified:
+Feditori +1/Cavalieri cap 4 Guelph / 3 Ghibelline, Rounds 1-2 Battle only;
+Army Reserve +1/Cavalieri Round 3+ for eligible Lords; Luceria Militia x1.5 cap
+3; Arcieri x1; Balestrieri Armigieri x1 cap 3; Balestre Grosse Men-at-Arms x0.5
+Storm). The siege/storm Capabilities also resolve by NAME (Guastatori +2 Siege,
+War Engineers any-size + reduce-to-1, Trebuchets Walls/Siegeworks -1 at 3-4
+Siege, Siege Towers Storm-Attacker R2+ strikes first). BUT the `register_
+capability` HOOK dicts for F3/S3, F4/S4, F5/S5 carried the WRONG effect keys:
+F3/S3 Siege Towers registered `storm_walls_minus` (Siege Towers does not reduce
+Walls), F4/S4 Trebuchets registered `siege_extra_marker`, F5/S5 War Engineers
+registered `siege_walls_minus_1_storm`. `siege_extra_marker` /
+`siege_walls_minus_1_storm` are never consumed (dead), but `storm_walls_minus`
+IS consumed in `resolve_storm` via `active_capabilities_for` — so if a Siege
+Towers (F3/S3) Capability ever entered `capabilities_in_play` (e.g. injected
+side-wide), it would spuriously reduce the defender's Walls by 1. Inert in
+normal play (Siege Towers is a `this_lord` cap living on a Lord mat, not in
+`capabilities_in_play`), but a real latent defect. **Fixed:** the F3/F4/F5 (+S)
+hooks now carry descriptive, non-consumed keys; the named lookups (which drive
+the actual effects) are unchanged.
+
+### SMOKE-Inferno-086 — Scenario D 'Escalation' CtA rule missing
+
+Call to Arms triggers (VP behind by >=4, drew a War Event, F23 Treasurers + 2
+Coin) and the Scenario A/E (no CtA) and C (Ghibelline first-Levy only)
+exclusions all matched. But Scenario D ("Arbia Colorata in Rosso") has an
+Escalation rule — "In the first Levy, EITHER side may trigger Call to Arms as if
+it had drawn a War Event; standard rules thereafter" — that `_cta_trigger_met`
+did not implement, so a Scenario D player could not declare a first-Levy CtA
+unless a normal trigger happened to be met. **Fixed:** Scenario D, turn 9 (its
+starting Levy box) now makes either side eligible; standard triggers apply from
+turn 10 on.
+
+### Verified CONFORMANT (no change)
+
+- Battle Strike Initiative — exact 6-step order (Def Archery, Atk Archery, Def
+  Horse Melee, Atk Horse Melee, Def Foot Melee, Atk Foot Melee).
+- Retreat Service-shift die (4.4.3): 1-2 -> 1 box, 3-4 -> 2, 5-6 -> 3; Concede +
+  retained Carroccio -> exactly 1.
+- CtA Comune (3.5.3): Sestieri/Terzi Muster WITHOUT rolling (default Carroccio +
+  one Sestiere/Terzo minimum); Allies (3.5.4) auto-Muster (no Fealty) / extra
+  Muster paths.
+
+**Verification:** `tests/test_v38_caps_battle_cta.py` (11 tests). Full suite 567
+pass.

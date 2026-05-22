@@ -3986,6 +3986,11 @@ def _cta_trigger_met(state, side: str) -> tuple[bool, str]:
             return False, "scenario_c_maremma_war_restriction"
         # Ghib first-Levy: auto-eligible
         return True, "maremma_war_ghib_only"
+    # SMOKE-Inferno-086: Scenario D 'Escalation' — in the FIRST Levy (turn 9,
+    # the scenario's starting box) EITHER side may trigger CtA as if it drew a
+    # War Event; standard 3.5 triggers apply thereafter (Call to Arms ref D).
+    if scenario == "D" and state["meta"].get("turn") == 9:
+        return True, "escalation_first_levy"
     own_vp = state["vp"].get(side, 0)
     other = "ghibelline" if side == "guelph" else "guelph"
     other_vp = state["vp"].get(other, 0)
