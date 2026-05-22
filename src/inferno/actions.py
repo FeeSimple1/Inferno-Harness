@@ -3631,8 +3631,19 @@ def _h_end_ransom(state, side, args, rng) -> dict[str, Any]:
                        if l["side"] == enemy and l["status"] == "mustered"]
         if enemy_lords:
             enemy_lords[0]["assets"]["Coin"] = enemy_lords[0]["assets"].get("Coin", 0) + cost
-        # Recover half (rounded UP) units, distribute to own Mustered
-        recover_half = {u: (c + 1) // 2 for u, c in captured.items()}
+        # SMOKE-Inferno-083: recover HALF (rounded UP) of the TOTAL captured
+        # units (4.9.2 "selects HALF (rounded UP) of those units"), owner's
+        # choice of which — NOT a per-unit-type ceil (which over-recovered, e.g.
+        # {Cav:1, Rit:1} -> 2 instead of 1). Restore most valuable first.
+        to_recover = (total_captured + 1) // 2
+        recover_half: dict[str, int] = {}
+        for u in _DOCTORS_RESTORE_PRIORITY + [k for k in captured if k not in _DOCTORS_RESTORE_PRIORITY]:
+            avail = captured.get(u, 0)
+            while to_recover > 0 and recover_half.get(u, 0) < avail:
+                recover_half[u] = recover_half.get(u, 0) + 1
+                to_recover -= 1
+            if to_recover <= 0:
+                break
         recovered_units = sum(recover_half.values())
         # Distribute
         targets_ids = args.get("distribute_to") or [
@@ -3659,14 +3670,20 @@ def _h_end_ransom(state, side, args, rng) -> dict[str, Any]:
             "rule_citation": "4.9.2",
         }
     else:
-        # LANGUISH: enemy rolls Revolt OR adds Treachery (their choice) per 6 captured
-        n_rolls = (total_captured + 5) // 6
+        # LANGUISH (4.9.2): per 6 captured (rounded up) the captor gets ONE of
+        # either a Revolt roll OR a Treachery card — NOT both. SMOKE-Inferno-084:
+        # the prior code did BOTH n_events Revolt rolls AND n_events Treachery
+        # adds (a double penalty). The captor chooses the split; default is all
+        # Revolt rolls ("Revolt rolls in lieu of Treachery are mandatory").
+        n_events = (total_captured + 5) // 6
+        n_treachery = max(0, min(int(args.get("languish_treachery", 0)), n_events))
+        n_revolt = n_events - n_treachery
         enemy = "ghibelline" if side == "guelph" else "guelph"
-        # 1.4.2 rolls: `side`'s captives Languish -> `enemy` benefits/rolls.
-        _revolt.trigger_revolts(state, losing_side=side, count=n_rolls,
-                                rng=rng, context=f"languish_{side}")
-        results = []
-        for _ in range(n_rolls):
+        if n_revolt:
+            # 1.4.2 rolls: `side`'s captives Languish -> `enemy` benefits/rolls.
+            _revolt.trigger_revolts(state, losing_side=side, count=n_revolt,
+                                    rng=rng, context=f"languish_{side}")
+        for _ in range(n_treachery):
             _add_treachery_to_enemy(state, "<languish>", enemy)
         # Captured units removed (Lost)
         state["captured_knights"][side] = {}
@@ -3674,7 +3691,9 @@ def _h_end_ransom(state, side, args, rng) -> dict[str, Any]:
             state["meta"]["end_substep_done"] = state["meta"].get("end_substep_done", []) + ["ransom"]
         advance_campaign_side_or_step(state)
         return {
-            "state_changes": {"languished": True, "rolls": n_rolls, "removed_units": total_captured},
+            "state_changes": {"languished": True, "events": n_events,
+                              "revolt_rolls": n_revolt, "treachery_added": n_treachery,
+                              "removed_units": total_captured},
             "rule_citation": "4.9.2",
         }
 

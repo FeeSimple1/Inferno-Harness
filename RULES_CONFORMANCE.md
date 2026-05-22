@@ -134,3 +134,11 @@ procedural numbers are **fully conformant** to the in-repo references. One
 procedural gap found and fixed (CONF-001). Deepest combat micro-interactions and
 some per-card Event numerics are implemented + tested but not exhaustively
 re-derived — flagged above as the residual audit surface.
+
+
+## E. Subsystem deep-audit (v3.6) — End-Campaign 4.9, economic Commands, Naval, Pursuit
+Numeric microscope over the previously structural-only subsystems. CONFORMANT:
+Feed/Grow/Repair/Waste/Reset, Scoring 5.x (incl. Scenario E doubling / C +3),
+Forage/Supply/Tax/Ravage, Sail, and Pursuit (= Concede halving). FIXED two
+Ransom (4.9.2) defects: recovery over-count (SMOKE-083) and Languish double
+penalty (SMOKE-084). See SMOKE_TEST_FINDINGS.md v3.6.

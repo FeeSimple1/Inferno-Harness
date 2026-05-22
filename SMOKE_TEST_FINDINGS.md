@@ -1266,3 +1266,56 @@ longer linger.
 
 With this, all AoW Events are numerically verified and Battle/Storm/Sally all
 perform the 4.4.4 Loss rolls. No known AoW or combat-loss gaps remain open.
+
+## v3.6 — Subsystem audit: End-Campaign 4.9, economic Commands, Naval, Pursuit
+
+Put the four subsystems that had only structural/smoke coverage under a numeric
+microscope (rules extracted verbatim from the in-repo references, mapped to each
+handler). Most were already conformant; two real defects, both in Ransom (4.9.2).
+
+### SMOKE-Inferno-083 — Ransom recovered too many units
+
+4.9.2: "the paying side selects HALF (rounded UP) of those units." The handler
+recovered `sum(ceil(count/2))` PER UNIT TYPE, which over-recovers — e.g. one
+Cavalieri + one Ritter (total 2) recovered 2 instead of ceil(2/2)=1. **Fixed:**
+recover ceil(TOTAL/2) units, most valuable first.
+
+### SMOKE-Inferno-084 — Languish applied a double penalty
+
+4.9.2: on Languish the captor gets, per 6 unransomed prisoners (round up), ONE
+of either a Revolt roll OR a Treachery card (captor's choice; Revolt mandatory
+if chosen). The handler did BOTH `n` Revolt rolls AND `n` Treachery adds — twice
+the intended penalty. **Fixed:** `n_events = ceil(captured/6)` split between
+Revolt rolls and Treachery (default all Revolt; `args.languish_treachery` chooses
+the split).
+
+### Verified CONFORMANT (no change needed)
+
+- **End-Campaign**: Feed (4.8.1 1-6/7-12/13+ → 1/2/3, underfed Service -1),
+  Grow (4.9.1 reduce enemy Ravage to ceil(N/2) on Calendar boxes 2/5/8/11/14;
+  Scenario B Turn-5 skip), Repair (4.9.4 Errata — remove 1 Siege from Town/City
+  with 3-4, Castles excluded), Waste (4.9.5 discard 1 from each Lord with >1 of a
+  type), Reset (4.9.6).
+- **Scoring/Victory (5.x)**: 1/Allegiance, 1/2 Ruins, 1/2 Ravaged, 2 Carroccio;
+  Scenario E doubles Guelph VP except Ravaged; Scenario C +3 Ghibelline with S22
+  Manfredi in play; 5.2 instant win on no Mustered Lords; 5.3 tie = draw.
+- **Economic Commands**: Forage (4.7.1 friendly-stronghold/Summer auto, Spring/
+  Autumn die 1-3, Winter blocked outside friendly, Besieged>=Size block, cap 16),
+  Supply (4.6 per-Seat = Size / Outpost 1 / Pisa-Ship-at-Port; >=1 Cart per
+  Provender per Way; Stores & Well Water = 4), Tax (4.7.4 +1 Coin / Podesta +2,
+  own Seat Unbesieged, entire card; S23 block; F25/S25 Reinforced-Walls Tax
+  alternative), Ravage (4.7.2 Castle +1 Prov / Town-City +1 Prov +1 Loot;
+  Berrovieri/Gualdana doubling; Masnadieri 0-action no-Loot; 1/2 action cost;
+  Ravaged marker opposite printed colour +1/2 VP).
+- **Naval (Sail 4.7.3)**: Pisa Podesta only, non-Winter, Port-to-Port; capacity
+  1 Ship/Horse + 1 Ship/Provender + 2 Ships/Loot; no Sail into Unbesieged Enemy
+  Lord; Besiege on Sail to an Enemy Stronghold.
+- **Pursuit**: in these rules "Pursuit" is the Concede mechanic, not a separate
+  action — the Conceding side halves its Hits (round up per Strike step),
+  correctly applied in `_resolve_step`. The "pursues Siege" enumerator label is
+  flavour text for continuing a normal `cmd_siege`, not a phantom mechanic.
+
+**Verification:** `tests/test_v36_endcampaign_audit.py` (8 tests: Ransom
+recovery half-of-total even/odd, Languish default-all-Revolt + split, Repair
+Castle exclusion, Scenario E doubling, Scenario C +3, Ravage Berrovieri
+doubling). Full suite 533 pass.
