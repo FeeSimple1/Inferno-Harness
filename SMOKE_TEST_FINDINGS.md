@@ -1561,3 +1561,29 @@ and hunt bugs.
   invariant battery + structured anomaly report) and `CHATGPT_SETUP.md`.
 
 Full suite 596 pass.
+
+## v4.5 — Garrison-only Storm defect (SMOKE-097, found via ChatGPT self-play)
+
+A ChatGPT self-play of Scenario F (seed 11) Stormed the city of Siena while it
+was held by its GARRISON alone (no Lord inside) and got an automatic
+`attacker_loss` with an EMPTY hit_log and zero rolls — twice. Its driver's
+self-checks reported "0 anomalies" because the result was a legal-looking loss;
+no invariant watches for "attacker dealt zero hits."
+
+Root cause in `_resolve_storm_step`: the Garrison only struck and only absorbed
+Hits when a defending LORD occupied a slot. With a Lord-less defence, the
+attacker's Hits were discarded (no target Lord) and the Garrison never struck —
+so the attacker could neither damage nor be damaged, and a Storm against a
+Garrison-only Stronghold was a total no-op the attacker always lost. Per 4.5.2 /
+Siege Sec. 6 (and the rulebook Storm example: "Garrison = 1 Men-at-Arms + 1
+Militia + 1 Cavalieri … On Defender total Rout: SACK"), a Garrison-only
+Stronghold fights and can be Sacked.
+
+Fix: the Garrison now strikes the Attacker even with no defending Lord (computed
+once, aimed at the Attacker's Front slot — also fixing a latent multi-Lord
+double-count), and the Garrison absorbs the Attacker's Hits (behind Walls) even
+with no Lord in the slot. Verified: a 16-unit Storm now resolves real combat
+(26 hits, 75 rolls, both sides take losses); an overwhelming attacker can SACK a
+garrison-only Castle; an undermanned attacker still loses (no false Sack).
+
+**Verification:** `tests/test_v44_garrison_storm.py` (3 tests). Full suite 599 pass.

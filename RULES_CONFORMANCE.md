@@ -194,3 +194,10 @@ work. Negative enumerator tests added for the Muster-Seat gate. Full suite 591 p
   attacker in the Approach window; Avoid no longer offered to an ambush-pinned
   Lord. Remaining: menu enumeration of battle/besiege-window Holds (guarded +
   classified, safe follow-up). Full suite 596 pass.
+
+## v4.5 — Garrison-only Storm (SMOKE-097)
+FIXED: a Storm against a Stronghold held by its Garrison alone (no Lord inside)
+was a no-op the attacker auto-lost (empty hit_log). `_resolve_storm_step` now
+engages the Garrison's strikes and Hit-absorption without requiring a defending
+Lord (4.5.2 / Siege Sec. 6), so such Strongholds fight and are Sackable. Found
+by a ChatGPT Scenario-F self-play. Full suite 599 pass.

@@ -1408,15 +1408,22 @@ def _resolve_storm_step(state, step, positions, reserve, conceded,
         h = _strike_hits_storm(lord_units, step)
         h += _capability_strike_modifier(state, striker_id, lord_units, step, 1, "storm")
         cb = _crossbow_archery_hits(state, striker_id, lord_units, step, "storm")
-        # SMOKE-Inferno-075: the Defender's Garrison strikes separately (Melee +
-        # Archery); its Men-at-Arms / Armigieri Archery are Crossbows.
-        if striking_side == "defender":
-            garr = state["storm_garrison"].get(locale_name, {})
-            h += _garrison_strike(garr, step)
-            if step.endswith("archery"):
-                cb += garr.get("Men-at-Arms", 0) * 0.5 + garr.get("Armigieri", 0) * 1.0
         per_target_hits[slot] = per_target_hits.get(slot, 0) + h
         per_target_crossbow[slot] = per_target_crossbow.get(slot, 0) + cb
+    # SMOKE-Inferno-097: the Defender's Garrison strikes EVEN WITH NO defending
+    # Lord present (a Stronghold held by Garrison alone still fights, 4.5.2 / Siege
+    # Sec. 6). Compute it once, aimed at the Attacker's Front slot, rather than
+    # only when a defender Lord occupies a slot (the old code dropped the Garrison
+    # entirely for a Lord-less defence). Men-at-Arms/Armigieri Archery = Crossbows.
+    if striking_side == "defender":
+        garr = state["storm_garrison"].get(locale_name, {})
+        g = _garrison_strike(garr, step)
+        if g or (step.endswith("archery") and (garr.get("Men-at-Arms", 0) or garr.get("Armigieri", 0))):
+            tslot = next((sl for sl in SLOTS if positions["attacker"][sl] is not None), "center")
+            per_target_hits[tslot] = per_target_hits.get(tslot, 0) + g
+            if step.endswith("archery"):
+                per_target_crossbow[tslot] = per_target_crossbow.get(tslot, 0) + (
+                    garr.get("Men-at-Arms", 0) * 0.5 + garr.get("Armigieri", 0) * 1.0)
     if conceded == striking_side:
         per_target_hits = {k: v / 2 for k, v in per_target_hits.items()}
         per_target_crossbow = {k: v / 2 for k, v in per_target_crossbow.items()}
@@ -1427,7 +1434,11 @@ def _resolve_storm_step(state, step, positions, reserve, conceded,
         if n_hits <= 0:
             continue
         target_id = positions[target_side][slot]
-        if target_id is None:
+        # SMOKE-Inferno-097: a defender Garrison absorbs Hits even with NO
+        # defending Lord in the slot. Only skip when there is neither a Lord nor
+        # (defender side) a Garrison to take the Hits.
+        if target_id is None and not (target_side == "defender"
+                                      and locale_name in state["storm_garrison"]):
             continue
         cb_n = min(per_target_crossbow.get(slot, 0), n_hits)
         # Apply Walls/Siegeworks roll before unit-Protection.
@@ -1442,7 +1453,7 @@ def _resolve_storm_step(state, step, positions, reserve, conceded,
             n_hits = _absorb_garrison_hits(state, locale_name, absorbed, rng_roll, hit_log,
                                            crossbow_hits=int(cb_n))
             cb_n = max(0, cb_n - (absorbed - n_hits))  # crossbows used on garrison
-        if n_hits > 0:
+        if n_hits > 0 and target_id is not None:
             _absorb_hits(state, target_id, int(n_hits), rng_roll, hit_log, routed_per_lord,
                          crossbow_hits=int(cb_n))
             if _all_units_routed(state["lords"][target_id]):
