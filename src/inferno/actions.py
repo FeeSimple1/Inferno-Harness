@@ -4370,6 +4370,12 @@ def _h_cta_commander_arms(state, side, args, rng) -> dict[str, Any]:
             loc = state["locales"][LEADING_CITY[side]]
             if commander_id not in loc["lords_present"]:
                 loc["lords_present"].append(commander_id)
+            # SMOKE-Inferno-091: the Commander may Muster into a BESIEGED Leading
+            # City (3.5.2 / Urban Army, as in the CtA worked example) -- he comes
+            # up INSIDE the Stronghold, not in the open beside the besiegers.
+            _, _place_inside, _ = sd.muster_seat_status(state, commander, LEADING_CITY[side])
+            if _place_inside:
+                commander.setdefault("flags", {})["in_stronghold"] = True
             log["mustered_at"] = LEADING_CITY[side]
     _advance_cta(state)
     return {"state_changes": log, "rule_citation": "3.5.2"}
@@ -4405,6 +4411,11 @@ def _h_cta_comune_setup(state, side, args, rng) -> dict[str, Any]:
     comune["status"] = "mustered"
     comune["location"] = LEADING_CITY[side]
     comune["assets"] = copy.deepcopy(base.get("assets", {}))
+    # SMOKE-Inferno-091: the Comune stacks UNDER the Commander cylinder; if the
+    # Commander is Besieged inside the Leading City, the Comune is inside too
+    # (it must not read as an in-the-open Lord co-located with the besiegers).
+    if commander.get("flags", {}).get("in_stronghold"):
+        comune.setdefault("flags", {})["in_stronghold"] = True
     # Wire into Locale
     loc = state["locales"][LEADING_CITY[side]]
     if comune_id not in loc["lords_present"]:

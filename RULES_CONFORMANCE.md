@@ -167,3 +167,12 @@ Stronghold" state, plus the missing invariant that had hidden them:
   Enemy-Stronghold / no-Sail constraints; no legal target ⇒ Removed (4.4.5).
 - SMOKE-Inferno-089: `assert_no_colocated_enemies` added to `check_all_invariants`.
 See SMOKE_TEST_FINDINGS.md v4.0. Full suite 582 pass.
+
+## v4.1 — Door C completeness (Commander-to-Arms / Comune)
+FIXED two further on-board placement paths missed in v4.0 (SMOKE-Inferno-091):
+`_h_cta_commander_arms` now places a Commander Mustered into a Besieged Leading
+City INSIDE the Stronghold (3.5.2 Urban Army) via the shared
+`muster_seat_status` gate; the Comune (`_h_cta_comune_setup`) inherits the
+Commander's besieged-inside flag (3.5.3). Known cold-path follow-up: Sally
+besieger-loss relocation (4.5.3/11.2), not reachable via gameplay (no surfaced
+Sally Concede). Full suite 585 pass.

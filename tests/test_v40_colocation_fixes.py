@@ -147,3 +147,47 @@ class TestCoLocationInvariant:
         _place(s, "siena", loc, inside=True)   # besieged inside -> legal
         s["pending"] = []
         assert_no_colocated_enemies(s)
+
+
+# ---- SMOKE-Inferno-091: Commander-to-Arms / Comune into a Besieged Leading City ----
+class TestCommanderArmsPlacement:
+    def _besiege_leading_city(self, side="guelph"):
+        from inferno.actions import COMMANDER_LORD, LEADING_CITY
+        s = load_scenario("B", seed=1)
+        cmd = COMMANDER_LORD[side]; city = LEADING_CITY[side]
+        s["lords"][cmd]["status"] = "on_calendar"
+        s["locales"][city]["siege"] = [{"side": "ghibelline", "color": "purple", "count": 1}]
+        _place(s, "siena", city, inside=False)   # enemy besieger outside
+        s["meta"]["cta_substep"] = "commander_arms"
+        return s, cmd, city
+
+    def test_commander_mustered_inside_besieged_leading_city(self):
+        from inferno.actions import _h_cta_commander_arms
+        s, cmd, city = self._besiege_leading_city()
+        _h_cta_commander_arms(s, "guelph", {"mode": "muster_only"}, HarnessRNG(1))
+        assert s["lords"][cmd]["status"] == "mustered"
+        assert s["lords"][cmd]["location"] == city
+        assert s["lords"][cmd]["flags"].get("in_stronghold") is True
+        assert_no_colocated_enemies(s)
+
+    def test_commander_mustered_outside_when_city_free(self):
+        from inferno.actions import _h_cta_commander_arms, COMMANDER_LORD, LEADING_CITY
+        s = load_scenario("B", seed=1)
+        cmd = COMMANDER_LORD["guelph"]; city = LEADING_CITY["guelph"]
+        s["lords"][cmd]["status"] = "on_calendar"
+        s["meta"]["cta_substep"] = "commander_arms"
+        _h_cta_commander_arms(s, "guelph", {"mode": "muster_only"}, HarnessRNG(1))
+        # No enemy at the Leading City -> ordinary (open) placement, not flagged inside.
+        assert not s["lords"][cmd]["flags"].get("in_stronghold")
+        assert_no_colocated_enemies(s)
+
+    def test_comune_inherits_besieged_inside_flag(self):
+        from inferno.actions import _h_cta_commander_arms, _h_cta_comune_setup, COMUNE_LORD
+        s, cmd, city = self._besiege_leading_city()
+        _h_cta_commander_arms(s, "guelph", {"mode": "muster_only"}, HarnessRNG(1))
+        s["meta"]["cta_substep"] = "comune"
+        _h_cta_comune_setup(s, "guelph", {"muster_special_vassals": ["Carroccio", "Sixth of Porta San Piero"]}, HarnessRNG(1))
+        comune = s["lords"][COMUNE_LORD["guelph"]]
+        if comune["status"] == "mustered":
+            assert comune["flags"].get("in_stronghold") is True
+        assert_no_colocated_enemies(s)

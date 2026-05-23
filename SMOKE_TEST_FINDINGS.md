@@ -1436,3 +1436,32 @@ the origin; no Sail), threading the Approach breadcrumb (March → meta →
 post-Battle); no legal target → Removed (4.4.5). Post-fix fuzz: 0/1500 (0.0%).
 
 **Verification:** `tests/test_v40_colocation_fixes.py` (9 tests). Full suite 582 pass.
+
+## v4.1 — Door C completeness: Commander-to-Arms / Comune placement (SMOKE-091)
+
+Prompted by the Nevsky-Harness advisory ("centralize one eligibility gate; every
+placement path must call it"). v4.0 routed `levy_muster_lord` and `cta_allies`
+through `sd.muster_seat_status`, but TWO more on-board placement paths were
+missed:
+
+- `_h_cta_commander_arms` (3.5.2): musters the Commander into the Leading City
+  "from ANY Calendar box" — and the CtA worked example does this while the
+  Leading City is BESIEGED (Urban Army). The handler set location + lords_present
+  but never `in_stronghold`, so a Commander mustered into his besieged Leading
+  City landed in the OPEN beside the besiegers (illegal co-location, no Battle).
+  Reproduced (Scenario B, Guelph Firenze under Ghibelline Siege). Fixed: route
+  through `muster_seat_status`; set `in_stronghold=True` on the Urban-Army case.
+- `_h_cta_comune_setup` (3.5.3): the Comune stacks UNDER the Commander cylinder.
+  When the Commander is Besieged inside, the Comune must be inside too, else it
+  read as an in-the-open Lord co-located with the besiegers. Fixed: Comune
+  inherits the Commander's `in_stronghold` flag.
+
+NOT changed (documented cold-path follow-ups, not reachable through gameplay):
+- Sally besieger-loss relocation: a losing-but-surviving Besieger should Retreat
+  (4.5.3 / 11.2). Through `_h_cmd_sally` the besieger is always either the winner
+  or fully Routed→Removed (leftmost fallback never Concedes), so the
+  survive-and-retreat branch is cold — same situation Battle Retreat was in
+  before a Concede is scripted. To be revisited if/when Sally Concede is surfaced.
+
+**Verification:** `tests/test_v40_colocation_fixes.py` (12 tests; +3 for SMOKE-091).
+Full suite 585 pass.
