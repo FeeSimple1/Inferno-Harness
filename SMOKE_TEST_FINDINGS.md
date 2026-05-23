@@ -1465,3 +1465,46 @@ NOT changed (documented cold-path follow-ups, not reachable through gameplay):
 
 **Verification:** `tests/test_v40_colocation_fixes.py` (12 tests; +3 for SMOKE-091).
 Full suite 585 pass.
+
+## v4.2 — Validated action palette + enumerator/handler symmetry audit (SMOKE-092)
+
+Adopted the Nevsky-Harness recommendations (validated palette + invariants-first +
+enumerator/handler symmetry).
+
+### SMOKE-Inferno-092 — `enumerate_legal_validated`
+New agent-facing palette in `legal_moves.py`: wraps `enumerate_legal`, probes each
+concrete candidate on a `deepcopy(state)` via `dispatch`, drops any the handler
+rejects, and returns `{"moves", "dropped", "unvalidated"}`. `dropped` is a
+structured over-enumeration diagnostic. Safe because the RNG is in-state
+(`meta.rng_seed`/`rng_advance`) — probing advances only the copy's counter. For
+the interactive/agent path only (one deepcopy+dispatch per candidate); hot loops
+keep raw `enumerate_legal`.
+
+### Symmetry audit results
+- **Over-enumeration: NONE.** 1,188 validated steps across Scenarios B and F
+  probed every concrete candidate each step; `dispatch` accepted every move the
+  menu offered. Locked by a self-play regression test asserting `dropped == []`.
+- **Under-enumeration: 51/58 handlers menu-reachable.** Of the 7 not hit in a
+  random sweep, 4 are correctly gated by holding a Capability/Treachery card or a
+  Bypass/siege state (`cmd_costruttori`, `cmd_sortie`, `cmd_treachery_bribe`,
+  `cmd_war_engineers_reduce` — all have enumerator emit-sites), and `cmd_depart`
+  is intentionally surfaced as `cmd_march` for a Bypassing Lord (handler is a
+  redundant alias). TWO are genuine under-enumeration gaps (handler exists, menu
+  never offers it, alternate channel only):
+    - `play_event` — Held Events are playable only via the dedicated CLI
+      `play-event` command; `enumerate_legal` never offers them, so a pure-menu
+      agent cannot play a Held Event. Proper fix needs per-card play-timing rules
+      (to avoid introducing over-enumeration); deferred as a scoped follow-up.
+    - `cmd_play_ambush` — F1/S1 Ambush is played by the ATTACKER during the
+      defender's Approach-response window, when the active player is the defender;
+      the menu (built for the active player) never offers it. Reachable only via
+      the out-of-turn `ambush_exempt` dispatch path. Fix needs the enumerator to
+      surface attacker reactions mid-Approach; deferred as a scoped follow-up.
+
+### Negative enumerator tests (Nevsky §9)
+`tests/test_v42_palette_audit.py` asserts the MENU does not offer an illegal move
+(non-Podesta Muster onto an Enemy-besieged Seat), with a positive control for the
+Podesta Urban-Army case — guarding the v4.0/v4.1 placement fixes at the
+enumerator level, not just handler-rejection.
+
+**Verification:** `tests/test_v42_palette_audit.py` (6 tests). Full suite 591 pass.

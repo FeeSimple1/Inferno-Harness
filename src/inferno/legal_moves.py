@@ -1149,3 +1149,50 @@ def _enum_end_campaign(state, side) -> list[dict[str, Any]]:
         "description": "Reset: set aside Treachery, unstack Lieutenants, advance Calendar.",
         "rule_citation": "4.9.6",
     }]
+
+
+def enumerate_legal_validated(state: dict[str, Any]) -> dict[str, Any]:
+    """SMOKE-Inferno-092: agent-facing *validated* action palette.
+
+    Wraps `enumerate_legal` with a probe: each concrete candidate is applied to a
+    DEEP COPY of the state via `dispatch`; candidates the handler rejects are
+    dropped from the menu and recorded as structured over-enumeration diagnostics.
+    The agent therefore never sees a move the executor would reject, and every
+    drift between enumerator and handler self-reports.
+
+    Safe because the RNG lives in the state (`meta.rng_seed` + `meta.rng_advance`)
+    and rolls are a pure function of it: probing advances only the copy's counter,
+    never the real game's. Intended for the interactive/agent path, NOT hot loops
+    (one deepcopy+dispatch per candidate).
+
+    Returns {"moves": [...kept, in menu order...],
+             "dropped": [{"move", "code", "reason"}, ...],
+             "unvalidated": [...sentinel <...> entries kept as-is...]}.
+    """
+    import copy
+    from .actions import dispatch, IllegalAction
+
+    raw = enumerate_legal(state)
+    kept: list[dict[str, Any]] = []
+    dropped: list[dict[str, Any]] = []
+    unvalidated: list[dict[str, Any]] = []
+    for m in raw:
+        action_name = m.get("action", "")
+        if action_name.startswith("<"):
+            unvalidated.append(m)
+            continue
+        candidate = {k: m[k] for k in ("action", "side", "args") if k in m}
+        probe = copy.deepcopy(state)
+        try:
+            dispatch(probe, candidate)
+        except IllegalAction as e:
+            dropped.append({"move": candidate,
+                            "code": getattr(e, "code", None),
+                            "reason": str(e)})
+        except Exception as e:  # pragma: no cover - defensive
+            dropped.append({"move": candidate,
+                            "code": "EXCEPTION",
+                            "reason": f"{type(e).__name__}: {e}"})
+        else:
+            kept.append(m)
+    return {"moves": kept, "dropped": dropped, "unvalidated": unvalidated}

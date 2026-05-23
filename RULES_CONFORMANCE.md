@@ -176,3 +176,11 @@ City INSIDE the Stronghold (3.5.2 Urban Army) via the shared
 Commander's besieged-inside flag (3.5.3). Known cold-path follow-up: Sally
 besieger-loss relocation (4.5.3/11.2), not reachable via gameplay (no surfaced
 Sally Concede). Full suite 585 pass.
+
+## v4.2 — Validated palette + symmetry audit (SMOKE-092)
+Added `enumerate_legal_validated` (probe-and-filter agent palette with structured
+over-enumeration diagnostics). Audit: over-enumeration NONE (1,188 probed steps);
+51/58 handlers menu-reachable. Documented two under-enumeration gaps for a
+pure-menu agent (Held Events `play_event`; `cmd_play_ambush`), both with working
+alternate channels, deferred pending per-card-timing / mid-Approach enumeration
+work. Negative enumerator tests added for the Muster-Seat gate. Full suite 591 pass.
