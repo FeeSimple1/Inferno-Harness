@@ -249,6 +249,12 @@ def _enum_muster(state, side) -> list[dict[str, Any]]:
         for tlid, tlord in own_on_calendar.items():
             if (tlord.get("calendar_box") or 0) <= levy_box:
                 for seat in tlord.get("seats", []):
+                    # SMOKE-Inferno-087: only offer Seats where the Muster is
+                    # legal (3.4.1: not Enemy-occupied/Besieged/Ruins, unless the
+                    # Urban Army Podesta-at-Main-Seat exception applies).
+                    eligible, _inside, _why = sd.muster_seat_status(state, tlord, seat)
+                    if not eligible:
+                        continue
                     moves.append({
                         "action": "levy_muster_lord", "side": side,
                         "args": {"muster_lord_id": lid, "target_lord_id": tlid,

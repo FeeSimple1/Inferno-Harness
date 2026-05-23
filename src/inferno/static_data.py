@@ -1888,6 +1888,52 @@ def forage_besieged_block(state: dict, loc: dict, side: str) -> bool:
     return len(besiegers) >= size
 
 
+def muster_seat_status(state: dict, target_lord: dict, seat: str) -> tuple:
+    """SMOKE-Inferno-087: shared eligibility + placement predicate for Mustering
+    a Lord at a Seat (3.4.1 Fealty / 3.5.4 Allies auto-Muster).
+
+    Returns (eligible: bool, place_inside: bool, reason: str).
+
+    Rule 3.4.1: target Seat must be Friendly-ish and "not Enemy-occupied, not
+    Ruins" (Bypassed/Ravaged are OK). A Seat is treated as Enemy-occupied /
+    Besieged when an Enemy Lord is present there or an Enemy Siege marker sits on
+    it. Mustering onto such a Seat is ILLEGAL -- EXCEPT the Urban Army exception
+    (3.4): a Podesta may Muster at his Main Seat (seats[0]) even if Besieged, in
+    which case he comes up INSIDE the Stronghold as a besieged defender
+    (place_inside=True), provided Stronghold Size has room. Leaving a mustered
+    Lord in the OPEN beside Enemy besiegers (the old behaviour) produced an
+    illegal co-located-enemies board state with no Battle (4.3.5 / Siege Sec. 3).
+    """
+    loc = state["locales"].get(seat)
+    if loc is None:
+        return (False, False, f"unknown seat {seat!r}")
+    if loc.get("ruins"):
+        return (False, False, f"Seat {seat} is Ruins")
+    enemy_side = "ghibelline" if target_lord.get("side") == "guelph" else "guelph"
+    enemy_lords = [oid for oid in loc.get("lords_present", [])
+                   if state["lords"].get(oid, {}).get("side") == enemy_side
+                   and state["lords"][oid].get("status") == "mustered"]
+    enemy_siege = any(m.get("side") == enemy_side for m in (loc.get("siege") or []))
+    contested = bool(enemy_lords) or enemy_siege
+    if not contested:
+        return (True, False, "")  # ordinary Muster, placed in the open
+    # Contested Seat: only the Urban Army exception permits Mustering here.
+    seats = target_lord.get("seats") or []
+    is_main_seat = bool(seats) and seats[0] == seat
+    if target_lord.get("podesta") and is_main_seat:
+        size = STRONGHOLDS.get(loc.get("type"), {}).get("size", 0)
+        inside_count = sum(
+            1 for oid in loc.get("lords_present", [])
+            if state["lords"].get(oid, {}).get("side") == target_lord.get("side")
+            and state["lords"][oid].get("flags", {}).get("in_stronghold"))
+        if size >= 1 and inside_count < size:
+            return (True, True, "")  # Urban Army: place inside the Stronghold
+        return (False, False,
+                f"Seat {seat} Besieged and Stronghold (Size {size}) has no room inside")
+    return (False, False,
+            f"Seat {seat} is Enemy-occupied/Besieged; no Urban Army exception")
+
+
 # ============================================================================
 # CALENDAR SEASONS (per Inferno SoP "Plan size by season" + Grow rule)
 # ============================================================================

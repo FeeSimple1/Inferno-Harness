@@ -495,9 +495,13 @@ def _disband_beyond_service_limit(state, lid: str) -> None:
     placed Service-Rating boxes ahead of current Turn (may Muster again)."""
     lord = state["lords"][lid]
     # Pop from current Locale's lords_present
+    _disband_from_loc = lord.get("location")
     loc = state["locales"].get(lord.get("location") or "")
     if loc and lid in loc.get("lords_present", []):
         loc["lords_present"].remove(lid)
+    # SMOKE-Inferno-088: a disbanding besieger may free the Stronghold (4.3.5).
+    if _disband_from_loc:
+        _sweep_freed_stronghold(state, _disband_from_loc)
     # Pop Service marker (SMOKE-Inferno-070: clear from whichever box holds it).
     _place_service(state, lid, None)
     # 'This Lord' Capabilities: return to side's AoW deck.
@@ -557,9 +561,13 @@ def _disband_at_service_limit(state, lid: str, levy_box: int) -> None:
     marker Disbands; cylinder placed Service-Rating boxes right of current.
     Does NOT trigger Revolt or Treachery."""
     lord = state["lords"][lid]
+    _disband_from_loc = lord.get("location")
     loc = state["locales"].get(lord.get("location") or "")
     if loc and lid in loc.get("lords_present", []):
         loc["lords_present"].remove(lid)
+    # SMOKE-Inferno-088: a disbanding besieger may free the Stronghold (4.3.5).
+    if _disband_from_loc:
+        _sweep_freed_stronghold(state, _disband_from_loc)
     # Pop Service marker from its ACTUAL box (SMOKE-Inferno-070).
     _place_service(state, lid, None)
     # SMOKE-Inferno-071: return this-Lord Capability cards to the AoW deck (a
@@ -716,6 +724,11 @@ def _h_levy_muster_lord(state, side, args, rng) -> dict[str, Any]:
             f"{tlid}'s seats are {target_lord['seats']}; got {target_seat!r}.",
             "3.4.1",
         )
+    # SMOKE-Inferno-087: Seat must not be Enemy-occupied/Besieged/Ruins (3.4.1)
+    # unless the Urban Army Podesta-at-Main-Seat exception applies.
+    _elig, _place_inside, _why = sd.muster_seat_status(state, target_lord, target_seat)
+    if not _elig:
+        raise IllegalAction("SEAT_NOT_MUSTERABLE", _why, "3.4.1")
 
     # Fealty roll
     fealty = target_lord.get("ratings", {}).get("F", 0)
@@ -760,6 +773,11 @@ def _h_levy_muster_lord(state, side, args, rng) -> dict[str, Any]:
         loc = state["locales"].get(target_seat)
         if loc and tlid not in loc["lords_present"]:
             loc["lords_present"].append(tlid)
+        # SMOKE-Inferno-087: a Podesta Mustered at his Besieged Main Seat (Urban
+        # Army) comes up INSIDE the Stronghold as a besieged defender, not in the
+        # open beside the Enemy besiegers.
+        if _place_inside:
+            target_lord.setdefault("flags", {})["in_stronghold"] = True
         # SMOKE-Inferno-028: mark newly Mustered for 3.4.1 same-segment block.
         target_lord.setdefault("flags", {})["just_mustered_this_segment"] = True
     return result
@@ -2074,6 +2092,51 @@ _HANDLERS.update({
 # =====================================================================
 # CAMPAIGN — March (4.3) and Approach decisions (4.3.4)
 # =====================================================================
+def _sweep_freed_stronghold(state, locale_name: str) -> dict:
+    """SMOKE-Inferno-088 (RoP 4.3.5 / 4.4.1): when a Besieged or Bypassed
+    Stronghold becomes free of Enemy Lords in the Locale, remove all Siege and
+    Bypass markers there (and clear the freed defenders' in_stronghold flag).
+
+    A Siege/Bypass marker's `side` is the BESIEGER's side; the marker is lifted
+    once no Mustered besieger of that side remains OUTSIDE at the Locale. This
+    must run on every departure path (March-out, Depart, Disband, Removal), not
+    only post-combat -- otherwise a stale marker corrupts Forage/Supply/Tax
+    legality and besiege-vs-join decisions, and leaves the inside Lord flagged
+    Besieged forever.
+    """
+    loc = state["locales"].get(locale_name)
+    if not loc:
+        return {}
+    lifted = {}
+    for key in ("siege", "bypass"):
+        markers = loc.get(key) or []
+        if not markers:
+            continue
+        kept = []
+        for m in markers:
+            bes_side = m.get("side")
+            besiegers_present = any(
+                state["lords"].get(oid, {}).get("side") == bes_side
+                and state["lords"][oid].get("status") == "mustered"
+                and not state["lords"][oid].get("flags", {}).get("in_stronghold")
+                for oid in loc.get("lords_present", []))
+            if besiegers_present:
+                kept.append(m)
+        if len(kept) != len(markers):
+            loc[key] = kept
+            lifted[key] = True
+            if not kept:
+                # Stronghold freed: inside defenders are no longer Besieged/Bypassed.
+                for oid in loc.get("lords_present", []):
+                    fl = state["lords"].get(oid, {}).get("flags", {})
+                    if key == "siege":
+                        fl.pop("in_stronghold", None)
+                    else:
+                        if fl.get("bypassing") == locale_name:
+                            fl.pop("bypassing", None)
+    return lifted
+
+
 def _h_cmd_march(state, side, args, rng) -> dict[str, Any]:
     """4.3 March: move one or a group of Lords across one Way.
 
@@ -2240,6 +2303,9 @@ def _h_cmd_march(state, side, args, rng) -> dict[str, Any]:
         ml["location"] = dest_name
         ml.setdefault("flags", {})["moved_fought"] = True
     state["actions_remaining"] -= cost
+    # SMOKE-Inferno-088: marching out may free a Besieged/Bypassed Stronghold at
+    # the source Locale (4.3.5) -- sweep stale Siege/Bypass markers there.
+    _sweep_freed_stronghold(state, cur_loc_name)
 
     # 4.3.4 Approach? Inactive Lords on the other side at this Locale.
     enemy_side = "ghibelline" if side == "guelph" else "guelph"
@@ -2270,6 +2336,11 @@ def _h_cmd_march(state, side, args, rng) -> dict[str, Any]:
         # Active player swaps to enemy_side for response (per 4.3.4 / 2.2.4).
         # Restored to the original attacker side in _finalize_approach.
         state["meta"]["approach_attacker_side"] = side
+        # SMOKE-Inferno-090: remember the Approach origin/Way for post-Battle
+        # Retreat constraints (4.4.3: Marching Attackers retreat to the origin;
+        # Defenders may not retreat back along the Approach Way).
+        state["meta"]["approach_breadcrumb"] = {
+            "approached_from": cur_loc_name, "approached_via": way_type}
         state["meta"]["active_player"] = enemy_side
         return {
             "state_changes": {
@@ -2473,7 +2544,8 @@ def _finalize_approach(state, locale_name, approaching_lord, defender_side) -> d
         locale_name=locale_name,
     )
     # Process post-Battle outcomes per 4.4.3 - 4.4.5.
-    _apply_post_battle(state, result, attackers, defenders)
+    _apply_post_battle(state, result, attackers, defenders, battle_locale=locale_name)
+    state["meta"].pop("approach_breadcrumb", None)
     atk_side = state["meta"].pop("approach_attacker_side", attacker_side)
     state["meta"]["active_player"] = atk_side
     state["current_card"] = None
@@ -2554,12 +2626,66 @@ def _apply_doctors_restoration(state, doctors_mods, loss_results) -> None:
             mod.setdefault("restored_for", {})[lid] = restored
 
 
-def _apply_post_battle(state, result, attackers: list[str], defenders: list[str]) -> None:
+_STRONGHOLD_TYPES = ("city", "town", "castle", "outpost")
+
+
+def _retreat_destination(state, lid, battle_locale, loser_side,
+                         is_marching_attacker, approached_from, approached_via):
+    """SMOKE-Inferno-090 (RoP 4.4.3 / Battle&Storm 11.2): pick a legal Retreat
+    Locale for a losing-but-surviving Lord, or None if none exists (-> Removed).
+
+    A legal Retreat target is a single adjacent Locale with: NO Enemy Lords
+    (outside a Stronghold), AND no un-Besieged/un-Bypassed Enemy Stronghold.
+    Defenders may NOT retreat back along the Way the Attackers approached.
+    Marching Attackers MUST retreat to the Locale whence they approached. No
+    Sail retreats (Ways are land-only here). Deterministic pick: Friendly
+    Locales first, then alphabetical (the destination may later be surfaced as a
+    pending choice; the rules are constraints on the option set either way)."""
+    enemy = "ghibelline" if loser_side == "guelph" else "guelph"
+
+    def dest_ok(name):
+        loc = state["locales"].get(name)
+        if loc is None or loc.get("ruins"):
+            return False
+        for oid in loc.get("lords_present", []):
+            ol = state["lords"].get(oid)
+            if (ol and ol["side"] == enemy and ol.get("status") == "mustered"
+                    and not ol.get("flags", {}).get("in_stronghold")):
+                return False
+        if loc.get("type") in _STRONGHOLD_TYPES and not _is_friendly_stronghold(state, loc, loser_side):
+            if not loc.get("siege") and not loc.get("bypass"):
+                return False
+        return True
+
+    if is_marching_attacker:
+        # Must retreat to the origin Locale, or be Removed if that is illegal.
+        if approached_from and approached_from in state["locales"] and dest_ok(approached_from):
+            return approached_from
+        return None
+    candidates = []
+    for name, way in sd.adjacent_to(battle_locale):
+        if way not in ("road", "track"):
+            continue  # no Sail retreat
+        if approached_from and name == approached_from:
+            continue  # Defenders may not retreat back along the Approach Way
+        if dest_ok(name):
+            candidates.append(name)
+    if not candidates:
+        return None
+    candidates.sort(key=lambda nm: (not _is_friendly_locale(state, state["locales"][nm], loser_side), nm))
+    return candidates[0]
+
+
+def _apply_post_battle(state, result, attackers: list[str], defenders: list[str],
+                      battle_locale: str | None = None) -> None:
     """4.4.3 - 4.4.5 post-Battle bookkeeping: Spoils + Service shifts +
-    Loss rolls (with Knights' Quarter) + Lord removal.
+    Loss rolls (with Knights' Quarter) + Lord removal + Retreat relocation.
 
     Conceded side gets the favourable Spoils + Service treatment.
     """
+    _bc = state["meta"].get("approach_breadcrumb") or {}
+    _approached_from = _bc.get("approached_from")
+    _approached_via = _bc.get("approached_via")
     from .battle import (
         loss_roll_for_routed,
         service_shift_for_retreated,
@@ -2596,9 +2722,29 @@ def _apply_post_battle(state, result, attackers: list[str], defenders: list[str]
             transfer_spoils(state, lid, winners_alive,
                             retreated=False, conceded=False, withdrew=True)
         else:
+            # SMOKE-Inferno-090: a losing-but-surviving Lord must RETREAT to a
+            # legal adjacent Locale (4.4.3 / 11.2). If none exists -> Removed.
+            is_marching_attacker = (loser == "attacker")
+            dest = _retreat_destination(
+                state, lid, battle_locale, lord["side"],
+                is_marching_attacker, _approached_from, _approached_via)
+            if dest is None:
+                # No legal Retreat target -> Removed (4.4.5).
+                transfer_spoils(state, lid, winners_alive,
+                                retreated=False, conceded=conceded, withdrew=False)
+                _disband_beyond_service_limit(state, lid)
+                combat_removed.append(lid)
+                continue
             # Retreated.
             transfer_spoils(state, lid, winners_alive,
                             retreated=True, conceded=conceded, withdrew=False)
+            # Relocate the Lord OFF the battle Locale to the chosen destination.
+            if battle_locale and battle_locale in state["locales"]:
+                bl = state["locales"][battle_locale]
+                if lid in bl.get("lords_present", []):
+                    bl["lords_present"].remove(lid)
+            lord["location"] = dest
+            state["locales"][dest].setdefault("lords_present", []).append(lid)
             # Service shift
             has_carroccio = any(v.get("name") == "Carroccio" and v.get("on_mat")
                                 for v in lord.get("vassals", []))
@@ -4339,6 +4485,11 @@ def _h_cta_allies(state, side, args, rng) -> dict[str, Any]:
         seat = args.get("target_seat")
         if seat not in tlord.get("seats", []):
             raise IllegalAction("BAD_SEAT", f"{target}'s seats: {tlord.get('seats')}.", "3.5.4")
+        # SMOKE-Inferno-087: same Seat eligibility as 3.4.1 (not Enemy-occupied/
+        # Besieged/Ruins unless the Urban Army Podesta exception applies).
+        _elig, _place_inside, _why = sd.muster_seat_status(state, tlord, seat)
+        if not _elig:
+            raise IllegalAction("SEAT_NOT_MUSTERABLE", _why, "3.5.4")
         # Auto-Muster (no Fealty roll, no action cost)
         tlord["status"] = "mustered"
         tlord["location"] = seat
@@ -4355,6 +4506,8 @@ def _h_cta_allies(state, side, args, rng) -> dict[str, Any]:
         loc = state["locales"][seat]
         if target not in loc["lords_present"]:
             loc["lords_present"].append(target)
+        if _place_inside:
+            tlord.setdefault("flags", {})["in_stronghold"] = True
         log["auto_mustered"] = target
     elif mode == "extra_muster":
         # Grant the named Lord an extra Lordship segment by resetting

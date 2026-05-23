@@ -102,8 +102,32 @@ def assert_captured_knights_shape(s):
             assert isinstance(count, int) and count >= 0
 
 
+def assert_no_colocated_enemies(s):
+    """SMOKE-Inferno-089: no two opposing MUSTERED Lords may share a Locale while
+    BOTH are outside a Stronghold (besieged-inside vs besieger-outside is the only
+    legal contested config). Excluded: the brief mid-Approach transient while an
+    approach/battle decision is still pending (a March creates contact one step
+    before the defender chooses Avoid/Withdraw/Stand). Keyed on the per-Lord
+    in_stronghold / bypassing flags, NOT on the Siege marker (4.3.5 / Siege Sec. 3)."""
+    pend = s.get("pending") or []
+    if any(p.get("type") in ("approach_response", "battle") for p in pend):
+        return
+    for loc_name, loc in s["locales"].items():
+        sides = {"guelph": [], "ghibelline": []}
+        for lid in loc.get("lords_present", []):
+            lo = s["lords"].get(lid)
+            if (lo and lo.get("status") == "mustered"
+                    and not lo.get("flags", {}).get("in_stronghold")
+                    and not lo.get("flags", {}).get("bypassing")):
+                sides[lo["side"]].append(lid)
+        assert not (sides["guelph"] and sides["ghibelline"]), (
+            f"co-located enemies at {loc_name}: {sides} "
+            f"(both outside a Stronghold, no pending approach/battle)")
+
+
 def check_all_invariants(s):
     assert_vp_cap(s)
+    assert_no_colocated_enemies(s)
     assert_force_counts_non_negative(s)
     assert_calendar_box_keys(s)
     assert_lord_status_enum(s)

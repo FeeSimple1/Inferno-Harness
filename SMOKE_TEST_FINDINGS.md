@@ -1393,3 +1393,46 @@ conservation at every step (0 drift across 6 scenarios x 6 seeds). Locked with
 `tests/test_v39_conservation.py` (asserts the exact per-side total of 26 holds
 every step, counting all pools including active_events — catching both loss and
 duplication). Full suite 573 pass.
+
+## v4.0 — Illegal co-location bug class (3 engine defects fixed)
+
+Cross-project bug-hunt (with Seljuk-Harness, L&C Vol. V). A single illegal board
+state — two opposing Mustered Lords sharing a Locale, BOTH outside a Stronghold,
+with no pending Approach/Battle — was reachable through three independent paths.
+The existing invariant suite never forbade that state, so heavy fuzzing reported
+"0 defects" (a silent-oracle false negative). Added the missing invariant
+(SMOKE-Inferno-089, `assert_no_colocated_enemies`, wired into
+`check_all_invariants`) and fixed all three doors.
+
+### SMOKE-Inferno-087 — Muster Seat eligibility + Besieged-Podesta placement
+Found via Scenario B self-play (seeds 500, 2, 31337; both `levy_muster_lord` and
+`cta_allies` auto-muster). The Muster enumerator/handler did NO Seat eligibility
+check: a Ready non-Podesta Lord could be Mustered onto an Enemy-occupied/Besieged
+Seat (3.4.1 forbids: "free Seat — Friendly, not Enemy-occupied, not Ruins"), and a
+Podesta legitimately Mustering at his Besieged Main Seat (Urban Army, 3.4) was
+placed in the OPEN beside the besiegers instead of INSIDE the Stronghold
+(CtA 3.5.2 example: cylinder goes inside, counting against Size). Fix: shared
+`sd.muster_seat_status()` predicate gates both the enumerator and both handlers;
+the legal Urban-Army case sets `in_stronghold=True` (respecting Size).
+
+### SMOKE-Inferno-088 — Stale Siege/Bypass marker on departure (4.3.5)
+Confirmed after Seljuk reported the analogue. When besiegers Marched out of a
+Besieged Stronghold (vs. being defeated), the Siege marker persisted and the
+inside defender stayed flagged Besieged — corrupting Forage/Supply/Tax legality
+and besiege-vs-join decisions. Fix: shared `_sweep_freed_stronghold()` removes
+Siege+Bypass markers and clears the freed defenders' flags whenever a Stronghold
+becomes free of Enemy Lords; invoked on March-out and both Disband paths (Bypass
+was already swept on Depart).
+
+### SMOKE-Inferno-090 — Post-Battle Retreat now relocates the loser (4.4.3 / 11.2)
+The "retreated" branch only applied a Service-box shift; the losing-but-surviving
+Lord's map position never changed, leaving him co-located with the victor. Cold
+under leftmost-fallback play (which never Concedes, so losers were always fully
+Routed → Removed); a random-callback fuzz produced the illegal state in 39.5% of
+multi-Lord battles, undetected by the old oracle. Fix: `_retreat_destination()`
+picks a legal adjacent Locale per 11.2 (no Enemy Lords; no un-Besieged/un-Bypassed
+Enemy Stronghold; Defenders not back along the Approach Way; Marching Attackers to
+the origin; no Sail), threading the Approach breadcrumb (March → meta →
+post-Battle); no legal target → Removed (4.4.5). Post-fix fuzz: 0/1500 (0.0%).
+
+**Verification:** `tests/test_v40_colocation_fixes.py` (9 tests). Full suite 582 pass.

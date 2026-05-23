@@ -152,3 +152,18 @@ Siege Towers — all name-driven); 6-step Battle initiative; Retreat service-shi
 die; CtA triggers + Comune-without-rolling + Allies. FIXED: capability hook
 mislabel / latent walls bug (SMOKE-085) and missing Scenario D Escalation CtA
 rule (SMOKE-086). See SMOKE_TEST_FINDINGS.md v3.8.
+
+## v4.0 — Illegal co-location class (Muster placement / Marker lifecycle / Retreat)
+FIXED three independent routes to an illegal "opposing Lords co-located outside a
+Stronghold" state, plus the missing invariant that had hidden them:
+- SMOKE-Inferno-087: Muster Seat eligibility (3.4.1) + Besieged-Podesta Urban-Army
+  inside placement (3.4 / CtA 3.5.2). Non-Podesta may not Muster onto an
+  Enemy-occupied/Besieged/Ruins Seat; a Podesta at his Besieged Main Seat is placed
+  INSIDE (Size-limited).
+- SMOKE-Inferno-088: stale Siege/Bypass marker sweep on every departure path
+  (4.3.5) — Stronghold free of Enemy Lords ⇒ remove markers, un-flag defenders.
+- SMOKE-Inferno-090: Retreat relocates the loser to a legal adjacent Locale
+  (4.4.3 / Battle&Storm 11.2), with Approach-Way / Marching-Attacker-origin /
+  Enemy-Stronghold / no-Sail constraints; no legal target ⇒ Removed (4.4.5).
+- SMOKE-Inferno-089: `assert_no_colocated_enemies` added to `check_all_invariants`.
+See SMOKE_TEST_FINDINGS.md v4.0. Full suite 582 pass.
