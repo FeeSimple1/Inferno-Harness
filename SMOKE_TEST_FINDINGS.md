@@ -1508,3 +1508,41 @@ Podesta Urban-Army case — guarding the v4.0/v4.1 placement fixes at the
 enumerator level, not just handler-rejection.
 
 **Verification:** `tests/test_v42_palette_audit.py` (6 tests). Full suite 591 pass.
+
+## v4.3 — Closing the open items (Sally retreat, event window-guard, Ambush enum)
+
+### SMOKE-Inferno-093 — Sally besieger-loss relocation (4.5.3 / 11.2)
+`_h_cmd_sally` cleared the Siege on a besieger loss but never relocated the
+losing-but-surviving Besiegers (they remained at the Locale). Now each surviving
+losing Besieger Retreats via the shared `_retreat_destination` (no Approach
+breadcrumb in a Sally); no legal target → Removed. Cold path (needs a Sally
+Concede to leave survivors), verified by replaying a defender-conceding decision
+trace through the handler.
+
+### SMOKE-Inferno-094 — Held-Event play-window guard
+`_h_play_event` applied any Held Event with NO timing check. Classified each
+combat-window Hold by the pending list its effect targets (`_HOLD_EVENT_WINDOW`:
+F1/S1 approach; F3/S3 + the battle-modifier Holds = combat) and now reject a play
+when its window isn't open (`NO_PLAY_WINDOW`) — closing a latent rules hole
+(arming a modifier with no combat) and making the validated palette a sufficient
+guard for future event enumeration. (Direct-effect Holds remain ungated; their
+own handlers validate context.)
+
+### SMOKE-Inferno-095 — Ambush in the Approach window (under-enumeration fix)
+The v4.2 audit flagged `cmd_play_ambush` and `play_event` as never offered by the
+menu. Fixed for Ambush: `_enum_approach_reactions` now surfaces, to the ATTACKER
+during the defender's Approach-response window, `play_event` for the F1/S1 Ambush
+card and then `cmd_play_ambush` to pin an Avoiding Lord; dispatch exempts the
+attacker's reactive `play_event` from the turn check (mirroring the existing
+ambush exemption). Also fixed the matching over-enumeration: `_enum_approach_
+response` no longer offers Avoid to an `ambush_forced` Lord (the handler already
+rejected it). Full Ambush flow now works end-to-end through enumerate→dispatch;
+validated palette shows 0 drops in the window.
+
+REMAINING (documented, de-risked): proactive menu enumeration of the
+battle-/besiege-window Holds (Hills, Swamp, Surprise, …) at their windows. They
+are now window-GUARDED (cannot be mis-played) and classified; surfacing them in
+the menu at the besiege/pre-battle moment is a safe, well-specified follow-up.
+
+**Verification:** `tests/test_v40_colocation_fixes.py` (+1, Sally),
+`tests/test_v43_events_ambush.py` (4). Full suite 596 pass.

@@ -80,7 +80,14 @@ def dispatch(state: dict[str, Any], action: dict[str, Any]) -> dict[str, Any]:
         name in ("cmd_fpd_pay", "cmd_fpd_pay_done")
         and state.get("pending_fpd", {}).get("side") == side
     )
-    if side != current_side(state) and not (ambush_exempt or revolt_exempt or fpd_exempt):
+    # SMOKE-Inferno-095: the ATTACKER may play a reactive Held Event (Ambush)
+    # during the defender's Approach-response window.
+    event_exempt = (
+        name == "play_event"
+        and side == state["meta"].get("approach_attacker_side")
+        and any(p.get("type") == "approach_response" for p in (state.get("pending") or []))
+    )
+    if side != current_side(state) and not (ambush_exempt or revolt_exempt or fpd_exempt or event_exempt):
         raise IllegalAction(
             "WRONG_TURN",
             f"It's {current_side(state)}'s turn, not {side}'s.",
@@ -3137,8 +3144,26 @@ def _h_cmd_sally(state, side, args, rng) -> dict[str, Any]:
         scripted_decisions=args.get("scripted_decisions"),
     )
     if result["loser"] == "defender":
-        # Besiegers lose: Siege ends
+        # Besiegers lose: Siege ends (4.5.3)
         loc["siege"] = []
+        # SMOKE-Inferno-093: losing-but-surviving Besiegers must RETREAT normally
+        # (4.5.3 SALLY LOSING / 11.2) -- not remain co-located at the Locale. No
+        # Approach breadcrumb applies in a Sally (no marching attacker).
+        for bid in list(besiegers):
+            b = state["lords"].get(bid)
+            if (b is None or bid in result.get("removed_lords", [])
+                    or b.get("status") != "mustered"
+                    or sum(b.get("forces", {}).values()) == 0):
+                continue  # fully Routed besiegers are Removed below
+            dest = _retreat_destination(state, bid, locale_name, enemy_side,
+                                        False, None, None)
+            if dest is None:
+                _disband_beyond_service_limit(state, bid)
+            else:
+                if bid in loc.get("lords_present", []):
+                    loc["lords_present"].remove(bid)
+                b["location"] = dest
+                state["locales"][dest].setdefault("lords_present", []).append(bid)
     else:
         # Sallying Lord loses: RAID — reduce Siege markers to 1
         if loc.get("siege"):
@@ -4031,6 +4056,49 @@ _HANDLERS.update({
 # =====================================================================
 # Phase 4: Card effects integration
 # =====================================================================
+# SMOKE-Inferno-094: per-card play-window for Hold Events (Arts of War ref).
+# Combat-window Holds set up a pending modifier consumed by the relevant combat,
+# so they may only be played when that window is actually open -- otherwise a
+# modifier is armed with no combat in sight (a rules violation the effect code
+# does NOT itself catch). "approach" = an Approach is being responded to;
+# "combat" = the playing side has a Lord at a Besieged Locale (Storm/Sally
+# imminent) OR an Approach is open. Holds with a direct (non-pending) effect are
+# unwindowed here (their own handlers validate context).
+_HOLD_EVENT_WINDOW = {
+    "F1": "approach", "S1": "approach",
+    "F3": "combat",  "S3": "combat",
+    "F4": "combat",  "F6": "combat",  "F8": "combat",  "F12": "combat",
+    "F16": "combat", "F24": "combat",
+    "S4": "combat",  "S6": "combat",  "S8": "combat",  "S12": "combat",
+    "S16": "combat", "S24": "combat",
+}
+
+
+def _approach_open(state) -> bool:
+    return any(p.get("type") == "approach_response" for p in (state.get("pending") or []))
+
+
+def _combat_window_open(state, side) -> bool:
+    if _approach_open(state):
+        return True
+    # A Lord of `side` at a Besieged Locale -> Storm/Sally imminent.
+    for lid, lord in state["lords"].items():
+        if lord.get("side") == side and lord.get("status") == "mustered":
+            loc = state["locales"].get(lord.get("location") or "")
+            if loc and loc.get("siege"):
+                return True
+    return False
+
+
+def _hold_event_window_ok(state, side, cid) -> bool:
+    win = _HOLD_EVENT_WINDOW.get(cid)
+    if win is None:
+        return True  # direct-effect Holds are not window-gated here
+    if win == "approach":
+        return _approach_open(state)
+    return _combat_window_open(state, side)
+
+
 def _h_play_event(state, side, args, rng) -> dict[str, Any]:
     """Play a Held Event card from this side's aow_held list.
 
@@ -4044,6 +4112,11 @@ def _h_play_event(state, side, args, rng) -> dict[str, Any]:
     held = state["decks"][side]["aow_held"]
     if cid not in held:
         raise IllegalAction("CARD_NOT_HELD", f"{cid!r} not in {side}'s Held Events.", "3.1.3")
+    # SMOKE-Inferno-094: combat-window Holds may only be played in their window.
+    if not _hold_event_window_ok(state, side, cid):
+        raise IllegalAction("NO_PLAY_WINDOW",
+                            f"Held Event {cid} requires an open "
+                            f"{_HOLD_EVENT_WINDOW.get(cid)} window.", "3.1.3")
     held.remove(cid)
     state["decks"][side]["aow_discard"].append(cid)
     from . import card_effects as ce

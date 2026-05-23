@@ -191,3 +191,45 @@ class TestCommanderArmsPlacement:
         if comune["status"] == "mustered":
             assert comune["flags"].get("in_stronghold") is True
         assert_no_colocated_enemies(s)
+
+
+# ---- SMOKE-Inferno-093: Sally besieger-loss relocation ----
+class TestSallyBesiegerRetreat:
+    def _setup(self, town="Lucca", seed=5):
+        s = load_scenario("A", seed=seed)
+        loc = s["locales"][town]
+        loc["siege"] = [{"side": "ghibelline", "color": "purple", "count": 2}]
+        _place(s, "firenze", town, inside=True,
+               forces={"Ritter": 3, "Cavalieri": 3, "Men-at-Arms": 2})   # sallying (wins)
+        _place(s, "siena", town, inside=False,
+               forces={"Militia": 6, "Men-at-Arms": 4, "Villici": 5, "Ritter": 2})  # besieger (loses, survives)
+        return s, loc
+
+    def test_surviving_losing_besieger_retreats_off_locale(self):
+        from inferno.actions import _h_cmd_sally
+        from inferno.battle import resolve_sally
+        town = "Lucca"
+        # Capture the deterministic decision sequence with the besieger conceding.
+        sp, _ = self._setup(town)
+        trace = []
+
+        def cb(d):
+            ch = "yes" if (d["type"] == "concede" and d["side"] == "defender") else d["options"][0]
+            trace.append({"type": d["type"], "choice": ch})
+            return ch
+        resolve_sally(sp, sallying=["firenze"], besiegers=["siena"],
+                      active_id="firenze", locale_name=town, callback=cb)
+        # Replay through the real handler (deterministic RNG -> same sequence).
+        s, loc = self._setup(town)
+        s["meta"]["active_player"] = "guelph"; s["current_lord_id"] = "firenze"
+        s["actions_remaining"] = 2
+        r = _h_cmd_sally(s, "guelph", {"lord_id": "firenze", "scripted_decisions": trace},
+                         HarnessRNG(s["meta"]["rng_seed"]))
+        res = r["state_changes"]["sally_result"]
+        assert res["loser"] == "defender"            # besiegers lost
+        si = s["lords"]["siena"]
+        if si["status"] == "mustered":               # survived (conceded with units)
+            assert si["location"] != town            # relocated off the siege Locale
+            assert "siena" not in loc["lords_present"]
+        assert loc["siege"] == []                     # siege ended (4.5.3)
+        assert_no_colocated_enemies(s)

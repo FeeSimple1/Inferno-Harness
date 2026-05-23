@@ -184,3 +184,13 @@ over-enumeration diagnostics). Audit: over-enumeration NONE (1,188 probed steps)
 pure-menu agent (Held Events `play_event`; `cmd_play_ambush`), both with working
 alternate channels, deferred pending per-card-timing / mid-Approach enumeration
 work. Negative enumerator tests added for the Muster-Seat gate. Full suite 591 pass.
+
+## v4.3 — Sally retreat + event window-guard + Ambush enumeration
+- SMOKE-Inferno-093: Sally losing Besiegers now Retreat (4.5.3/11.2) via the
+  shared `_retreat_destination`, not left co-located.
+- SMOKE-Inferno-094: `_h_play_event` now gates combat-window Held Events to their
+  play window (`_HOLD_EVENT_WINDOW`); wrong-window plays raise NO_PLAY_WINDOW.
+- SMOKE-Inferno-095: F1/S1 Ambush + `cmd_play_ambush` are enumerated for the
+  attacker in the Approach window; Avoid no longer offered to an ambush-pinned
+  Lord. Remaining: menu enumeration of battle/besiege-window Holds (guarded +
+  classified, safe follow-up). Full suite 596 pass.

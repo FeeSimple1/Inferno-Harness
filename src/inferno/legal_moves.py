@@ -92,6 +92,40 @@ def _enum_pending_fpd(state):
     return moves
 
 
+def _enum_approach_reactions(state) -> list[dict[str, Any]]:
+    """SMOKE-Inferno-095: ATTACKER reactions during an open Approach window
+    (4.3.4) — play F1/S1 Ambush and pin an Avoiding Lord via cmd_play_ambush.
+    The active player during this window is the defender, so these are surfaced
+    for the attacker side (dispatch exempts them from the turn check)."""
+    out: list[dict[str, Any]] = []
+    atk = state["meta"].get("approach_attacker_side")
+    if not atk:
+        return out
+    enemy = "ghibelline" if atk == "guelph" else "guelph"
+    ambush_card = "F1" if atk == "guelph" else "S1"
+    held = state["decks"][atk]["aow_held"]
+    open_targets = [pp["info"]["lord_id"] for pp in (state.get("pending") or [])
+                    if pp.get("type") == "approach_response" and pp.get("side") == enemy]
+    if not open_targets:
+        return out
+    ambush_pending = any(m.get("effect") == "ambush_force_one_stand" and m.get("side") == atk
+                         for m in (state.get("approach_modifiers_pending") or []))
+    if ambush_card in held and not ambush_pending:
+        out.append({
+            "action": "play_event", "side": atk, "args": {"card_id": ambush_card},
+            "description": f"{atk} plays {ambush_card} Ambush (force one Avoiding Lord to Stand/Withdraw).",
+            "rule_citation": "F1/S1 / 4.3.4",
+        })
+    if ambush_pending:
+        for tgt in open_targets:
+            out.append({
+                "action": "cmd_play_ambush", "side": atk, "args": {"target_lord_id": tgt},
+                "description": f"{atk} Ambush pins {tgt} (may not Avoid).",
+                "rule_citation": "F1/S1 / 4.3.4",
+            })
+    return out
+
+
 def enumerate_legal(state: dict[str, Any]) -> list[dict[str, Any]]:
     # Pending decisions take precedence over phase enumeration (per BRIEF
     # "Non-Combat Pending Decisions"). If an approach_response is pending
@@ -99,7 +133,7 @@ def enumerate_legal(state: dict[str, Any]) -> list[dict[str, Any]]:
     pendings = state.get("pending") or []
     for p in pendings:
         if p.get("type") == "approach_response" and p.get("side") == state["meta"].get("active_player"):
-            return _enum_approach_response(state, p)
+            return _enum_approach_response(state, p) + _enum_approach_reactions(state)
     # Revolt-table decisions (1.4.2) and Exiles (1.4.4) MUST be resolved before
     # anything else — they pause the triggering action. Surface only those.
     rev = _enum_pending_revolts(state)
@@ -1017,8 +1051,11 @@ def _enum_approach_response(state, pending) -> list[dict[str, Any]]:
     })
 
     # SMOKE-Inferno-011: Avoid Battle pre-check — Unladen + adjacent + not into enemy.
+    # SMOKE-Inferno-095: a Lord pinned by Ambush (F1/S1) may NOT Avoid (handler
+    # rejects it), so the menu must not offer Avoid for an ambush_forced Lord.
     try:
-        if (lord and lord["assets"].get("Loot", 0) == 0):
+        if (lord and lord["assets"].get("Loot", 0) == 0
+                and not lord.get("flags", {}).get("ambush_forced")):
             for neighbour, way_type in sd.adjacent_to(locale_name):
                 # SMOKE-Inferno-055: do not offer an Avoid that retreats back
                 # along the Way the Active Lord approached (shared predicate).
