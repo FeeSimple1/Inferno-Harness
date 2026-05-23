@@ -144,3 +144,18 @@ def check_all_invariants(s):
     assert_assets_non_negative(s)
     assert_captured_knights_shape(s)
     assert_aow_card_conservation(s)
+
+
+def assert_combat_engaged(result):
+    """SMOKE-Inferno-098 tripwire for the SMOKE-097 class: a combat in which BOTH
+    sides brought fighting units must resolve at least one Strike/roll. A Storm
+    that returns `both_sides_armed=True` but `engaged=False` means the attacker
+    dealt zero hits despite a defended target (the Garrison-only-Storm no-op bug).
+    No-ops on combat results that don't carry the tripwire keys (e.g. battles)."""
+    if result is None or not isinstance(result, dict):
+        return
+    if result.get("both_sides_armed") and result.get("engaged") is False:
+        raise AssertionError(
+            f"combat at {result.get('locale')!r} had forces on both sides but "
+            f"resolved ZERO strikes (mode={result.get('mode')}, outcome="
+            f"{result.get('outcome') or result.get('winner')}) — SMOKE-097 class")

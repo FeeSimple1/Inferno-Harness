@@ -1587,3 +1587,16 @@ with no Lord in the slot. Verified: a 16-unit Storm now resolves real combat
 garrison-only Castle; an undermanned attacker still loses (no false Sack).
 
 **Verification:** `tests/test_v44_garrison_storm.py` (3 tests). Full suite 599 pass.
+
+## v4.6 — Combat-engagement tripwire (SMOKE-098)
+
+Make the SMOKE-097 class self-reporting. `resolve_storm` now tags its result
+with `both_sides_armed` (forces on both sides at start) and `engaged` (at least
+one Strike/roll occurred). `inferno.invariants.assert_combat_engaged(result)`
+raises when a combat had forces on both sides but resolved zero strikes — the
+exact signature of the garrison-only no-op. The bug-hunt driver
+(`selfplay_bughunt.py`) now runs it on every storm/battle/sally result and logs
+a `combat_inert` anomaly. So a recurrence of "a combat that should happen but
+doesn't" is caught automatically instead of slipping past as a legal-looking loss.
+
+**Verification:** `tests/test_v44_garrison_storm.py` (+2). Full suite 601 pass.

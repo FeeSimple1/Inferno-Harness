@@ -1095,6 +1095,15 @@ def resolve_storm(state, attackers: list[str], defenders: list[str],
     garrison = _garrison_for(stronghold_type, state=state, defender_side=_def_side)
     state.setdefault("storm_garrison", {})[locale_name] = dict(garrison)
 
+    # SMOKE-Inferno-098: pre-combat unit totals, to flag a Storm that SHOULD
+    # resolve combat (forces on both sides) but produced no Strikes at all -- the
+    # SMOKE-097 class of bug (a Garrison-only defence was inert).
+    _atk_pre = sum(sum((state["lords"][a].get("forces") or {}).values())
+                   for a in attackers if a in state["lords"])
+    _def_pre = sum(garrison.values()) + sum(
+        sum((state["lords"][d].get("forces") or {}).values())
+        for d in defenders if d in state["lords"])
+
     # Storm Array: 1 Lord per side at Center; others Reserve.
     positions = _empty_positions()
     positions["attacker"]["center"] = active_id
@@ -1225,6 +1234,10 @@ def resolve_storm(state, attackers: list[str], defenders: list[str],
         "siege_count": siege_count,
         "decisions": bdc.trace,
         "rolls": [{"context": r.context, "value": r.value} for r in rng.drain_log()],
+        # SMOKE-Inferno-098 tripwire data (see inferno.invariants.assert_combat_engaged).
+        "both_sides_armed": bool(_atk_pre > 0 and _def_pre > 0),
+        "engaged": bool(any(r.get("hit_log") for r in rounds)
+                        or rng.advance_count > rolls_before),
     }
 
 

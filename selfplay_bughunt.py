@@ -21,7 +21,7 @@ sys.path.insert(0, "src")
 from inferno.scenarios import load_scenario
 from inferno.legal_moves import enumerate_legal_validated
 from inferno.actions import dispatch
-from inferno.invariants import check_all_invariants
+from inferno.invariants import check_all_invariants, assert_combat_engaged
 from inferno import static_data as sd
 
 ANOMALIES = []
@@ -101,12 +101,19 @@ def main():
         m = choose(s, moves, rng)
         action = {k: m[k] for k in ("action", "side", "args") if k in m}
         try:
-            dispatch(s, action)
+            r = dispatch(s, action)
         except Exception as e:
             anomaly("dispatch_crash", {"step": steps, "action": action,
                                        "error": f"{type(e).__name__}: {e}",
                                        "tb": traceback.format_exc().splitlines()[-2:]})
             break
+        # SMOKE-Inferno-098: flag any combat that should have engaged but didn't.
+        sc = (r or {}).get("state_changes", {}) if isinstance(r, dict) else {}
+        for key in ("storm_result", "battle_result", "sally_result"):
+            try:
+                assert_combat_engaged(sc.get(key))
+            except AssertionError as e:
+                anomaly("combat_inert", {"step": steps, "action": action, "detail": str(e)})
         try:
             check_all_invariants(s)
         except AssertionError as e:

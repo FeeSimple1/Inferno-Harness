@@ -53,3 +53,25 @@ def test_undermanned_storm_still_loses():
     s, town, lid = _setup("F", 1, "city", 1, {"Militia": 1})
     res = resolve_storm(s, attackers=[lid], defenders=[], active_id=lid, locale_name=town)
     assert res["outcome"] == "attacker_loss"
+
+
+# ---- SMOKE-Inferno-098: combat-engagement tripwire ----
+def test_storm_result_reports_engaged():
+    from inferno.invariants import assert_combat_engaged
+    s, town, lid = _setup("F", 1, "city", 2, {"Cavalieri": 3, "Men-at-Arms": 3})
+    res = resolve_storm(s, attackers=[lid], defenders=[], active_id=lid, locale_name=town)
+    assert res["both_sides_armed"] is True
+    assert res["engaged"] is True
+    assert_combat_engaged(res)   # must not raise on a healthy combat
+
+
+def test_tripwire_raises_on_inert_combat():
+    import pytest
+    from inferno.invariants import assert_combat_engaged
+    # Simulate the SMOKE-097 signature: forces on both sides, zero strikes.
+    inert = {"locale": "Siena", "mode": "storm", "outcome": "attacker_loss",
+             "both_sides_armed": True, "engaged": False}
+    with pytest.raises(AssertionError):
+        assert_combat_engaged(inert)
+    # And it must NOT fire when only one side was armed.
+    assert_combat_engaged({"both_sides_armed": False, "engaged": False})
