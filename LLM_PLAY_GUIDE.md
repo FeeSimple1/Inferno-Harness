@@ -174,3 +174,16 @@ For the engine semantics, see `BRIEF.md`. For per-card text, see
 `reference/Inferno_Arts_of_War_Reference.txt`. For strategic priors
 the LLM may consult, see `STRATEGY_DIGEST.md` (currently a stub —
 populate with playthrough findings).
+
+## v4.4 update — validated palette, invariants module, no-install play
+
+- **No dependencies to play.** The runtime is stdlib-only; do not `pip install`.
+  Just `PYTHONPATH=src`. (pytest/hypothesis are needed only for the test suite.)
+- **Use the validated palette** `inferno.legal_moves.enumerate_legal_validated(state)`
+  for the agent-facing menu: it probes every candidate on a deep copy and returns
+  `{"moves" (safe to play), "dropped" (over-enumeration diagnostics), "unvalidated"}`.
+  RNG-in-state makes probing side-effect-free. Keep raw `enumerate_legal` for hot loops.
+- **Invariants are importable from the package** (no test deps):
+  `from inferno.invariants import check_all_invariants` — run after every applied
+  action. Includes the co-located-enemies invariant and AoW card conservation (26/side).
+- **Ready-made bug-hunt driver:** `selfplay_bughunt.py` (see `CHATGPT_SETUP.md`).

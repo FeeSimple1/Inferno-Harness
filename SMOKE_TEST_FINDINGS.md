@@ -1546,3 +1546,18 @@ the menu at the besiege/pre-battle moment is a safe, well-specified follow-up.
 
 **Verification:** `tests/test_v40_colocation_fixes.py` (+1, Sally),
 `tests/test_v43_events_ambush.py` (4). Full suite 596 pass.
+
+## v4.4 — External-agent playability (no engine defect)
+
+Prep for handing the harness to an external LLM (ChatGPT) to self-play Scenario F
+and hunt bugs.
+- Confirmed the runtime is **stdlib-only**: a full Scenario F game plays to a
+  proper victory via the library with NO `pip install` (deps are test-only).
+- SMOKE-Inferno-096: extracted the always-on invariants into the runtime package
+  `inferno/invariants.py` (importable without pytest/hypothesis), so external
+  bug-hunters get `check_all_invariants` (incl. co-location + AoW 26/side
+  conservation). `tests/test_invariants.py` now re-exports them (one source of
+  truth). Added `selfplay_bughunt.py` (stdlib-only driver: validated palette +
+  invariant battery + structured anomaly report) and `CHATGPT_SETUP.md`.
+
+Full suite 596 pass.
