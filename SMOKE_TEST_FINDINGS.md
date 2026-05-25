@@ -1600,3 +1600,23 @@ a `combat_inert` anomaly. So a recurrence of "a combat that should happen but
 doesn't" is caught automatically instead of slipping past as a legal-looking loss.
 
 **Verification:** `tests/test_v44_garrison_storm.py` (+2). Full suite 601 pass.
+
+## v4.7 — Feed/Moved-Fought scope (SMOKE-099, Nevsky §8 starvation-spiral class)
+
+Audit prompted by the cross-harness guide (Part II §6 / Nevsky §8). Inferno DID
+have the bug. `_h_cmd_forage` and `_h_cmd_ravage` set `moved_fought = True`
+unconditionally — so a Lord that only Foraged/Ravaged (no movement) was forced to
+Feed at end-of-card, against Commands 606-607 ("pure Supply/Forage/Ravage/Tax
+with no movement does NOT mark ... no Feed required"). Reproduced: firenze Forages
++1 Provender at its own Stronghold, then is marked Moved/Fought and would Feed
+1-3 Provender (or shift Service left if unfed) — a net loss / starvation spiral.
+
+The same erroneous mark was on four more non-Moved/Fought actions: La Cavallata
+(a Ravage, F18/S18), Guastatori Pass (a 4.7.7 Pass), War Engineers
+siege-reduction (F5/S5), Costruttori repair (F26/S26). Fixed all six: the only
+remaining `moved_fought` set-sites are the canonical March/Avoid/Sail/Encamp/
+Battle/Storm/Siege actions (Siege still marks both sides per 609). Capability-trio
+rationale recorded in RULES_DECISIONS.md (War Engineers flagged for review).
+
+**Verification:** `tests/test_v45_feed_scope.py` (3 tests, incl. a guard that no
+forbidden handler sets `moved_fought`). Full suite 604 pass.

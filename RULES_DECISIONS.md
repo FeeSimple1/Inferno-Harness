@@ -74,3 +74,22 @@ constraint.
 (Switching Allegiance + Exiles).
 
 **Encoded in commit:** (v1.9 — src/inferno/revolt.py + trigger wiring).
+
+## SMOKE-Inferno-099 — Moved/Fought scope (which actions trigger Feed, 4.6/4.8)
+Decision: a Lord is marked Moved/Fought (and therefore must Feed at end-of-card)
+ONLY by the canonical actions March, Avoid, Sail, Encamp, Battle, Storm, and
+Siege. Authority: Inferno_Commands.txt 606-607 ("pure Supply/Forage/Ravage/Tax
+with no movement does NOT mark a Lord Moved/Fought - so no Feed required") and
+609 ("Siege action marks BOTH sides' Lords at the Locale"); plus the per-command
+"Mark Moved/Fought" lines (March 57, Avoid 103, Encamp 148, Storm 223, Sail 382).
+
+Explicitly named non-marking: Forage, Ravage, Tax, Supply (and La Cavallata,
+which is a Ravage of an adjacent Outpost per F18/S18 / note 344).
+
+Not explicitly named, ruled non-marking by the closed-list principle (none is a
+March/Avoid/Sail/Encamp/Battle/Storm/Siege): Guastatori Pass (F2/S2 — a 4.7.7
+Pass, "do nothing else"), War Engineers siege-reduction (F5/S5 — a Besieged
+Lord's siege-work, not a besieger's Siege action), Costruttori Ruins repair
+(F26/S26). NOTE: War Engineers is the least explicit of the three; flagged here
+for review. A Besieged Lord is still marked Moved/Fought when the BESIEGER takes
+a Siege action at the Locale (609) — independent of these capability actions.

@@ -201,3 +201,10 @@ was a no-op the attacker auto-lost (empty hit_log). `_resolve_storm_step` now
 engages the Garrison's strikes and Hit-absorption without requiring a defending
 Lord (4.5.2 / Siege Sec. 6), so such Strongholds fight and are Sackable. Found
 by a ChatGPT Scenario-F self-play. Full suite 599 pass.
+
+## v4.7 — Feed/Moved-Fought scope (SMOKE-099)
+FIXED the Nevsky-§8 starvation-spiral class in Inferno: Forage, Ravage, La
+Cavallata, Guastatori-Pass, War-Engineers-reduce, and Costruttori wrongly marked
+Moved/Fought, forcing an unnecessary Feed. Now only March/Avoid/Sail/Encamp/
+Battle/Storm/Siege mark it (Commands 4.6/4.8; 606-607/609). Guard test ensures no
+non-movement handler reintroduces the mark. Full suite 604 pass.

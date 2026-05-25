@@ -1369,7 +1369,9 @@ def _h_cmd_forage(state, side, args, rng) -> dict[str, Any]:
                 lord["assets"]["Provender"] = min(lord["assets"].get("Provender", 0) + 1, 16)
             result = {"forage_method": f"{season}_die_roll", "die": r.value, "gained": int(got_one), "season": season}
     state["actions_remaining"] -= 1
-    lord["flags"]["moved_fought"] = True
+    # SMOKE-Inferno-099: Forage does NOT mark Moved/Fought (Commands 4.6/4.8;
+    # "pure Supply/Forage/Ravage/Tax with no movement does NOT mark ... so no
+    # Feed required"). Marking it forced an unnecessary Feed -> starvation spiral.
     return _maybe_end_card({"forage": result, "lord_id": lid}, state, side, citation="4.7.1")
 
 
@@ -1479,7 +1481,7 @@ def _h_cmd_ravage(state, side, args, rng) -> dict[str, Any]:
     ravager_side = "guelph" if target["allegiance"] == "ghibelline" else "ghibelline"
     state["vp"][ravager_side] = min(state["vp"].get(ravager_side, 0.0) + 0.5, 17.5)
     state["actions_remaining"] -= cost
-    lord["flags"]["moved_fought"] = True
+    # SMOKE-Inferno-099: Ravage does NOT mark Moved/Fought (Commands 4.6/4.8).
     return _maybe_end_card({
         "ravaged_locale": target_name, "marker_color": target["ravaged"],
         "gains": gains, "vp_to_side": ravager_side, "actions_spent": cost,
@@ -1977,7 +1979,8 @@ def _h_cmd_guastatori_pass(state, side, args, rng) -> dict[str, Any]:
                           "count": 1}]
         for oid in besiegers:
             state["lords"][oid].setdefault("flags", {})["bypassing"] = loc_name
-    lord.setdefault("flags", {})["moved_fought"] = True
+    # SMOKE-Inferno-099: Guastatori Pass is a Pass (4.7.7, "do nothing else") --
+    # a Pass is not a Moved/Fought action (Commands 4.6/4.8).
     state["actions_remaining"] = 0
     state["card_action_consumed_by_entire_card"] = True
     return _finish_card_with({"guastatori_pass": {"locale": loc_name, "bypassed": besiegers}},
@@ -2000,7 +2003,8 @@ def _h_cmd_war_engineers_reduce(state, side, args, rng) -> dict[str, Any]:
         raise IllegalAction("NO_SIEGE_HERE", f"No Enemy Siege at {loc_name}.", "F5/S5")
     sg = loc["siege"][0]
     loc["siege"] = [{"side": sg["side"], "color": sg["color"], "count": 1}]
-    lord.setdefault("flags", {})["moved_fought"] = True
+    # SMOKE-Inferno-099: War Engineers siege-reduction by a Besieged Lord is not
+    # one of the Moved/Fought actions (Commands 4.6/4.8). See RULES_DECISIONS.
     state["actions_remaining"] = 0
     state["card_action_consumed_by_entire_card"] = True
     return _finish_card_with({"war_engineers_reduce": {"locale": loc_name, "siege_after": 1}},
@@ -2040,7 +2044,8 @@ def _h_cmd_la_cavallata(state, side, args, rng) -> dict[str, Any]:
     gains = _apply_ravage_gains(state, lid, target["type"])
     ravager_side = "guelph" if target["allegiance"] == "ghibelline" else "ghibelline"
     state["vp"][ravager_side] = min(state["vp"].get(ravager_side, 0.0) + 0.5, 17.5)
-    lord.setdefault("flags", {})["moved_fought"] = True
+    # SMOKE-Inferno-099: La Cavallata is a Ravage (F18/S18 extends Ravage to
+    # adjacent Outposts); Ravage does NOT mark Moved/Fought (Commands 4.6/4.8).
     state["actions_remaining"] = 0
     state["card_action_consumed_by_entire_card"] = True
     return _finish_card_with({"la_cavallata": {"target": target_name, "gains": gains}},
@@ -2069,7 +2074,8 @@ def _h_cmd_costruttori(state, side, args, rng) -> dict[str, Any]:
     ruins_side = "guelph" if ruins_color == "gold" else "ghibelline"
     state["vp"][ruins_side] = max(state["vp"].get(ruins_side, 0.0) - 0.5, 0)
     loc["ruins"] = None
-    lord.setdefault("flags", {})["moved_fought"] = True
+    # SMOKE-Inferno-099: Costruttori (Ruins repair) is a non-movement, non-combat
+    # action -- not Moved/Fought (Commands 4.6/4.8). See RULES_DECISIONS.
     state["actions_remaining"] = 0
     state["card_action_consumed_by_entire_card"] = True
     return _finish_card_with({"costruttori": {"locale": loc_name, "ruins_removed": ruins_color}},
