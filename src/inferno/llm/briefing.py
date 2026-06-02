@@ -21,7 +21,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from .. import static_data as sd
 from .filter import hide_for_side
 
 

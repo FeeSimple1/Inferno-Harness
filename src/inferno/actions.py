@@ -1539,11 +1539,10 @@ def _h_cmd_supply(state, side, args, rng) -> dict[str, Any]:
     if not source_loc:
         raise IllegalAction("UNKNOWN_SOURCE", f"Source {source} not found.", "4.6.1")
     if source_loc.get("ruins") and source_loc["type"] != "outpost":
-        raise IllegalAction("SOURCE_RUINED", f"Ruined Stronghold Seat cannot be a Source.", "4.6.1")
+        raise IllegalAction("SOURCE_RUINED", "Ruined Stronghold Seat cannot be a Source.", "4.6.1")
 
     # Find the route from lord_loc to source (BFS), with route restrictions
     from .battle import _lord_has_capability
-    enemy = "ghibelline" if side == "guelph" else "guelph"
     way_count = _find_supply_route_distance(state, loc_name, source, side)
     if way_count is None:
         raise IllegalAction(
@@ -1735,7 +1734,7 @@ def _h_cmd_sail(state, side, args, rng) -> dict[str, Any]:
 
 def _h_cmd_pass(state, side, args, rng) -> dict[str, Any]:
     """4.7.7 PASS — burn 1 (or all remaining) actions doing nothing."""
-    lid = _require_active_lord(state, side, args.get("lord_id"))
+    _require_active_lord(state, side, args.get("lord_id"))
     n = int(args.get("count", 1))
     n = min(n, state["actions_remaining"] or 0)
     state["actions_remaining"] = max(0, (state["actions_remaining"] or 0) - n)
@@ -1952,7 +1951,6 @@ def _finish_card_with(payload: dict, state, side, reason: str, citation: str) ->
 
 def cd_PASS_CARD_ID():
     """Late-bound import so card_data is loaded after this module."""
-    from . import card_data as cd
     return cd.PASS_CARD_ID
 
 
@@ -2537,8 +2535,6 @@ def _finalize_approach(state, locale_name, approaching_lord, defender_side) -> d
     from .battle import resolve_battle
     # Group March may have brought multiple Attackers; include them all.
     attackers = []
-    approaching_lord_obj = state["lords"][approaching_lord]
-    approaching_loc = approaching_lord_obj["location"]
     for oid in loc.get("lords_present", []):
         olord = state["lords"][oid]
         if (olord["side"] == attacker_side
@@ -2714,7 +2710,6 @@ def _apply_post_battle(state, result, attackers: list[str], defenders: list[str]
                      advance=state["meta"].get("rng_advance", 0))
     rolls_before = rng.advance_count
 
-    winner = result["winner"]   # 'attacker' / 'defender'
     loser = result["loser"]
     conceded = result.get("conceded") == loser
     losers_ids = attackers if loser == "attacker" else defenders
@@ -2823,7 +2818,7 @@ def _h_besiege_or_bypass(state, side, args, rng) -> dict[str, Any]:
     if loc.get("ruins"):
         raise IllegalAction("RUINS_NO_STRONGHOLD", f"{locale_name} is Ruins; no Stronghold to Besiege.", "4.3.5")
     if loc["type"] == "outpost":
-        raise IllegalAction("OUTPOST", f"Outposts never Besieged.", "4.3.5")
+        raise IllegalAction("OUTPOST", "Outposts never Besieged.", "4.3.5")
     choice = args.get("choice")
     if choice not in ("besiege", "bypass"):
         raise IllegalAction("BAD_CHOICE", f"choice must be besiege/bypass; got {choice!r}.", "4.3.5")
@@ -3356,7 +3351,6 @@ def _h_cmd_treachery_bribe(state, side, args, rng) -> dict[str, Any]:
     # PATH-B: Unmustered Vassal via Seat (if Path-A didn't match)
     if path is None:
         # Find the Vassal in the static Lords data
-        from . import card_data as cd  # noqa
         found_parent_canonical = None
         found_v = None
         for canonical, lord_data in sd.LORDS.items():
@@ -3886,7 +3880,7 @@ def _h_end_game_check(state, side, args, rng) -> dict[str, Any]:
       - Scenario E 'Resistance': double Guelph VP except from Ravaged.
       - Scenario C 'Alliance Treaty' (S22 Manfredi in play): +3 Ghib VP.
     """
-    from .flow import current_campaign_step, advance_campaign_step
+    from .flow import current_campaign_step
     if current_campaign_step(state) != "end_campaign":
         raise IllegalAction("WRONG_STEP", "Game-end check in end_campaign.", "4.9.3")
     cal = state["calendar"]
@@ -4699,7 +4693,6 @@ def _maybe_reshuffle_aow_deck(state, side: str) -> None:
     on_mats = {cid for lid, l in state["lords"].items()
                if l.get("side") == side
                for cid in (l.get("capabilities") or [])}
-    from . import card_data as cd
     all_side_cards = {c["id"] for c in
                       (cd.GUELPH_CARDS if side == "guelph" else cd.GHIBELLINE_CARDS)}
     available = sorted(all_side_cards - held - in_play - on_mats)

@@ -411,7 +411,6 @@ def F8_event(state, side, args, rng):
     units don't Strike in R1. Registers battle modifier; engine
     consumes at the Horse Melee step in R1.
     """
-    from . import static_data as sd
     season = sd.SEASON_BY_BOX.get(state["meta"]["turn"], "winter")
     if season == "summer":
         return {"applied": False, "reason": "Swamp not playable in Summer."}
@@ -803,7 +802,6 @@ def F20_event(state, side, args, rng):
     card. It is a Wastage trigger, fired in Summer or Winter only,
     immediately before Feed (4.8.1).
     """
-    from . import static_data as sd
     season = sd.SEASON_BY_BOX.get(state["meta"]["turn"], "winter")
     if season not in ("summer", "winter"):
         return {"applied": False, "reason": "Heat & Frost requires Summer or Winter season."}
@@ -1149,7 +1147,6 @@ def S7_event(state, side, args, rng):
 @register_event("S8")
 def S8_event(state, side, args, rng):
     """S8 SWAMP (Ghib mirror) — Defending non-Summer; enemy Horse skip R1."""
-    from . import static_data as sd
     season = sd.SEASON_BY_BOX.get(state["meta"]["turn"], "winter")
     if season == "summer":
         return {"applied": False, "reason": "Swamp not playable in Summer."}
@@ -1395,7 +1392,6 @@ def S17_event(state, side, args, rng):
 
 def _locales_within(state, start, max_dist):
     """Set of Locale names within max_dist steps of start (inclusive)."""
-    from . import static_data as sd
     seen = {start}
     frontier = [start]
     for _ in range(max_dist):
@@ -1535,7 +1531,6 @@ def S20_event(state, side, args, rng):
     Summer-side effect "remove 1 unit from Guido" (Guido Guerra
     specifically, not generic Ritter).
     """
-    from . import static_data as sd
     season = sd.SEASON_BY_BOX.get(state["meta"]["turn"], "winter")
     if season not in ("summer", "winter"):
         return {"applied": False, "reason": "Heat & Frost requires Summer or Winter season."}

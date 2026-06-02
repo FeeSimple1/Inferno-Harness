@@ -493,7 +493,7 @@ def _enum_capability_discard(state, side) -> list[dict[str, Any]]:
     else:
         moves.append({
             "action": "campaign_discard_done", "side": side,
-            "description": f"No excess Capabilities; advance.",
+            "description": "No excess Capabilities; advance.",
             "rule_citation": "4.0 STEP A",
         })
     return moves
