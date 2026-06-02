@@ -226,17 +226,20 @@ floor (the unit should still roll vs Armor 1 and survive on a "1"). Fixed to
 `max(1, len(prot) - penalty)` at both sites; Cavalieri (1-1), Men-at-Arms (1-1)
 and Ritter (1-2) behaviour is unchanged. Guard: `tests/test_v46_crossbow_min1.py`.
 
-### CONF-003 (NOTE, open) — Sudden Clash (F4/S4) "select targets"
+### CONF-003 (FIX) — Sudden Clash (F4/S4) "select targets" + named-Lord precedence
 Battle&Storm 10.2 / cards F4,S4: the named Lord's Round-1 Horse Melee "selects
 its targets" (striking side chooses which enemy unit absorbs each Hit, like
-Crossbow Hits but WITHOUT the -2 Armor). The engine resolves Sudden-Clash Round-1
-horse melee with correct PRECEDENCE (before all Archery; defender's named Lord
-before attacker's) but routes the Hits through the normal defender-favourable
-absorption order — so the select-target benefit is not applied. Secondary: the
-precedence is applied to the whole side's `*_horse_melee` step rather than to the
-named Lord only. Both are bounded to Round 1 of a Battle where F4/S4 is played.
-Flagged for adjudication (named-Lord-only filtering + a select-target,
-no-penalty hit mode) rather than auto-fixed.
+Crossbow Hits but WITHOUT the -2 Armor) and only THAT Lord's Horse Melee
+precedes the Archery. Previously the engine had the precedence right (defender's
+named Lord before attacker's) but (a) routed the Hits through the normal
+defender-favourable absorption order — no select-target — and (b) applied the
+precedence to the whole side's `*_horse_melee` step rather than the named Lord
+only. Fixed: `_absorb_hits` gains a `select_hits` mode (valuable-first order at
+FULL Armor, no -2); `_resolve_step` gains `only_slots`/`exclude_slots`/
+`select_target`; the Round-1 loop resolves ONLY the named Lord's slot early with
+select-target and excludes that one slot from the normal Horse-Melee step (the
+rest of the side's Horse still strikes at the normal time). Guard:
+`tests/test_v47_sudden_clash.py`.
 
 ### Re-verified conformant
 Errata items: Repair = Town/City with 3-4 markers, Castles excluded (4.9.4);

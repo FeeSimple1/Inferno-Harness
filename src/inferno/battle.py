@@ -297,7 +297,9 @@ def _flanking_relationships(positions: dict, bdc: "BattleDecisionContext | None"
 def _resolve_step(state, step: str, positions, reserve, conceded: str | None,
                   bdc, rng_caller, hit_log: list, removed_lords: set,
                   routed_per_lord: dict, round_n: int = 1,
-                  walls_by_side: dict | None = None, locale_name: str | None = None) -> None:
+                  walls_by_side: dict | None = None, locale_name: str | None = None,
+                  only_slots: set | None = None, exclude_slots: set | None = None,
+                  select_target: bool = False) -> None:
     """Resolve one Strike sub-step. Consults Phase-5 Battle hooks for
     F4 Sudden Clash, F6/S6 Hills, F8/S8 Swamp.
 
@@ -318,6 +320,10 @@ def _resolve_step(state, step: str, positions, reserve, conceded: str | None,
     per_target_hits: dict[str, float] = {s: 0.0 for s in SLOTS}
     per_target_crossbow: dict[str, float] = {s: 0.0 for s in SLOTS}
     for slot in SLOTS:
+        if only_slots is not None and slot not in only_slots:
+            continue
+        if exclude_slots and slot in exclude_slots:
+            continue
         striker_id = positions[striking_side][slot]
         if striker_id is None:
             continue
@@ -372,8 +378,9 @@ def _resolve_step(state, step: str, positions, reserve, conceded: str | None,
             cb_n = min(cb_n, n_hits)
             if n_hits <= 0:
                 continue
+        sel_n = (int(n_hits) - int(cb_n)) if select_target else 0
         _absorb_hits(state, target_id, int(n_hits), rng_caller, hit_log, routed_per_lord,
-                     crossbow_hits=int(cb_n))
+                     crossbow_hits=int(cb_n), select_hits=int(sel_n))
         # Check if target lord routs entirely
         if _all_units_routed(state["lords"][target_id]):
             removed_lords.add(target_id)
@@ -382,7 +389,8 @@ def _resolve_step(state, step: str, positions, reserve, conceded: str | None,
 
 def _absorb_hits(state, lord_id: str, n_hits: int, rng_caller,
                  hit_log: list, routed_per_lord: dict,
-                 crossbow_hits: int = 0, armor_penalty: int = 2) -> None:
+                 crossbow_hits: int = 0, armor_penalty: int = 2,
+                 select_hits: int = 0) -> None:
     """Apply n_hits to lord_id's units.
 
     SMOKE-Inferno-074: `crossbow_hits` of the incoming Hits are CROSSBOW hits
@@ -436,10 +444,16 @@ def _absorb_hits(state, lord_id: str, n_hits: int, rng_caller,
         return True
 
     cb = max(0, min(crossbow_hits, n_hits))
+    # Sudden Clash (F4/S4) Hits SELECT their target (valuable-first) like
+    # Crossbows but at FULL Armor — no -2 penalty (Battle&Storm 10.2).
+    sel = max(0, min(select_hits, n_hits - cb))
     for _ in range(cb):
         if not _absorb_one(CROSSBOW_ORDER, armor_penalty):
             break
-    for _ in range(n_hits - cb):
+    for _ in range(sel):
+        if not _absorb_one(CROSSBOW_ORDER, 0):
+            break
+    for _ in range(n_hits - cb - sel):
         if not _absorb_one(NORMAL_ORDER, 0):
             break
 
@@ -606,6 +620,15 @@ def _enemy_horse_skips_round_1(state, defender_side: str, round_n: int) -> bool:
         state, "swamp_enemy_horse_no_strike_r1",
         predicate=lambda m: m.get("side") == defender_side,
     )
+
+
+def _slot_of(positions, side: str, lord_id) -> str | None:
+    """Return the Front slot (left/center/right) holding lord_id on `side`,
+    or None if that Lord is not at the Front (e.g. in Reserve)."""
+    for slot in SLOTS:
+        if positions[side][slot] == lord_id:
+            return slot
+    return None
 
 
 def _sudden_clash_target(state, side: str, round_n: int) -> str | None:
@@ -889,25 +912,36 @@ def resolve_battle(state, attacker_ids: list[str], defender_ids: list[str],
         # Phase 5: F4/S4 Sudden Clash inserts a special Strike before Archery in R1.
         sc_atk = _sudden_clash_target(state, "attacker", round_n)
         sc_def = _sudden_clash_target(state, "defender", round_n)
-        if round_n == 1 and (sc_atk or sc_def):
-            # Defender's special Sudden Clash horse melee first, then Attacker's
-            if sc_def:
+        # Only the NAMED Lord's Horse Melee precedes all Archery and SELECTS its
+        # targets (F4/S4; Battle&Storm 10.2). Find his Front slot; a Lord not at
+        # the Front (Reserve) gets no Sudden Clash precedence.
+        sc_def_slot = _slot_of(positions, "defender", sc_def) if sc_def else None
+        sc_atk_slot = _slot_of(positions, "attacker", sc_atk) if sc_atk else None
+        if round_n == 1 and (sc_def_slot or sc_atk_slot):
+            # Defender's named Lord first, then Attacker's (rule order).
+            if sc_def_slot:
                 _resolve_step(state, "def_horse_melee", positions, reserve, conceded,
-                              bdc, _rng_roll, hit_log_round, removed_lords, routed_per_lord, round_n)
+                              bdc, _rng_roll, hit_log_round, removed_lords, routed_per_lord, round_n,
+                              only_slots={sc_def_slot}, select_target=True)
                 hit_log_round.append({"sudden_clash": sc_def, "side": "defender"})
-            if sc_atk:
+            if sc_atk_slot:
                 _resolve_step(state, "atk_horse_melee", positions, reserve, conceded,
-                              bdc, _rng_roll, hit_log_round, removed_lords, routed_per_lord, round_n)
+                              bdc, _rng_roll, hit_log_round, removed_lords, routed_per_lord, round_n,
+                              only_slots={sc_atk_slot}, select_target=True)
                 hit_log_round.append({"sudden_clash": sc_atk, "side": "attacker"})
         for step in BATTLE_STRIKE_ORDER:
-            # Skip horse_melee if already done by Sudden Clash this round
+            # The named Lord already struck via Sudden Clash; exclude only HIS
+            # slot from the normal horse-melee step (the rest of the side's Horse
+            # still strikes here at the normal time).
+            excl = None
             if round_n == 1:
-                if step == "def_horse_melee" and sc_def:
-                    continue
-                if step == "atk_horse_melee" and sc_atk:
-                    continue
+                if step == "def_horse_melee" and sc_def_slot:
+                    excl = {sc_def_slot}
+                elif step == "atk_horse_melee" and sc_atk_slot:
+                    excl = {sc_atk_slot}
             _resolve_step(state, step, positions, reserve, conceded,
-                          bdc, _rng_roll, hit_log_round, removed_lords, routed_per_lord, round_n)
+                          bdc, _rng_roll, hit_log_round, removed_lords, routed_per_lord, round_n,
+                          exclude_slots=excl)
         round_log["hit_log"] = hit_log_round
         round_log["positions"] = _snapshot_positions(positions)
         rounds.append(round_log)
