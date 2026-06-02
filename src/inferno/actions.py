@@ -48,6 +48,30 @@ class IllegalAction(Exception):
 # =====================================================================
 # Dispatch
 # =====================================================================
+def _check_campaign_victory(state) -> None:
+    """5.2 Campaign Victory (sudden death): if, during the Campaign command
+    phase, a side has NO Mustered Lords on the map, the other side wins
+    immediately. Gated to the command phase so it never false-triggers during
+    Levy setup (before Muster) or before the game has begun."""
+    meta = state.get("meta", {})
+    if meta.get("game_over"):
+        return
+    if meta.get("phase") != "campaign" or meta.get("campaign_step") != "command_phase":
+        return
+    counts = {"guelph": 0, "ghibelline": 0}
+    for lord in state.get("lords", {}).values():
+        if lord.get("status") == "mustered" and lord.get("side") in counts:
+            counts[lord["side"]] += 1
+    empty = [sd_ for sd_, n in counts.items() if n == 0]
+    if len(empty) == 1:
+        loser_side = empty[0]
+        winner = "ghibelline" if loser_side == "guelph" else "guelph"
+        meta["game_over"] = True
+        meta["winner"] = winner
+        meta["phase"] = "victory"
+        meta["campaign_victory"] = {"loser": loser_side, "rule": "5.2"}
+
+
 def dispatch(state: dict[str, Any], action: dict[str, Any]) -> dict[str, Any]:
     """Validate and apply `action` to `state`. Returns a result dict."""
     if not isinstance(action, dict) or "action" not in action:
@@ -105,6 +129,7 @@ def dispatch(state: dict[str, Any], action: dict[str, Any]) -> dict[str, Any]:
     rng = _build_rng(state)
     rolls_before = rng.advance_count
     result = handler(state, side, args, rng)
+    _check_campaign_victory(state)  # 5.2 sudden-death
     rolls_consumed = rng.advance_count - rolls_before
     state["meta"]["rng_advance"] = state["meta"].get("rng_advance", 0) + rolls_consumed
     if rolls_consumed:
@@ -1187,7 +1212,10 @@ def _h_command_reveal(state, side, args, rng) -> dict[str, Any]:
             lord.setdefault("flags", {})["astrologers_rolled_this_campaign"] = True
         # Phase 6: Via Francigena (F23 Capability) — Friendly Lord Seat -> Command +1.
         via_francigena_bonus = 0
-        if _lord_has_capability(state, lord_id, "Via Francigena"):
+        # F23: "All Guelphs except Guido Guerra and Orvieto" (applies to Firenze,
+        # Arezzo, Lucca, Colle only).
+        if (_lord_has_capability(state, lord_id, "Via Francigena")
+                and lord_id not in ("guido_guerra", "orvieto")):
             if lord.get("location") in lord.get("seats", []):
                 # SMOKE-Inferno-052: F23 grants +1 Command only at a FRIENDLY Lord
                 # Seat; use the canonical _is_friendly_locale predicate.
@@ -2804,6 +2832,19 @@ def _apply_post_battle(state, result, attackers: list[str], defenders: list[str]
                 conceded_with_carroccio=(conceded and has_carroccio),
                 rng_caller=rng.roll,
             )
+    # 4.4.1 Relief Sally: if the combined Attackers (incl. relief-Sallying Besieged
+    # Lords) LOSE, the Sallying Lords Withdraw back inside (handled above via the
+    # in_stronghold branch) AND the Siege markers there are reduced to ONE.
+    if (loser == "attacker" and battle_locale
+            and any(state["lords"].get(a, {}).get("flags", {}).get("relief_sallying")
+                    for a in attackers)):
+        bl = state["locales"].get(battle_locale)
+        if bl and bl.get("siege"):
+            sg0 = bl["siege"][0]
+            bl["siege"] = [{"side": sg0["side"], "color": sg0["color"], "count": 1}]
+    # Clear the transient relief_sallying flags now that the battle is resolved.
+    for a in attackers:
+        state["lords"].get(a, {}).get("flags", {}).pop("relief_sallying", None)
     # Loss rolls for ALL participants (winners + losers) with their Routed piles
     loss_results: dict[str, dict] = {}
     for lid in attackers + defenders:

@@ -1059,8 +1059,7 @@ register_capability("F20", {"ravage_extra_loot": True, "this_lord": True})  # Ma
 register_capability("F21", {"distringitores": True, "this_lord": True})  # flagged
 register_capability("F22", {"tau_company": True, "applies_to_side": "guelph",
                             "lordship_bonus_for": ["firenze", "lucca"], "lordship_value": 1})
-register_capability("F23", {"via_francigena": True, "applies_to_side": "guelph",
-                            "track_as_road": True})
+register_capability("F23", {"via_francigena": True, "applies_to_side": "guelph"})
 register_capability("F24", {"astrologers": True, "this_lord": True})  # flagged (event timing)
 register_capability("F25", {"walls_plus_one_for_seats": True, "this_lord": True})  # Reinforced Walls
 register_capability("F26", {"repair_ruins": True, "this_lord": True})  # Costruttori
