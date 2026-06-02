@@ -1199,7 +1199,12 @@ def _h_command_reveal(state, side, args, rng) -> dict[str, Any]:
         state["card_action_consumed_by_entire_card"] = False
         return {
             "state_changes": {
-                "card_revealed": cid, "lord_id": lord_id, "actions_remaining": rating,
+                "card_revealed": cid, "lord_id": lord_id,
+                "actions_remaining": rating + astrologers_bonus + via_francigena_bonus,
+                "command_rating": rating,
+                "astrologers_bonus": astrologers_bonus,
+                "astrologers_roll": astrologers_roll,
+                "via_francigena_bonus": via_francigena_bonus,
             },
             "rule_citation": "4.2.1",
         }
