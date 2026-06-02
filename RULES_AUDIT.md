@@ -6,8 +6,8 @@ and the in-repo data. Programmatic diffs were used for all data tables.
 
 ## Result summary
 13 subsystems audited. The data model is **exact** to the references; five
-rules-logic gaps were found. Four are fixed in this pass (A1, A2, A3, A5); one
-significant item (A4) is documented for a design decision. 632 tests pass.
+rules-logic gaps were found and **all five are now fixed** (A1–A5; A5 verified
+against the full Rules of Play PDF). 637 tests pass.
 
 ## Conformant (verified this pass)
 | Subsystem | Method | Result |
@@ -36,15 +36,17 @@ significant item (A4) is documented for a design decision. 632 tests pass.
   Firenze/Arezzo/Lucca/Colle.
 - **A3 — Removed inert `track_as_road` flag from the F23 registration** (belongs to
   F5/S5 Road Works; never consumed — cosmetic).
-- **A5 — Campaign Victory sudden-death (5.2) implemented.** A side with no Mustered
-  Lords on the map during the command phase now loses immediately, regardless of VP
-  (was only ever decided by VP at End-Game). Gated to the command phase to avoid
-  false-triggering during Levy setup. NOTE: interpreted per the reference's wording
-  "no Mustered Lords on map at any point" (a Lord disbanded to the Calendar counts as
-  off-map); if the full RoP narrows this to true elimination, the gate is one line.
+- **A5 — Campaign Victory sudden-death (5.2) implemented.** Verified against the full
+  Rules of Play (sources/Inferno_Rules_of_Play.pdf, §5.2): "If at any moment during
+  Campaign (4.0) a side has no Mustered Lords on the map, the game ends immediately—
+  the other side wins regardless of VP." A Lord disbanded to the Calendar is off the
+  map (status != mustered) and correctly does NOT count — so the strict reading is
+  confirmed. The check is gated to the whole Campaign phase (`phase=="campaign"`,
+  including End Campaign 4.9) to match "any moment during Campaign," and never fires
+  during Levy (before Muster).
 
-### Documented — needs a design decision
-- **A4 — First-Levy capability deployment ignores This-Lord scope (3.1.2).** [SIGNIFICANT]
+### Fixed this pass (cont.)
+- **A4 — First-Levy capability deployment now respects This-Lord scope (3.1.2).** [SIGNIFICANT]
   The first-Levy draw handler hard-codes `scope="side_wide"` for **every** drawn
   Capability, ignoring the card's `this_lord` flag. A "This Lord" Capability (Feditori,
   Astrologers, War Engineers, Balestrieri, …) must tuck at ONE Mustered Lord's mat

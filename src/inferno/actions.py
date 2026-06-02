@@ -49,14 +49,17 @@ class IllegalAction(Exception):
 # Dispatch
 # =====================================================================
 def _check_campaign_victory(state) -> None:
-    """5.2 Campaign Victory (sudden death): if, during the Campaign command
-    phase, a side has NO Mustered Lords on the map, the other side wins
-    immediately. Gated to the command phase so it never false-triggers during
-    Levy setup (before Muster) or before the game has begun."""
+    """5.2 Campaign Victory (sudden death): "If at any moment during Campaign
+    (4.0) a side has no Mustered Lords on the map, the game ends immediately —
+    the other side wins regardless of VP." Gated to phase=="campaign" (the whole
+    Campaign phase, including End Campaign 4.9) so it covers "any moment during
+    Campaign" yet never false-triggers during Levy (before Muster). A Lord
+    disbanded to the Calendar is off the map (status != mustered) and does NOT
+    count, exactly as the rule states."""
     meta = state.get("meta", {})
     if meta.get("game_over"):
         return
-    if meta.get("phase") != "campaign" or meta.get("campaign_step") != "command_phase":
+    if meta.get("phase") != "campaign":
         return
     counts = {"guelph": 0, "ghibelline": 0}
     for lord in state.get("lords", {}).values():
@@ -157,6 +160,77 @@ def _build_rng(state: dict[str, Any]) -> HarnessRNG:
 # =====================================================================
 # Levy 3.1 — Arts of War Draw
 # =====================================================================
+# A4: First-Levy Capability deployment by scope (3.1.2). A "This Lord" Capability
+# tucks at ONE Mustered Lord's mat (max 2/mat; discard if no eligible Lord); a
+# side-wide Capability tucks at the side's map edge. Eligibility per the Arts-of-War
+# capability "Lords:" lines (absent => any Mustered Lord of the card's side).
+_CAP_PLACEMENT_ELIGIBLE = {
+    "F12": {"firenze", "arezzo", "lucca", "firenze_comune"},
+    "F21": {"firenze", "arezzo", "lucca", "colle", "firenze_comune"},
+    "S6":  {"siena", "provenzano", "pisa", "santa_fiora", "siena_comune"},
+    "S7":  {"giordano", "astimberg", "provenzano"},
+    "S8":  {"siena", "provenzano", "santa_fiora", "siena_comune"},
+    "S10": {"giordano", "astimberg", "provenzano", "santa_fiora"},
+    "S12": {"siena", "provenzano", "pisa", "siena_comune"},
+}
+
+
+def _capability_is_this_lord(cid: str) -> bool:
+    from . import card_effects as ce
+    return bool(ce.CAPABILITY_TRIGGERS.get(cid, {}).get("this_lord"))
+
+
+def _capability_eligible_mustered(state, cid: str, side: str) -> list[str]:
+    """Mustered Lords of `side` that may hold This-Lord Capability `cid`
+    (per-card eligibility + 3.1.2 max-2-per-mat)."""
+    restrict = _CAP_PLACEMENT_ELIGIBLE.get(cid)
+    out = []
+    for lid, l in state["lords"].items():
+        if l.get("side") != side or l.get("status") != "mustered":
+            continue
+        if restrict is not None and lid not in restrict:
+            continue
+        if len(l.get("capabilities", []) or []) >= 2:
+            continue
+        out.append(lid)
+    return out
+
+
+def _deploy_capability(state, cid: str, side: str, notes: list, placements=None) -> None:
+    """Deploy one drawn/forced Capability per 3.1.2. side-wide -> map edge;
+    This-Lord -> a placement arg if valid, else a pending placement choice;
+    discard if no eligible Mustered Lord exists."""
+    card = cd.AOW_CARDS_BY_ID[cid]
+    if not _capability_is_this_lord(cid):
+        state.setdefault("capabilities_in_play", []).append(
+            {"id": cid, "name": card["capability_name"], "side": side, "scope": "side_wide"})
+        notes.append(f"{cid} -> Capability/side-wide ({card['capability_name']})")
+        return
+    eligible = _capability_eligible_mustered(state, cid, side)
+    if not eligible:
+        # 3.1.2: "Discard any This-Lord Capability that cannot be assigned."
+        state["decks"][side]["aow_discard"].append(cid)
+        notes.append(f"{cid} -> discarded: no eligible Mustered Lord (3.1.2)")
+        return
+    # The owner may name the Lord via `placements`; default = first eligible
+    # (deterministic). Either way the Capability is correctly scoped to ONE mat.
+    chosen = (placements or {}).get(cid)
+    if chosen not in eligible:
+        chosen = eligible[0]
+    state["lords"][chosen].setdefault("capabilities", []).append(cid)
+    notes.append(f"{cid} -> {chosen} (This-Lord) ({card['capability_name']})")
+
+
+def _advance_after_aow(state) -> None:
+    """Finish a side's AoW segment and advance (shared by draw + placement)."""
+    is_first = is_first_levy(state)
+    if not is_first:
+        mark_first_levy_aow_drawn(state)
+    advance_to_next_side_or_step(state)
+    if is_first and current_step(state) != "3.1":
+        mark_first_levy_aow_drawn(state)
+
+
 def _h_levy_aow_draw(state, side: str, args, rng) -> dict[str, Any]:
     """Per 3.1.2 / 3.1.3: each side draws 2 AoW cards.
 
@@ -192,16 +266,14 @@ def _h_levy_aow_draw(state, side: str, args, rng) -> dict[str, Any]:
             and side == "ghibelline"
             and not state["meta"].get("reprisal_war_assigned")):
         deck_g = state["decks"]["ghibelline"]["aow_deck"]
+        reprisal_notes = []
         for forced_id in ("S18", "S19", "S20"):
             if forced_id in deck_g:
                 deck_g.remove(forced_id)
-                card = cd.AOW_CARDS_BY_ID[forced_id]
-                state.setdefault("capabilities_in_play", []).append({
-                    "id": forced_id, "name": card["capability_name"],
-                    "side": "ghibelline", "scope": "side_wide",
-                })
+                _deploy_capability(state, forced_id, "ghibelline", reprisal_notes,
+                                   placements=args.get("placements"))
         state["meta"]["reprisal_war_assigned"] = True
-    capabilities_in_play = state.setdefault("capabilities_in_play", [])
+    state.setdefault("capabilities_in_play", [])
     held = state["decks"][side]["aow_held"]
     notes = []
     for i, cid in enumerate(drawn):
@@ -213,14 +285,9 @@ def _h_levy_aow_draw(state, side: str, args, rng) -> dict[str, Any]:
             is_first if not sudden_campaign else (i == 0)
         )
         if treat_as_capability:
-            # 3.1.2: deploy as Capability. Default to side_wide scope.
-            capabilities_in_play.append({
-                "id": cid,
-                "name": card["capability_name"],
-                "side": side,
-                "scope": "side_wide",
-            })
-            notes.append(f"{cid} -> Capability ({card['capability_name']})")
+            # 3.1.2: deploy by Capability TYPE (A4) — side-wide to the map edge,
+            # This-Lord to one Mustered Lord (or pending choice / discard).
+            _deploy_capability(state, cid, side, notes, placements=args.get("placements"))
         else:
             # 3.1.3: implement Event. Phase 4 executes effects; Phase 2
             # routes Hold to aow_held and resolves Immediate/This-Levy/
@@ -244,14 +311,7 @@ def _h_levy_aow_draw(state, side: str, args, rng) -> dict[str, Any]:
                     "effect": effect_result,
                 })
 
-    # After both sides have drawn, mark first_levy as done.
-    if not is_first:
-        mark_first_levy_aow_drawn(state)  # idempotent
-    # Move to next side or next step.
-    advance_to_next_side_or_step(state)
-    # If we just advanced past both sides on the first Levy, flip the flag.
-    if is_first and current_step(state) != "3.1":
-        mark_first_levy_aow_drawn(state)
+    _advance_after_aow(state)
     return {
         "state_changes": {"drew": drawn, "deployment": notes},
         "rule_citation": "3.1.2" if is_first else "3.1.3",

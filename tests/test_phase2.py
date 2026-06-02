@@ -92,10 +92,17 @@ class TestAoWDraw:
     def test_first_levy_deploys_capabilities(self):
         """3.1.2: first Levy each side draws 2, deploys as Capabilities."""
         s = load_scenario("F", seed=42)  # full scenario; no removed lords
-        before = len(s["capabilities_in_play"])
+        def _deployed():
+            cip = len(s["capabilities_in_play"])
+            mats = sum(len(l.get("capabilities", []) or []) for l in s["lords"].values())
+            disc = sum(len(s["decks"][sd]["aow_discard"]) for sd in ("guelph", "ghibelline"))
+            return cip + mats + disc
+        before = _deployed()
         dispatch(s, {"action": "levy_aow_draw", "side": "guelph"})
         dispatch(s, {"action": "levy_aow_draw", "side": "ghibelline"})
-        assert len(s["capabilities_in_play"]) == before + 4
+        # A4: 4 cards deployed total — each side-wide (map edge), This-Lord (a mat),
+        # or discarded (no eligible Mustered Lord).
+        assert _deployed() == before + 4
 
     def test_advances_step_after_both_sides(self):
         s = load_scenario("A", seed=1)

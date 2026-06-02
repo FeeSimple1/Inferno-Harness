@@ -223,15 +223,18 @@ class TestScenarioSpecials:
     def test_scenario_a_sudden_campaign(self):
         """SMOKE-Inferno-035: Scenario A first Levy = 1 Cap + 1 Event."""
         s = load_scenario("A", seed=42)
-        before_caps = len([c for c in s["capabilities_in_play"]
-                           if c.get("side") == "guelph" and c.get("scope") == "side_wide"])
+        def _deployed():
+            cip = len([c for c in s["capabilities_in_play"] if c.get("side") == "guelph"])
+            mats = sum(len(l.get("capabilities", []) or [])
+                       for l in s["lords"].values() if l.get("side") == "guelph")
+            disc = len(s["decks"]["guelph"]["aow_discard"])
+            return cip + mats + disc
+        before_caps = _deployed()
         # Draw with sudden_campaign active (it's the first Levy and scenario A)
         dispatch(s, {"action": "levy_aow_draw", "side": "guelph"})
-        # 1 Capability deployed (instead of 2)
-        after_caps = len([c for c in s["capabilities_in_play"]
-                          if c.get("side") == "guelph" and c.get("scope") == "side_wide"])
-        # Sudden Campaign: 1 cap added, 1 event routed elsewhere
-        assert after_caps - before_caps == 1
+        # Sudden Campaign: exactly 1 Capability deployed (side-wide OR This-Lord OR
+        # discarded), 1 card routed to an Event.
+        assert _deployed() - before_caps == 1
 
     def test_scenario_c_maremma_line_cross_blocked(self):
         """SMOKE-Inferno-039: Ghib can't cross dashed line in C until Guelph aggression."""
