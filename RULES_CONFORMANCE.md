@@ -208,3 +208,41 @@ Cavallata, Guastatori-Pass, War-Engineers-reduce, and Costruttori wrongly marked
 Moved/Fought, forcing an unnecessary Feed. Now only March/Avoid/Sail/Encamp/
 Battle/Storm/Siege mark it (Commands 4.6/4.8; 606-607/609). Guard test ensures no
 non-movement handler reintroduces the mark. Full suite 604 pass.
+
+## v4.8 — Deep combat-fidelity audit (Crossbow MIN-1 fix + Sudden Clash gaps)
+
+Independent re-derivation of the combat micro-interactions previously marked
+"spot-checked, not re-derived." Cross-checked against Battle&Storm 10.2/10.3,
+the Forces table, and the Official Errata.
+
+### CONF-002 (FIX) — Crossbow "-2 Armor, MIN 1" floor
+Battle&Storm 10.3: "Crossbow Hits roll vs Armor reduced by -2, **MIN 1**." The
+hit-absorption (`_absorb_hits`) and garrison-absorption resolvers reduced the
+target's Protection range by slicing off the top 2 values via
+`prot[:max(0, len(prot) - penalty)]`. For units with Armor 1 (Light Horse,
+Militia) or Armor 1-2 (Berrovieri, Armigieri) this yields an **empty** range, so
+a single Crossbow Hit removed the unit on ANY die face — violating the MIN-1
+floor (the unit should still roll vs Armor 1 and survive on a "1"). Fixed to
+`max(1, len(prot) - penalty)` at both sites; Cavalieri (1-1), Men-at-Arms (1-1)
+and Ritter (1-2) behaviour is unchanged. Guard: `tests/test_v46_crossbow_min1.py`.
+
+### CONF-003 (NOTE, open) — Sudden Clash (F4/S4) "select targets"
+Battle&Storm 10.2 / cards F4,S4: the named Lord's Round-1 Horse Melee "selects
+its targets" (striking side chooses which enemy unit absorbs each Hit, like
+Crossbow Hits but WITHOUT the -2 Armor). The engine resolves Sudden-Clash Round-1
+horse melee with correct PRECEDENCE (before all Archery; defender's named Lord
+before attacker's) but routes the Hits through the normal defender-favourable
+absorption order — so the select-target benefit is not applied. Secondary: the
+precedence is applied to the whole side's `*_horse_melee` step rather than to the
+named Lord only. Both are bounded to Round 1 of a Battle where F4/S4 is played.
+Flagged for adjudication (named-Lord-only filtering + a select-target,
+no-penalty hit mode) rather than auto-fixed.
+
+### Re-verified conformant
+Errata items: Repair = Town/City with 3-4 markers, Castles excluded (4.9.4);
+Languish recovers Captured Knights only (4.9.2); Battle participants exclude
+in-Stronghold Lords (4.4); Knights' Quarter captures only REMOVED Cavalieri/Ritter
+on a 3-6 loss roll (4.4.4, with the two rule examples reproduced exactly).
+Mixed-Archery rounding favours Crossbows (crossbow subset `ceil`'d, capped at
+total). Plan size by season {7,6,7,4} and Astrologers (+1 Command on 1-2, first
+Command card/Campaign) match source.

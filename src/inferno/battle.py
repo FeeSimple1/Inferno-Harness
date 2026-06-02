@@ -419,7 +419,9 @@ def _absorb_hits(state, lord_id: str, n_hits: int, rng_caller,
             return True
         u = sd.UNITS[unit]
         prot = u.get("protection", [])
-        eff = prot[:max(0, len(prot) - penalty)] if penalty else prot
+        # Crossbow -2 Armor has a MIN of 1 (Battle&Storm 10.3): a unit always
+        # rolls vs at least Armor 1, so never auto-removed by the -2 alone.
+        eff = prot[:max(1, len(prot) - penalty)] if penalty else prot
         r = rng_caller(f"protect_{lord_id}_{unit}")
         survived = r.value in eff
         hit_log.append({"lord_id": lord_id, "unit": unit, "die": r.value,
@@ -1512,7 +1514,9 @@ def _absorb_garrison_hits(state, locale_name: str, n_hits: int, rng_roll, hit_lo
             continue
         u = sd.UNITS[absorbing]
         prot = u.get("protection", [])
-        eff = prot[:max(0, len(prot) - penalty)] if penalty else prot
+        # Crossbow -2 Armor has a MIN of 1 (Battle&Storm 10.3): a unit always
+        # rolls vs at least Armor 1, so never auto-removed by the -2 alone.
+        eff = prot[:max(1, len(prot) - penalty)] if penalty else prot
         r = rng_roll(f"garrison_{absorbing}_{locale_name}")
         survived = r.value in eff
         hit_log.append({"garrison_unit": absorbing, "die": r.value, "protection": eff,
