@@ -281,3 +281,33 @@ Now a consumer may list lord_ids in `meta.post_battle_withdraw`; eligible electo
 Size) go INSIDE (keep Assets, no Service shift). Default (absent) = Retreat,
 unchanged. Verified the resulting besieged-style co-location passes
 `assert_no_colocated_enemies`.
+
+## v4.10 — Storm Attacker armored-first (FIX) + Battle/Sally striker Select-Target
+
+Follow-up to the CPL-8.4 pass, deciding the Crossbow/Sudden-Clash striker choice
+only where strictly rules-compliant.
+
+### CONF-006 (FIX) — Hits vs the Storm Attacker: Armored before Unarmored
+Battle&Storm 10.2 ("STORM ATTACK: Armored units must absorb before Unarmored"),
+reinforced at B&S 297-298 ("Hits against the Storm ATTACKER must select ARMORED
+units before Unarmored units, regardless of who is choosing what") and 744,
+Commands 210, Rules Ref 294. The Storm path absorbed Attacker Hits through the
+default cheap/Unarmored-first `NORMAL_ORDER`, so the Attacker shed Light Horse /
+Militia / Villici before his Armored units — a latent rules violation independent
+of any player choice. `_absorb_hits` now takes `armored_first`; `_resolve_storm_step`
+sets it whenever the target is the Attacker, forcing an Armored-first order
+(cheapest-armored-first within the group) with NO owner choice ("regardless of who
+is choosing"). Defender absorption (garrison-first then owner choice) is unchanged.
+Verified end-to-end across 39 seeds: the Storm Attacker never sheds an Unarmored
+unit while an Armored one remains. Guard: `tests/test_v49_storm_armored_select.py`.
+
+### CONF-007 (FIX) — Striker Select-Target surfaced in Battle/Sally only
+Battle&Storm 10.2: Crossbow and Sudden-Clash Hits let the STRIKING side choose
+which Enemy unit takes each such Hit. In Battle and Sally this is a FREE choice
+(no Armored-first constraint), so it is now surfaced via
+`decide_optional("select_target_unit", striker_side, ...)` (`allow_striker_select`
+on `_resolve_step`), defaulting to most-valuable-first — unchanged unless a
+consumer opts in. It is deliberately NOT surfaced in Storm: Hits vs the Attacker
+are forced Armored-first (CONF-006), and Hits vs the Defender route through the
+garrison-first / Walls machinery — neither is a clean free choice, so surfacing
+there would not be strictly rules-compliant.

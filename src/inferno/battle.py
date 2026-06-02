@@ -414,7 +414,8 @@ def _resolve_step(state, step: str, positions, reserve, conceded: str | None,
                 continue
         sel_n = (int(n_hits) - int(cb_n)) if select_target else 0
         _absorb_hits(state, target_id, int(n_hits), rng_caller, hit_log, routed_per_lord,
-                     crossbow_hits=int(cb_n), select_hits=int(sel_n), bdc=bdc)
+                     crossbow_hits=int(cb_n), select_hits=int(sel_n), bdc=bdc,
+                     allow_striker_select=True)
         # Check if target lord routs entirely
         if _all_units_routed(state["lords"][target_id]):
             removed_lords.add(target_id)
@@ -424,28 +425,41 @@ def _resolve_step(state, step: str, positions, reserve, conceded: str | None,
 def _absorb_hits(state, lord_id: str, n_hits: int, rng_caller,
                  hit_log: list, routed_per_lord: dict,
                  crossbow_hits: int = 0, armor_penalty: int = 2,
-                 select_hits: int = 0, bdc=None) -> None:
+                 select_hits: int = 0, bdc=None,
+                 armored_first: bool = False, allow_striker_select: bool = False) -> None:
     """Apply n_hits to lord_id's units.
 
     SMOKE-Inferno-074: `crossbow_hits` of the incoming Hits are CROSSBOW hits
     (Armigieri/Balestrieri, Men-at-Arms/Balestre Grosse, garrison foot). Per the
-    Forces table these (a) SELECT their target — the attacker assigns them to the
-    most valuable armored units — and (b) apply -2 to that unit's Armor. The
-    remaining (non-crossbow) Hits use the defender-favourable default order at
-    full Armor. With crossbow_hits=0 this is the original behaviour exactly."""
+    Forces table these (a) SELECT their target — the STRIKING side assigns them to
+    an Enemy unit (default most valuable) — and (b) apply -2 to that unit's Armor.
+    The remaining (non-crossbow) Hits use the owner's default order at full Armor.
+    With crossbow_hits=0 and the defaults this is the original behaviour exactly.
+
+    `armored_first` (Storm Hits AGAINST the Attacker, 4.5.2 / Battle&Storm 10.2):
+    Armored units MUST absorb before Unarmored, "regardless of who is choosing" —
+    so the non-select order is forced (no owner choice).
+    `allow_striker_select` (Battle/Sally only): surface the STRIKING side's
+    Select-Target unit choice for Crossbow/Sudden-Clash Hits (free choice, no
+    armored-first constraint). Default = most-valuable-first, unchanged."""
     lord = state["lords"][lord_id]
     forces = lord.setdefault("forces", {})
     routed = lord.setdefault("routed_units", {})
     owner_side = lord.get("side")
+    striker_side = "ghibelline" if owner_side == "guelph" else "guelph"
     # Defender-favourable default order (cheap/unarmored first).
     NORMAL_ORDER = ["Villici", "Light Horse", "Militia", "Berrovieri",
                     "Armigieri", "Men-at-Arms", "Cavalieri", "Ritter"]
-    # Crossbow "select target": attacker hits the most valuable armored units
-    # first (since -2 Armor negates their protection).
+    # Storm Hits vs the Attacker: Armored (len(Armor)>=2) before Unarmored,
+    # forced; within each group keep the cheap-first default.
+    ARMORED_FIRST = ["Berrovieri", "Armigieri", "Men-at-Arms", "Cavalieri",
+                     "Ritter", "Villici", "Light Horse", "Militia"]
+    # Crossbow / Sudden-Clash "select target": striking side hits the most
+    # valuable armored units first (since -2 Armor negates their protection).
     CROSSBOW_ORDER = ["Ritter", "Cavalieri", "Armigieri", "Men-at-Arms",
                       "Berrovieri", "Light Horse", "Militia", "Villici"]
 
-    def _absorb_one(order, penalty, selectable=False):
+    def _absorb_one(order, penalty, choose_by=None):
         present = [u for u in order if forces.get(u, 0) > 0]
         if not present:
             rr = _check_rout_recovery(state, lord_id, rng_caller)
@@ -454,11 +468,19 @@ def _absorb_hits(state, lord_id: str, n_hits: int, rng_caller,
                 present = [u for u in order if forces.get(u, 0) > 0]
             if not present:
                 return False
-        # Owner chooses which of his units absorbs a non-select-target Hit
-        # (Battle&Storm 10.2). Default stays cheapest-first; opt-in via bdc.
-        if selectable and bdc is not None and len(present) > 1:
-            unit = bdc.decide_optional("absorb_target", owner_side, options=present,
-                                       default=present[0], info={"lord_id": lord_id})
+        # Whoever the rules grant the choice may pick which present unit absorbs
+        # (Battle&Storm 10.2). Default = order[0]; opt-in via bdc. choose_by:
+        #   "owner"   -> defender/owner picks a non-select Hit's unit.
+        #   "striker" -> striking side Selects Target for a Crossbow/Sudden-Clash Hit.
+        if choose_by and bdc is not None and len(present) > 1:
+            if choose_by == "striker":
+                unit = bdc.decide_optional("select_target_unit", striker_side,
+                                           options=present, default=present[0],
+                                           info={"lord_id": lord_id})
+            else:
+                unit = bdc.decide_optional("absorb_target", owner_side,
+                                           options=present, default=present[0],
+                                           info={"lord_id": lord_id})
         else:
             unit = present[0]
         if unit == "Villici":
@@ -489,14 +511,19 @@ def _absorb_hits(state, lord_id: str, n_hits: int, rng_caller,
     # Sudden Clash (F4/S4) Hits SELECT their target (valuable-first) like
     # Crossbows but at FULL Armor — no -2 penalty (Battle&Storm 10.2).
     sel = max(0, min(select_hits, n_hits - cb))
+    striker_choice = "striker" if allow_striker_select else None
+    # Non-select Hits: forced Armored-first vs the Storm Attacker (no choice),
+    # else the owner's choice (default cheap-first).
+    normal_order = ARMORED_FIRST if armored_first else NORMAL_ORDER
+    owner_choice = None if armored_first else "owner"
     for _ in range(cb):
-        if not _absorb_one(CROSSBOW_ORDER, armor_penalty):
+        if not _absorb_one(CROSSBOW_ORDER, armor_penalty, choose_by=striker_choice):
             break
     for _ in range(sel):
-        if not _absorb_one(CROSSBOW_ORDER, 0):
+        if not _absorb_one(CROSSBOW_ORDER, 0, choose_by=striker_choice):
             break
     for _ in range(n_hits - cb - sel):
-        if not _absorb_one(NORMAL_ORDER, 0, selectable=True):
+        if not _absorb_one(normal_order, 0, choose_by=owner_choice):
             break
 
 
@@ -1546,7 +1573,8 @@ def _resolve_storm_step(state, step, positions, reserve, conceded,
             cb_n = max(0, cb_n - (absorbed - n_hits))  # crossbows used on garrison
         if n_hits > 0 and target_id is not None:
             _absorb_hits(state, target_id, int(n_hits), rng_roll, hit_log, routed_per_lord,
-                         crossbow_hits=int(cb_n), bdc=bdc)
+                         crossbow_hits=int(cb_n), bdc=bdc,
+                         armored_first=(target_side == "attacker"))
             if _all_units_routed(state["lords"][target_id]):
                 removed_lords.add(target_id)
                 positions[target_side][slot] = None
