@@ -249,3 +249,35 @@ on a 3-6 loss roll (4.4.4, with the two rule examples reproduced exactly).
 Mixed-Archery rounding favours Crossbows (crossbow subset `ceil`'d, capped at
 total). Plan size by season {7,6,7,4} and Astrologers (+1 Command on 1-2, first
 Command card/Campaign) match source.
+
+## v4.9 — Surface auto-resolved player choices (CPL 8.4 audit)
+
+Audit pass for the project's own hard constraint (BRIEF: "Rules Accuracy Trumps
+Simplification") and lesson CROSS_PROJECT_LESSONS 8.4 ("auto-resolved player
+choices are silent fidelity bugs"). Most decision points were already surfaced
+(Lord placement, flanking direction, concede on both sides in Battle/Sally,
+reserve adds, pre-battle Avoid/Withdraw/Stand). Two were still auto-resolved and
+are now opt-in, defaulting to the prior auto-behaviour (no outcome change unless
+a consumer asserts a preference).
+
+### CONF-004 (FIX) — Owner chooses which unit absorbs a non-select Hit
+Battle&Storm 10.2: "the owner chooses units for any other (non-Select-Target)
+Hits." `_absorb_hits` hard-coded cheapest-first (`NORMAL_ORDER`). Added
+`BattleDecisionContext.decide_optional` (consumes a scripted decision only when
+its type matches; a callback that returns no valid option falls back to the
+default; otherwise default) and threaded `bdc` into `_absorb_hits` at the Battle/
+Sally (`_resolve_step`) and Storm (`_resolve_storm_step`) sites. Crossbow and
+Sudden-Clash Hits remain attacker-selected (valuable-first). Default = cheapest-
+first, byte-identical. Guard: `tests/test_v48_owner_choices.py`.
+
+### CONF-005 (FIX) — Post-battle Withdraw into a Friendly Stronghold
+Battle&Storm 11.2: the losing side's Lords "must each (owner chooses for each)"
+Retreat / Withdraw into a Friendly Stronghold at the Battle Locale (if Defending
+at one, <= Stronghold Size) / be Removed. `_apply_post_battle` only honoured a
+pre-existing `in_stronghold` flag, so an open-field Lord defending at his own
+Stronghold who lost was always Retreated — the Withdraw option was never offered.
+Now a consumer may list lord_ids in `meta.post_battle_withdraw`; eligible electors
+(`_can_withdraw_into_stronghold`, capped by `_withdraw_capacity` = Stronghold
+Size) go INSIDE (keep Assets, no Service shift). Default (absent) = Retreat,
+unchanged. Verified the resulting besieged-style co-location passes
+`assert_no_colocated_enemies`.

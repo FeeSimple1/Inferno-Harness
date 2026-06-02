@@ -78,6 +78,40 @@ class BattleDecisionContext:
         })
         return choice
 
+    def decide_optional(self, decision_type: str, side: str, options: list[Any],
+                        default: Any, info: dict[str, Any] | None = None) -> Any:
+        """Like decide(), but for a choice the rules grant a player which the
+        harness otherwise auto-resolves. It NEVER changes behaviour unless a
+        consumer opts in: a scripted decision is consumed ONLY if the next one
+        matches `decision_type`; a callback that doesn't return a valid option
+        falls back to `default`; with neither, `default` is used. This keeps
+        existing scripted tests and self-play byte-identical while exposing the
+        decision (CROSS_PROJECT_LESSONS 8.4)."""
+        info = info or {}
+        choice = default
+        if self.scripted and isinstance(self.scripted[0], dict) and \
+                self.scripted[0].get("type") == decision_type:
+            d = self.scripted.pop(0)
+            c = d.get("choice")
+            if c in options:
+                choice = c
+        elif self.callback is not None:
+            try:
+                c = self.callback({
+                    "type": decision_type, "side": side,
+                    "options": list(options), "info": info, "optional": True,
+                })
+            except Exception:
+                c = None
+            if c in options:
+                choice = c
+        if choice != default:
+            self.trace.append({
+                "type": decision_type, "side": side, "choice": choice,
+                "options": list(options), "info": info, "optional": True,
+            })
+        return choice
+
 
 # =====================================================================
 # Battle field state
@@ -380,7 +414,7 @@ def _resolve_step(state, step: str, positions, reserve, conceded: str | None,
                 continue
         sel_n = (int(n_hits) - int(cb_n)) if select_target else 0
         _absorb_hits(state, target_id, int(n_hits), rng_caller, hit_log, routed_per_lord,
-                     crossbow_hits=int(cb_n), select_hits=int(sel_n))
+                     crossbow_hits=int(cb_n), select_hits=int(sel_n), bdc=bdc)
         # Check if target lord routs entirely
         if _all_units_routed(state["lords"][target_id]):
             removed_lords.add(target_id)
@@ -390,7 +424,7 @@ def _resolve_step(state, step: str, positions, reserve, conceded: str | None,
 def _absorb_hits(state, lord_id: str, n_hits: int, rng_caller,
                  hit_log: list, routed_per_lord: dict,
                  crossbow_hits: int = 0, armor_penalty: int = 2,
-                 select_hits: int = 0) -> None:
+                 select_hits: int = 0, bdc=None) -> None:
     """Apply n_hits to lord_id's units.
 
     SMOKE-Inferno-074: `crossbow_hits` of the incoming Hits are CROSSBOW hits
@@ -402,6 +436,7 @@ def _absorb_hits(state, lord_id: str, n_hits: int, rng_caller,
     lord = state["lords"][lord_id]
     forces = lord.setdefault("forces", {})
     routed = lord.setdefault("routed_units", {})
+    owner_side = lord.get("side")
     # Defender-favourable default order (cheap/unarmored first).
     NORMAL_ORDER = ["Villici", "Light Horse", "Militia", "Berrovieri",
                     "Armigieri", "Men-at-Arms", "Cavalieri", "Ritter"]
@@ -410,15 +445,22 @@ def _absorb_hits(state, lord_id: str, n_hits: int, rng_caller,
     CROSSBOW_ORDER = ["Ritter", "Cavalieri", "Armigieri", "Men-at-Arms",
                       "Berrovieri", "Light Horse", "Militia", "Villici"]
 
-    def _absorb_one(order, penalty):
-        unit = next((u for u in order if forces.get(u, 0) > 0), None)
-        if unit is None:
+    def _absorb_one(order, penalty, selectable=False):
+        present = [u for u in order if forces.get(u, 0) > 0]
+        if not present:
             rr = _check_rout_recovery(state, lord_id, rng_caller)
             if rr and rr.get("recovered"):
                 hit_log.append({"lord_id": lord_id, "bloody_red_stream_recovered": rr["recovered"]})
-                unit = next((u for u in order if forces.get(u, 0) > 0), None)
-            if unit is None:
+                present = [u for u in order if forces.get(u, 0) > 0]
+            if not present:
                 return False
+        # Owner chooses which of his units absorbs a non-select-target Hit
+        # (Battle&Storm 10.2). Default stays cheapest-first; opt-in via bdc.
+        if selectable and bdc is not None and len(present) > 1:
+            unit = bdc.decide_optional("absorb_target", owner_side, options=present,
+                                       default=present[0], info={"lord_id": lord_id})
+        else:
+            unit = present[0]
         if unit == "Villici":
             forces["Villici"] -= 1
             if forces["Villici"] <= 0:
@@ -454,7 +496,7 @@ def _absorb_hits(state, lord_id: str, n_hits: int, rng_caller,
         if not _absorb_one(CROSSBOW_ORDER, 0):
             break
     for _ in range(n_hits - cb - sel):
-        if not _absorb_one(NORMAL_ORDER, 0):
+        if not _absorb_one(NORMAL_ORDER, 0, selectable=True):
             break
 
 
@@ -1504,7 +1546,7 @@ def _resolve_storm_step(state, step, positions, reserve, conceded,
             cb_n = max(0, cb_n - (absorbed - n_hits))  # crossbows used on garrison
         if n_hits > 0 and target_id is not None:
             _absorb_hits(state, target_id, int(n_hits), rng_roll, hit_log, routed_per_lord,
-                         crossbow_hits=int(cb_n))
+                         crossbow_hits=int(cb_n), bdc=bdc)
             if _all_units_routed(state["lords"][target_id]):
                 removed_lords.add(target_id)
                 positions[target_side][slot] = None

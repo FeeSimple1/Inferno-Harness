@@ -2690,6 +2690,28 @@ def _retreat_destination(state, lid, battle_locale, loser_side,
     return candidates[0]
 
 
+def _can_withdraw_into_stronghold(state, lid, battle_locale) -> bool:
+    """4.4.3 / Battle&Storm 11.2 Withdraw eligibility: the losing Lord's side
+    holds an unruined, non-Outpost Stronghold at the Battle Locale (he was
+    Defending at one). A Marching Attacker losing at the enemy's Locale is not
+    eligible (the Stronghold is not his)."""
+    loc = state["locales"].get(battle_locale) if battle_locale else None
+    if not loc:
+        return False
+    if loc.get("ruins") or loc.get("type") == "outpost":
+        return False
+    return loc.get("allegiance") == state["lords"][lid]["side"]
+
+
+def _withdraw_capacity(state, battle_locale) -> int:
+    """Max Lords that may Withdraw into the Stronghold at the Battle Locale
+    (= Stronghold Size; 0 if none / Outpost / Ruins)."""
+    loc = state["locales"].get(battle_locale) if battle_locale else None
+    if not loc or loc.get("ruins") or loc.get("type") == "outpost":
+        return 0
+    return sd.STRONGHOLDS.get(loc.get("type"), {}).get("size", 0)
+
+
 def _apply_post_battle(state, result, attackers: list[str], defenders: list[str],
                       battle_locale: str | None = None) -> None:
     """4.4.3 - 4.4.5 post-Battle bookkeeping: Spoils + Service shifts +
@@ -2719,6 +2741,13 @@ def _apply_post_battle(state, result, attackers: list[str], defenders: list[str]
                      if w in state["lords"] and state["lords"][w]["status"] == "mustered"]
 
     combat_removed: list[str] = []
+    # 4.4.3 / Battle&Storm 11.2: a losing Lord Defending at a Friendly Stronghold
+    # at the Battle Locale MAY Withdraw into it (<= Stronghold Size) instead of
+    # Retreating ("owner chooses for each"). Opt-in: the consumer lists lord_ids
+    # in meta.post_battle_withdraw; default (absent) = Retreat, unchanged.
+    withdraw_elected = set(state["meta"].pop("post_battle_withdraw", []) or [])
+    _wd_count = 0
+    _wd_cap = _withdraw_capacity(state, battle_locale)
     for lid in losers_ids:
         if lid not in state["lords"]:
             continue
@@ -2732,6 +2761,15 @@ def _apply_post_battle(state, result, attackers: list[str], defenders: list[str]
             combat_removed.append(lid)
         elif lord.get("flags", {}).get("in_stronghold"):
             # Withdrew into Stronghold: keep Assets, no Service shift.
+            transfer_spoils(state, lid, winners_alive,
+                            retreated=False, conceded=False, withdrew=True)
+        elif (lid in withdraw_elected
+              and _wd_count < _wd_cap
+              and _can_withdraw_into_stronghold(state, lid, battle_locale)):
+            # Elected Withdraw into the Friendly Stronghold at the Battle Locale
+            # (4.4.3 / 11.2): go INSIDE, keep Assets, no Service shift, stay put.
+            lord.setdefault("flags", {})["in_stronghold"] = True
+            _wd_count += 1
             transfer_spoils(state, lid, winners_alive,
                             retreated=False, conceded=False, withdrew=True)
         else:
