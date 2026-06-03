@@ -57,3 +57,17 @@ against the full Rules of Play PDF). 639 tests pass; self-play anomaly-free acro
   single Lord. A correct fix surfaces the target-Lord choice (No-Agent) using the card's
   `this_lord` flag + per-card "Lords:" eligibility, discarding when no eligible Mustered
   Lord exists. (The 3.4.4 Levy-Capability path already takes a scope arg and is fine.)
+
+
+## v5.2 — Loose-end follow-ups
+- **Capability-name data: CONFIRMED CORRECT.** All 52 `capability_name` values match
+  the reference capability headers once ranged headers ("F6 & F7. FEDITORI",
+  "F9-F11. BALESTRIERI", …) are parsed — the apparent F6/F7/S6 "Feditori" duplication
+  is genuine (a capability printed on multiple cards), not a labeling error.
+- **A4 eligibility — A7 fix.** Cross-checked every This-Lord capability's eligibility
+  against the capability-section "Lords:" lines (range-aware). Found one error: `S10`
+  was restricted to {Giordano,Astimberg,Provenzano,Santa Fiora} — that is S10's EVENT
+  eligibility; its CAPABILITY is Balestrieri (S9-S11) = "Any Ghibelline". Removed the
+  S10 restriction so it correctly defaults to any Mustered Ghibelline Lord. The other
+  six restricted entries (F12, F21, S6, S7, S8, S12) match the reference exactly and
+  are now locked by tests.

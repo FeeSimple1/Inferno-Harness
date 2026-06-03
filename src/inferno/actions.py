@@ -170,7 +170,9 @@ _CAP_PLACEMENT_ELIGIBLE = {
     "S6":  {"siena", "provenzano", "pisa", "santa_fiora", "siena_comune"},
     "S7":  {"giordano", "astimberg", "provenzano"},
     "S8":  {"siena", "provenzano", "santa_fiora", "siena_comune"},
-    "S10": {"giordano", "astimberg", "provenzano", "santa_fiora"},
+    # NOTE: S10's Capability is Balestrieri (S9-S11) = "Any Ghibelline" (the
+    # restricted {Giordano,Astimberg,Provenzano,Santa Fiora} is S10's EVENT, not
+    # its Capability) — so it is intentionally NOT restricted here.
     "S12": {"siena", "provenzano", "pisa", "siena_comune"},
 }
 

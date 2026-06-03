@@ -114,3 +114,33 @@ class TestPlacementSurfaced:
             assert guard < 10
         # After Guelph's segment, control passes to Ghibelline within 3.1.
         assert current_step(s) == "3.1" and current_side(s) == "ghibelline"
+
+
+class TestEligibilityVsReference:
+    # Restricted This-Lord Capabilities per the Arts-of-War capability "Lords:"
+    # lines (comune lords included where the parent is eligible).
+    REF = {
+        "F12": {"firenze", "arezzo", "lucca"},            # Army Reserve
+        "F21": {"firenze", "arezzo", "lucca", "colle"},   # Distringitores
+        "S6":  {"siena", "provenzano", "pisa", "santa_fiora"},   # Feditori
+        "S7":  {"giordano", "astimberg", "provenzano"},   # Luceria
+        "S8":  {"siena", "provenzano", "santa_fiora"},    # Balestre Grosse
+        "S12": {"siena", "provenzano", "pisa"},           # Army Reserve
+    }
+
+    def test_restricted_caps_match_reference(self):
+        for cid, ref in self.REF.items():
+            eng = A._CAP_PLACEMENT_ELIGIBLE[cid] - {"firenze_comune", "siena_comune"}
+            assert eng == ref, f"{cid}: engine {eng} != reference {ref}"
+
+    def test_only_those_six_are_restricted(self):
+        assert set(A._CAP_PLACEMENT_ELIGIBLE) == set(self.REF)
+
+    def test_s10_balestrieri_is_unrestricted(self):
+        # S10's Capability (Balestrieri) = "Any Ghibelline" — eligible on any
+        # mustered Ghibelline Lord, not just the four from its Event.
+        s = load_scenario("D", seed=1)  # mustered Ghib incl. astimberg, giordano, provenzano, santa_fiora
+        elig = A._capability_eligible_mustered(s, "S10", "ghibelline")
+        mustered_ghib = {lid for lid, l in s["lords"].items()
+                         if l["side"] == "ghibelline" and l["status"] == "mustered"}
+        assert set(elig) == mustered_ghib and len(elig) >= 4
