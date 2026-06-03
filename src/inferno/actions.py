@@ -2564,6 +2564,17 @@ def _h_approach_response(state, side, args, rng) -> dict[str, Any]:
     approached_via = info["approached_via"]
     lord = state["lords"][lid]
 
+    # Operator-supplied Battle tactical choices for the field Battle this
+    # Approach may trigger (array placement, tie-breaks, hit allocation,
+    # concession). Mirrors the scripted_decisions channel that Storm/Sally
+    # already expose. Accumulated (FIFO) across the response window and
+    # drained by _finalize_approach. The single BDC queue routes per-side
+    # via each decision's `side`, so either player may supply entries.
+    _sd_in = args.get("scripted_decisions")
+    if _sd_in:
+        state.setdefault("approach_battle_decisions", {}) \
+             .setdefault(locale_name, []).extend(_sd_in)
+
     if choice == "avoid":
         # 4.3.4 AVOID BATTLE restrictions:
         #   - May NOT use the Way the Active Lord just used.
@@ -2657,6 +2668,11 @@ def _h_approach_response(state, side, args, rng) -> dict[str, Any]:
 def _finalize_approach(state, locale_name, approaching_lord, defender_side) -> dict[str, Any]:
     """All Inactive Lords have responded. If any Stood, run Battle."""
     loc = state["locales"][locale_name]
+    # Drain any operator-supplied Battle decisions for this Locale (popped on
+    # every path so the transient queue never leaks into a later Battle).
+    _battle_scripted = state.get("approach_battle_decisions", {}).pop(locale_name, None)
+    if not state.get("approach_battle_decisions"):
+        state.pop("approach_battle_decisions", None)
     # Clear any ambush_forced flags now that responses are gathered.
     for _lid, _l in state["lords"].items():
         _l.get("flags", {}).pop("ambush_forced", None)
@@ -2709,6 +2725,8 @@ def _finalize_approach(state, locale_name, approaching_lord, defender_side) -> d
     result = resolve_battle(
         state, attackers, defenders, active_id=approaching_lord,
         locale_name=locale_name,
+        scripted_decisions=_battle_scripted,
+        callback=state.get("battle_callback"),
     )
     # Process post-Battle outcomes per 4.4.3 - 4.4.5.
     _apply_post_battle(state, result, attackers, defenders, battle_locale=locale_name)

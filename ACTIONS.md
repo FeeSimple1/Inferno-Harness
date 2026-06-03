@@ -46,7 +46,13 @@ response to a pending decision owed by the other side).
 
 ### Campaign — March and Battle (Phase 3b)
 - `cmd_march` — 4.3
-- `approach_response` — 4.3.4 (Avoid / Withdraw / Battle)
+- `approach_response` — 4.3.4 (Avoid / Withdraw / Battle). Optional arg
+  `scripted_decisions`: a FIFO list of Battle tactical choices (array
+  placement, tie-breaks, hit allocation, concession) for the field
+  Battle this Approach may trigger — same channel `cmd_storm` /
+  `cmd_sally` accept. Entries are accumulated across the response
+  window and routed per side by each decision's `side`. Omit for the
+  deterministic leftmost fallback.
 - `battle_decision` — in-Battle decisions via BattleDecisionContext
 - `concede` — 4.4.4
 - `retreat` — 4.4.5
