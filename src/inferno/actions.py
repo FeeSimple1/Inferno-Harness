@@ -2574,6 +2574,12 @@ def _h_approach_response(state, side, args, rng) -> dict[str, Any]:
     if _sd_in:
         state.setdefault("approach_battle_decisions", {}) \
              .setdefault(locale_name, []).extend(_sd_in)
+    # Post-Battle elections (withdraw-vs-retreat, Retreat destination) ride a
+    # parallel channel since they are resolved after resolve_battle returns.
+    _pbd_in = args.get("post_battle_decisions")
+    if _pbd_in:
+        state.setdefault("approach_post_battle_decisions", {}) \
+             .setdefault(locale_name, []).extend(_pbd_in)
 
     if choice == "avoid":
         # 4.3.4 AVOID BATTLE restrictions:
@@ -2673,6 +2679,9 @@ def _finalize_approach(state, locale_name, approaching_lord, defender_side) -> d
     _battle_scripted = state.get("approach_battle_decisions", {}).pop(locale_name, None)
     if not state.get("approach_battle_decisions"):
         state.pop("approach_battle_decisions", None)
+    _post_battle_scripted = state.get("approach_post_battle_decisions", {}).pop(locale_name, None)
+    if not state.get("approach_post_battle_decisions"):
+        state.pop("approach_post_battle_decisions", None)
     # Clear any ambush_forced flags now that responses are gathered.
     for _lid, _l in state["lords"].items():
         _l.get("flags", {}).pop("ambush_forced", None)
@@ -2729,7 +2738,9 @@ def _finalize_approach(state, locale_name, approaching_lord, defender_side) -> d
         callback=state.get("battle_callback"),
     )
     # Process post-Battle outcomes per 4.4.3 - 4.4.5.
-    _apply_post_battle(state, result, attackers, defenders, battle_locale=locale_name)
+    _apply_post_battle(state, result, attackers, defenders, battle_locale=locale_name,
+                       decisions=_post_battle_scripted,
+                       callback=state.get("battle_callback"))
     state["meta"].pop("approach_breadcrumb", None)
     atk_side = state["meta"].pop("approach_attacker_side", attacker_side)
     state["meta"]["active_player"] = atk_side
@@ -2814,18 +2825,20 @@ def _apply_doctors_restoration(state, doctors_mods, loss_results) -> None:
 _STRONGHOLD_TYPES = ("city", "town", "castle", "outpost")
 
 
-def _retreat_destination(state, lid, battle_locale, loser_side,
-                         is_marching_attacker, approached_from, approached_via):
-    """SMOKE-Inferno-090 (RoP 4.4.3 / Battle&Storm 11.2): pick a legal Retreat
-    Locale for a losing-but-surviving Lord, or None if none exists (-> Removed).
+def _retreat_candidates(state, lid, battle_locale, loser_side,
+                        is_marching_attacker, approached_from, approached_via):
+    """SMOKE-Inferno-090 (RoP 4.4.3 / Battle&Storm 11.2): the ORDERED list of
+    legal Retreat target Locales (best-first) for a losing-but-surviving Lord.
+    Empty -> no legal Retreat, the Lord is Removed (4.4.5).
 
     A legal Retreat target is a single adjacent Locale with: NO Enemy Lords
     (outside a Stronghold), AND no un-Besieged/un-Bypassed Enemy Stronghold.
     Defenders may NOT retreat back along the Way the Attackers approached.
     Marching Attackers MUST retreat to the Locale whence they approached. No
-    Sail retreats (Ways are land-only here). Deterministic pick: Friendly
-    Locales first, then alphabetical (the destination may later be surfaced as a
-    pending choice; the rules are constraints on the option set either way)."""
+    Sail retreats (Ways are land-only here). Ordering: Friendly Locales first,
+    then alphabetical. The full option set is exposed so the choice can be
+    surfaced to the operator; _retreat_destination() keeps the deterministic
+    leftmost pick used as the default and by the Sally path."""
     enemy = "ghibelline" if loser_side == "guelph" else "guelph"
 
     def dest_ok(name):
@@ -2845,8 +2858,8 @@ def _retreat_destination(state, lid, battle_locale, loser_side,
     if is_marching_attacker:
         # Must retreat to the origin Locale, or be Removed if that is illegal.
         if approached_from and approached_from in state["locales"] and dest_ok(approached_from):
-            return approached_from
-        return None
+            return [approached_from]
+        return []
     candidates = []
     for name, way in sd.adjacent_to(battle_locale):
         if way not in ("road", "track"):
@@ -2855,10 +2868,18 @@ def _retreat_destination(state, lid, battle_locale, loser_side,
             continue  # Defenders may not retreat back along the Approach Way
         if dest_ok(name):
             candidates.append(name)
-    if not candidates:
-        return None
     candidates.sort(key=lambda nm: (not _is_friendly_locale(state, state["locales"][nm], loser_side), nm))
-    return candidates[0]
+    return candidates
+
+
+def _retreat_destination(state, lid, battle_locale, loser_side,
+                         is_marching_attacker, approached_from, approached_via):
+    """The deterministic default Retreat Locale (leftmost legal target) or None
+    if none exists (-> Removed). The full ordered option set, for surfacing the
+    choice to an operator, is _retreat_candidates()."""
+    cands = _retreat_candidates(state, lid, battle_locale, loser_side,
+                                is_marching_attacker, approached_from, approached_via)
+    return cands[0] if cands else None
 
 
 def _can_withdraw_into_stronghold(state, lid, battle_locale) -> bool:
@@ -2884,20 +2905,32 @@ def _withdraw_capacity(state, battle_locale) -> int:
 
 
 def _apply_post_battle(state, result, attackers: list[str], defenders: list[str],
-                      battle_locale: str | None = None) -> None:
+                      battle_locale: str | None = None,
+                      decisions: list[dict] | None = None,
+                      callback=None) -> None:
     """4.4.3 - 4.4.5 post-Battle bookkeeping: Spoils + Service shifts +
     Loss rolls (with Knights' Quarter) + Lord removal + Retreat relocation.
 
     Conceded side gets the favourable Spoils + Service treatment.
+
+    The post-Battle player elections — for each losing-but-surviving Lord,
+    Withdraw into a Friendly Stronghold vs Retreat (4.4.3 / 11.2), and the
+    Retreat destination among legal Locales (4.4.5) — flow through a
+    BattleDecisionContext built from `decisions` (FIFO scripted list) and
+    `callback`. Both are optional, so absent operator input the behaviour is
+    byte-identical: the withdraw election defaults to meta.post_battle_withdraw
+    and the destination to the deterministic leftmost Locale.
     """
     _bc = state["meta"].get("approach_breadcrumb") or {}
     _approached_from = _bc.get("approached_from")
     _approached_via = _bc.get("approached_via")
     from .battle import (
+        BattleDecisionContext,
         loss_roll_for_routed,
         service_shift_for_retreated,
         transfer_spoils,
     )
+    bdc = BattleDecisionContext(scripted=list(decisions or []), callback=callback)
     from .rng import HarnessRNG
     rng = HarnessRNG(state["meta"]["rng_seed"],
                      advance=state["meta"].get("rng_advance", 0))
@@ -2934,22 +2967,47 @@ def _apply_post_battle(state, result, attackers: list[str], defenders: list[str]
             # Withdrew into Stronghold: keep Assets, no Service shift.
             transfer_spoils(state, lid, winners_alive,
                             retreated=False, conceded=False, withdrew=True)
-        elif (lid in withdraw_elected
-              and _wd_count < _wd_cap
-              and _can_withdraw_into_stronghold(state, lid, battle_locale)):
-            # Elected Withdraw into the Friendly Stronghold at the Battle Locale
-            # (4.4.3 / 11.2): go INSIDE, keep Assets, no Service shift, stay put.
-            lord.setdefault("flags", {})["in_stronghold"] = True
-            _wd_count += 1
-            transfer_spoils(state, lid, winners_alive,
-                            retreated=False, conceded=False, withdrew=True)
         else:
-            # SMOKE-Inferno-090: a losing-but-surviving Lord must RETREAT to a
-            # legal adjacent Locale (4.4.3 / 11.2). If none exists -> Removed.
+            # 4.4.3 / 11.2 / 4.4.5: a losing-but-surviving Lord either Withdraws
+            # into a Friendly Stronghold at the Battle Locale (when eligible) or
+            # Retreats to a legal adjacent Locale (Removed if none). Both the
+            # withdraw-vs-retreat election and the Retreat destination are
+            # operator-controllable here; absent operator input they fall back
+            # to meta.post_battle_withdraw (default Retreat) and the
+            # deterministic leftmost Locale, so legacy callers are unchanged.
             is_marching_attacker = (loser == "attacker")
-            dest = _retreat_destination(
+            eligible_withdraw = (_wd_count < _wd_cap
+                                 and _can_withdraw_into_stronghold(state, lid, battle_locale))
+            do_withdraw = False
+            if eligible_withdraw:
+                _wd_default = "withdraw" if lid in withdraw_elected else "retreat"
+                _wd_choice = bdc.decide_optional(
+                    "post_battle_withdraw", lord["side"],
+                    options=["retreat", "withdraw"], default=_wd_default,
+                    info={"lord_id": lid, "locale": battle_locale})
+                do_withdraw = (_wd_choice == "withdraw")
+            if do_withdraw:
+                # Withdraw INSIDE: keep Assets, no Service shift, stay put.
+                lord.setdefault("flags", {})["in_stronghold"] = True
+                _wd_count += 1
+                transfer_spoils(state, lid, winners_alive,
+                                retreated=False, conceded=False, withdrew=True)
+                continue
+            # SMOKE-Inferno-090: RETREAT to a legal adjacent Locale (4.4.5).
+            _default_dest = _retreat_destination(
                 state, lid, battle_locale, lord["side"],
                 is_marching_attacker, _approached_from, _approached_via)
+            if _default_dest is None:
+                dest = None
+            else:
+                _cands = _retreat_candidates(
+                    state, lid, battle_locale, lord["side"],
+                    is_marching_attacker, _approached_from, _approached_via)
+                if _default_dest not in _cands:
+                    _cands = [_default_dest] + _cands
+                dest = bdc.decide_optional(
+                    "retreat_destination", lord["side"], options=_cands,
+                    default=_default_dest, info={"lord_id": lid})
             if dest is None:
                 # No legal Retreat target -> Removed (4.4.5).
                 transfer_spoils(state, lid, winners_alive,
@@ -2975,6 +3033,8 @@ def _apply_post_battle(state, result, attackers: list[str], defenders: list[str]
                 conceded_with_carroccio=(conceded and has_carroccio),
                 rng_caller=rng.roll,
             )
+    if bdc.trace:
+        result["post_battle_decisions"] = list(bdc.trace)
     # 4.4.1 Relief Sally: if the combined Attackers (incl. relief-Sallying Besieged
     # Lords) LOSE, the Sallying Lords Withdraw back inside (handled above via the
     # in_stronghold branch) AND the Siege markers there are reduced to ONE.

@@ -58,10 +58,25 @@ Battles resolve synchronously within the triggering action, so there are no
 separate `battle_decision`, `concede`, or `retreat` actions. In-Battle choices
 — array placement, reserve/center fill, flanker tie-breaks, hit allocation,
 and **concession** (4.4.4) — flow through the `BattleDecisionContext` via the
-`scripted_decisions` / callback channel above. The losing side's
-Retreat / Withdraw / Removed fate (4.4.5) is applied automatically in the
-post-Battle step; the one player election (withdraw into a Stronghold instead
-of Retreating) is taken from `meta.post_battle_withdraw` (a list of Lord ids).
+`scripted_decisions` / callback channel above.
+
+The losing side's Retreat / Withdraw / Removed fate (4.4.5) is applied
+automatically in the post-Battle step, but the two player elections are
+operator-controllable. `approach_response` accepts an optional
+`post_battle_decisions` arg (a FIFO list, same shape as `scripted_decisions`)
+with two decision types:
+
+- `post_battle_withdraw` — for each eligible losing Lord, `choice` is
+  `"withdraw"` (go inside the Friendly Stronghold at the Battle Locale, 4.4.3 /
+  11.2) or `"retreat"`. Default: `"withdraw"` if the Lord id is in
+  `meta.post_battle_withdraw`, else `"retreat"`.
+- `retreat_destination` — for each Retreating Lord, `choice` is one of the legal
+  target Locales. Default: the deterministic leftmost (Friendly first, then
+  alphabetical).
+
+Omit `post_battle_decisions` (and leave `meta.post_battle_withdraw` unset) for
+the legacy deterministic behaviour. The resolved post-Battle choices are echoed
+on `battle_result["post_battle_decisions"]`.
 
 ### Campaign — Siege subsystem (Phase 3c)
 - `besiege_or_bypass` — 4.3.5 (mandatory choice)
