@@ -78,6 +78,17 @@ Omit `post_battle_decisions` (and leave `meta.post_battle_withdraw` unset) for
 the legacy deterministic behaviour. The resolved post-Battle choices are echoed
 on `battle_result["post_battle_decisions"]`.
 
+`cmd_storm` and `cmd_sally` accept the same `scripted_decisions` channel for
+their in-Battle choices. `cmd_sally` additionally accepts `post_battle_decisions`
+with `retreat_destination` entries to direct where a losing-but-surviving
+Besieger Retreats (default: deterministic leftmost). `cmd_storm` has no
+post-Battle election (Storm Attackers never Retreat).
+
+Discoverability: `enumerate_legal` tags each Battle-triggering move (the Stand
+`approach_response`, `cmd_storm`, `cmd_sally`) with an informational
+`accepts_decisions` key listing the decision-type vocabulary each optional
+channel accepts. It is a sibling of `args`; `dispatch` ignores it.
+
 ### Campaign — Siege subsystem (Phase 3c)
 - `besiege_or_bypass` — 4.3.5 (mandatory choice)
 - `bypass_march` — 4.3.6 Depart

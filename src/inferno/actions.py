@@ -3437,14 +3437,27 @@ def _h_cmd_sally(state, side, args, rng) -> dict[str, Any]:
         # SMOKE-Inferno-093: losing-but-surviving Besiegers must RETREAT normally
         # (4.5.3 SALLY LOSING / 11.2) -- not remain co-located at the Locale. No
         # Approach breadcrumb applies in a Sally (no marching attacker).
+        # The losing Besiegers' Retreat destination is operator-controllable via
+        # the post_battle_decisions channel (retreat_destination), mirroring the
+        # field-Battle path; absent input it is the deterministic leftmost.
+        from .battle import BattleDecisionContext
+        _sally_bdc = BattleDecisionContext(
+            scripted=list(args.get("post_battle_decisions") or []),
+            callback=state.get("battle_callback"))
         for bid in list(besiegers):
             b = state["lords"].get(bid)
             if (b is None or bid in result.get("removed_lords", [])
                     or b.get("status") != "mustered"
                     or sum(b.get("forces", {}).values()) == 0):
                 continue  # fully Routed besiegers are Removed below
-            dest = _retreat_destination(state, bid, locale_name, enemy_side,
-                                        False, None, None)
+            _cands = _retreat_candidates(state, bid, locale_name, enemy_side,
+                                         False, None, None)
+            if not _cands:
+                dest = None
+            else:
+                dest = _sally_bdc.decide_optional(
+                    "retreat_destination", enemy_side, options=_cands,
+                    default=_cands[0], info={"lord_id": bid})
             if dest is None:
                 _disband_beyond_service_limit(state, bid)
             else:
@@ -3452,6 +3465,8 @@ def _h_cmd_sally(state, side, args, rng) -> dict[str, Any]:
                     loc["lords_present"].remove(bid)
                 b["location"] = dest
                 state["locales"][dest].setdefault("lords_present", []).append(bid)
+        if _sally_bdc.trace:
+            result["post_battle_decisions"] = list(_sally_bdc.trace)
     else:
         # Sallying Lord loses: RAID — reduce Siege markers to 1
         if loc.get("siege"):

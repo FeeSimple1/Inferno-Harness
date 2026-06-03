@@ -29,6 +29,28 @@ from . import static_data as sd
 from .flow import current_campaign_step, current_side, current_step
 
 
+# ---------------------------------------------------------------------------
+# Optional operator decision channels accepted by Battle-triggering moves.
+# These are advertised under an "accepts_decisions" key (a sibling of "args")
+# so an operator enumerating legal moves can discover the tactical knobs.
+# The key is informational only — dispatch() reads "args" and ignores it, so it
+# never affects the move-replay sweep. Decision-type catalogs mirror the
+# BattleDecisionContext usage in inferno.battle / inferno.actions; see ACTIONS.md.
+_FIELD_BATTLE_DECISIONS = [
+    "initial_placement_attacker", "initial_placement_defender",
+    "reserve_advance", "center_fill", "flanker_target",
+    "select_target_unit", "absorb_target", "concede",
+]
+_STORM_DECISIONS = [
+    "concede", "storm_reserve_add", "select_target_unit", "absorb_target",
+]
+_SALLY_DECISIONS = [
+    "concede", "sally_reserve_add", "select_target_unit", "absorb_target",
+]
+_FIELD_POST_BATTLE_DECISIONS = ["post_battle_withdraw", "retreat_destination"]
+_SALLY_POST_BATTLE_DECISIONS = ["retreat_destination"]
+
+
 def _enum_pending_revolts(state):
     """If a Revolt-table choice (Submission / Rebellion fallback) or an Exiles
     slide is pending, return ONLY the resolution moves (they pause everything
@@ -855,6 +877,7 @@ def _enum_command_phase(state, side) -> list[dict[str, Any]]:
             # Storm if at least 1 Siege marker
             moves.append({
                 "action": "cmd_storm", "side": side, "args": {"lord_id": lid},
+                "accepts_decisions": {"scripted_decisions": list(_STORM_DECISIONS)},
                 "description": f"{lid} Storms {lord['location']} ({sum(s.get('count',1) for s in own_sieges)} Siege markers).",
                 "rule_citation": "4.5.2",
             })
@@ -872,6 +895,10 @@ def _enum_command_phase(state, side) -> list[dict[str, Any]]:
                 and _besiegers):
             moves.append({
                 "action": "cmd_sally", "side": side, "args": {"lord_id": lid},
+                "accepts_decisions": {
+                    "scripted_decisions": list(_SALLY_DECISIONS),
+                    "post_battle_decisions": list(_SALLY_POST_BATTLE_DECISIONS),
+                },
                 "description": f"{lid} Sallies from {lord['location']}.",
                 "rule_citation": "4.5.3",
             })
@@ -1076,6 +1103,10 @@ def _enum_approach_response(state, pending) -> list[dict[str, Any]]:
     out.append({
         "action": "approach_response", "side": side,
         "args": {"lord_id": lid, "choice": "stand"},
+        "accepts_decisions": {
+            "scripted_decisions": list(_FIELD_BATTLE_DECISIONS),
+            "post_battle_decisions": list(_FIELD_POST_BATTLE_DECISIONS),
+        },
         "description": f"{lid} stands for Battle at {locale_name}.",
         "rule_citation": "4.3.4",
     })
