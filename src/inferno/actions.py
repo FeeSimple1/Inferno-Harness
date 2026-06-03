@@ -196,7 +196,7 @@ def _capability_eligible_mustered(state, cid: str, side: str) -> list[str]:
     return out
 
 
-def _deploy_capability(state, cid: str, side: str, notes: list, placements=None) -> None:
+def _deploy_capability(state, cid: str, side: str, notes: list, placements=None, auto_place: bool = True) -> None:
     """Deploy one drawn/forced Capability per 3.1.2. side-wide -> map edge;
     This-Lord -> a placement arg if valid, else a pending placement choice;
     discard if no eligible Mustered Lord exists."""
@@ -212,13 +212,30 @@ def _deploy_capability(state, cid: str, side: str, notes: list, placements=None)
         state["decks"][side]["aow_discard"].append(cid)
         notes.append(f"{cid} -> discarded: no eligible Mustered Lord (3.1.2)")
         return
-    # The owner may name the Lord via `placements`; default = first eligible
-    # (deterministic). Either way the Capability is correctly scoped to ONE mat.
+    # The owner chooses which eligible Mustered Lord receives a This-Lord
+    # Capability (3.1.2). If a valid Lord is named via `placements`, use it;
+    # otherwise surface the choice as a pending decision (resolved by
+    # levy_place_capability) before the side's 3.1 segment advances.
     chosen = (placements or {}).get(cid)
-    if chosen not in eligible:
-        chosen = eligible[0]
-    state["lords"][chosen].setdefault("capabilities", []).append(cid)
-    notes.append(f"{cid} -> {chosen} (This-Lord) ({card['capability_name']})")
+    if chosen in eligible:
+        state["lords"][chosen].setdefault("capabilities", []).append(cid)
+        notes.append(f"{cid} -> {chosen} (This-Lord) ({card['capability_name']})")
+    elif auto_place:
+        # Convenience default (direct API/tests): first eligible Mustered Lord.
+        lid = eligible[0]
+        state["lords"][lid].setdefault("capabilities", []).append(cid)
+        notes.append(f"{cid} -> {lid} (This-Lord, auto) ({card['capability_name']})")
+    else:
+        # No-Agent interactive flow (enumerator): surface the Lord choice.
+        state.setdefault("pending", []).append({
+            "type": "capability_placement", "side": side, "card_id": cid,
+            "name": card["capability_name"], "eligible": list(eligible)})
+        notes.append(f"{cid} -> placement pending ({card['capability_name']})")
+
+
+def _aow_placements_pending(state, side: str) -> bool:
+    return any(p.get("type") == "capability_placement" and p.get("side") == side
+               for p in state.get("pending", []) or [])
 
 
 def _advance_after_aow(state) -> None:
@@ -256,6 +273,7 @@ def _h_levy_aow_draw(state, side: str, args, rng) -> dict[str, Any]:
         idx = (idx - 1) % len(deck)
         drawn.append(deck.pop(idx))
 
+    auto_place = bool(args.get("auto_place", True))
     is_first = is_first_levy(state)
     # SMOKE-Inferno-035: Scenario A 'Sudden Campaign' — first Levy AoW
     # is 1 Capability + 1 Event (rather than 2 of either).
@@ -271,7 +289,7 @@ def _h_levy_aow_draw(state, side: str, args, rng) -> dict[str, Any]:
             if forced_id in deck_g:
                 deck_g.remove(forced_id)
                 _deploy_capability(state, forced_id, "ghibelline", reprisal_notes,
-                                   placements=args.get("placements"))
+                                   placements=args.get("placements"), auto_place=auto_place)
         state["meta"]["reprisal_war_assigned"] = True
     state.setdefault("capabilities_in_play", [])
     held = state["decks"][side]["aow_held"]
@@ -287,7 +305,7 @@ def _h_levy_aow_draw(state, side: str, args, rng) -> dict[str, Any]:
         if treat_as_capability:
             # 3.1.2: deploy by Capability TYPE (A4) — side-wide to the map edge,
             # This-Lord to one Mustered Lord (or pending choice / discard).
-            _deploy_capability(state, cid, side, notes, placements=args.get("placements"))
+            _deploy_capability(state, cid, side, notes, placements=args.get("placements"), auto_place=auto_place)
         else:
             # 3.1.3: implement Event. Phase 4 executes effects; Phase 2
             # routes Hold to aow_held and resolves Immediate/This-Levy/
@@ -311,6 +329,14 @@ def _h_levy_aow_draw(state, side: str, args, rng) -> dict[str, Any]:
                     "effect": effect_result,
                 })
 
+    # A4: if a This-Lord Capability still needs a placement choice, stay in this
+    # side's 3.1 segment until placed; otherwise finish and advance.
+    if _aow_placements_pending(state, side):
+        return {
+            "state_changes": {"drew": drawn, "deployment": notes,
+                              "awaiting_capability_placement": True},
+            "rule_citation": "3.1.2",
+        }
     _advance_after_aow(state)
     return {
         "state_changes": {"drew": drawn, "deployment": notes},
@@ -1084,8 +1110,45 @@ def _require_lord(state, lord_id: str, side: str) -> dict[str, Any]:
 # =====================================================================
 # Handler registry
 # =====================================================================
+def _h_levy_place_capability(state, side, args, rng) -> dict[str, Any]:
+    """3.1.2 (A4): assign a pending This-Lord Capability to a chosen eligible
+    Mustered Lord, or discard it (args.discard, or when no eligible Lord exists).
+
+    args:
+      card_id:  which pending Capability (optional if only one pending)
+      lord_id:  the Mustered Lord to receive it (must be eligible)
+      discard:  True to discard instead of placing
+    """
+    _require_step(state, "3.1")
+    cid = args.get("card_id")
+    pend = next((p for p in state.get("pending", []) or []
+                 if p.get("type") == "capability_placement" and p.get("side") == side
+                 and (cid is None or p.get("card_id") == cid)), None)
+    if pend is None:
+        raise IllegalAction("NO_PENDING_PLACEMENT",
+                            f"No pending Capability placement for {side}"
+                            + (f" / {cid}" if cid else "") + ".", "3.1.2")
+    cid = pend["card_id"]
+    eligible = _capability_eligible_mustered(state, cid, side)
+    target = args.get("lord_id")
+    if args.get("discard") or not eligible:
+        state["decks"][side]["aow_discard"].append(cid)
+        outcome = {"card_id": cid, "placed": None, "discarded": True}
+    else:
+        if target not in eligible:
+            raise IllegalAction("INELIGIBLE_LORD",
+                                f"{target!r} not eligible for {cid}; eligible={eligible}.", "3.1.2")
+        state["lords"][target].setdefault("capabilities", []).append(cid)
+        outcome = {"card_id": cid, "placed": target}
+    state["pending"].remove(pend)
+    if not _aow_placements_pending(state, side):
+        _advance_after_aow(state)
+    return {"state_changes": {"capability_placement": outcome}, "rule_citation": "3.1.2"}
+
+
 _HANDLERS = {
     "levy_aow_draw":           _h_levy_aow_draw,
+    "levy_place_capability":   _h_levy_place_capability,
     "levy_pay":                _h_levy_pay,
     "levy_pay_done":           _h_levy_pay_done,
     "cmd_fpd_pay":             _h_cmd_fpd_pay,

@@ -7,7 +7,7 @@ and the in-repo data. Programmatic diffs were used for all data tables.
 ## Result summary
 13 subsystems audited. The data model is **exact** to the references; five
 rules-logic gaps were found and **all five are now fixed** (A1–A5; A5 verified
-against the full Rules of Play PDF). 637 tests pass.
+against the full Rules of Play PDF). 639 tests pass; self-play anomaly-free across all six scenarios.
 
 ## Conformant (verified this pass)
 | Subsystem | Method | Result |

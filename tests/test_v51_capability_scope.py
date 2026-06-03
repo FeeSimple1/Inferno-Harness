@@ -70,3 +70,47 @@ class TestThisLordScope:
         # never deployed side-wide.
         assert not any(c["id"] in ("S18", "S19", "S20") for c in s.get("capabilities_in_play", []))
         assert len(placed) >= 1
+
+
+class TestPlacementSurfaced:
+    def test_enumerator_offers_per_lord_choice_and_honors_it(self):
+        from inferno.legal_moves import enumerate_legal
+        s = load_scenario("D", seed=1)
+        s["meta"]["phase"] = "levy"; s["meta"]["levy_step"] = "3.1"
+        s["meta"]["active_player"] = "ghibelline"
+        # Park a This-Lord placement (S6 Feditori) via the interactive path.
+        A._deploy_capability(s, "S6", "ghibelline", [], auto_place=False)
+        moves = enumerate_legal(s)
+        place = [m for m in moves if m["action"] == "levy_place_capability"
+                 and "lord_id" in m.get("args", {})]
+        elig = [m["args"]["lord_id"] for m in place]
+        # Genuine choice: more than one eligible Mustered Lord, all within the card's set.
+        assert len(elig) >= 2 and set(elig) <= A._CAP_PLACEMENT_ELIGIBLE["S6"]
+        # A Discard option is also surfaced.
+        assert any(m["args"].get("discard") for m in moves
+                   if m["action"] == "levy_place_capability")
+        # The player's specific pick (second eligible) is honored.
+        chosen = elig[1]
+        A.dispatch(s, {"action": "levy_place_capability", "side": "ghibelline",
+                       "args": {"card_id": "S6", "lord_id": chosen}})
+        assert "S6" in (s["lords"][chosen].get("capabilities") or [])
+        assert not any(p.get("type") == "capability_placement"
+                       for p in s.get("pending", []) or [])
+
+    def test_enumerated_draw_parks_placement_then_advances(self):
+        # Driving via the enumerator (auto_place=False) surfaces placements; once
+        # resolved the 3.1 segment advances to the other side.
+        from inferno.legal_moves import enumerate_legal
+        from inferno.flow import current_step, current_side
+        s = load_scenario("D", seed=3)
+        # Guelph draws via the enumerated move (which sets auto_place False).
+        draw = [m for m in enumerate_legal(s) if m["action"] == "levy_aow_draw"][0]
+        A.dispatch(s, draw)
+        # Resolve any surfaced placements for Guelph.
+        guard = 0
+        while current_step(s) == "3.1" and current_side(s) == "guelph":
+            mv = enumerate_legal(s)[0]
+            A.dispatch(s, mv); guard += 1
+            assert guard < 10
+        # After Guelph's segment, control passes to Ghibelline within 3.1.
+        assert current_step(s) == "3.1" and current_side(s) == "ghibelline"

@@ -29,6 +29,11 @@ def _per_side_total(s, side):
         if l.get("side") == side:
             for cid in l.get("capabilities", []) or []:
                 c[cid] += 1
+    for pnd in (s.get("pending", []) or []):
+        if pnd.get("type") == "capability_placement" and pnd.get("side") == side:
+            cid = pnd.get("card_id")
+            if isinstance(cid, str):
+                c[cid] += 1
     for kind in ("immediate", "this_levy", "this_campaign"):
         for e in (s.get("active_events", {}).get(kind, []) or []):
             cid = e.get("id")

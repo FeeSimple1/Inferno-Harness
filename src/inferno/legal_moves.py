@@ -178,9 +178,33 @@ def _enum_levy(state) -> list[dict[str, Any]]:
 
 
 def _enum_aow(state, side) -> list[dict[str, Any]]:
+    # A4: a drawn This-Lord Capability awaiting placement is surfaced as a choice
+    # (one move per eligible Mustered Lord, plus Discard) before the draw advances.
+    pendings = [p for p in (state.get("pending") or [])
+                if p.get("type") == "capability_placement" and p.get("side") == side]
+    if pendings:
+        from . import actions as _a
+        p = pendings[0]
+        # Recompute eligibility live: earlier placements may have filled mats
+        # (max 2/mat), so the stored list can be stale.
+        eligible_now = _a._capability_eligible_mustered(state, p["card_id"], side)
+        moves = [{
+            "action": "levy_place_capability", "side": side,
+            "args": {"card_id": p["card_id"], "lord_id": lid},
+            "description": f"Place Capability {p['card_id']} ({p.get('name')}) on {lid}.",
+            "rule_citation": "3.1.2",
+        } for lid in eligible_now]
+        moves.append({
+            "action": "levy_place_capability", "side": side,
+            "args": {"card_id": p["card_id"], "discard": True},
+            "description": f"Discard Capability {p['card_id']} ({p.get('name')}).",
+            "rule_citation": "3.1.2",
+        })
+        return moves
     return [{
         "action": "levy_aow_draw",
         "side": side,
+        "args": {"auto_place": False},
         "description": "Draw 2 AoW cards; first Levy deploys as Capabilities, later Levies implement Events.",
         "rule_citation": "3.1.2 / 3.1.3",
     }]
@@ -431,6 +455,12 @@ def _enum_cta(state, side) -> list[dict[str, Any]]:
                 continue
             if lord.get("status") == "on_calendar":
                 for seat in lord.get("seats", []):
+                    # Mirror the handler's 3.4.1 Seat-eligibility gate (not
+                    # Enemy-occupied/Besieged/Ruins, Urban-Army exception) so we
+                    # never over-enumerate an auto-Muster the handler will reject.
+                    _elig, _inside, _why = sd.muster_seat_status(state, lord, seat)
+                    if not _elig:
+                        continue
                     moves.append({
                         "action": "cta_allies", "side": side,
                         "args": {"mode": "auto_muster", "target_lord_id": lid,
