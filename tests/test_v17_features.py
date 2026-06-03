@@ -122,54 +122,55 @@ def _storm_setup(seed=1):
     return s
 
 
-@pytest.mark.skipif(not _HYP, reason="hypothesis not installed")
-class TestModifierConsumptionFuzz:
-    @given(
-        n_markers=st.integers(min_value=0, max_value=5),
-        value=st.integers(min_value=1, max_value=4),
-        seed=st.integers(min_value=1, max_value=500),
-    )
-    @settings(max_examples=60, deadline=4000)
-    def test_storm_walls_minus_always_consumed(self, n_markers, value, seed):
-        """SMOKE-Inferno-041 invariant: every one-shot storm_walls_minus
-        marker in battle_modifiers_pending is consumed by a single Storm,
-        regardless of count or value — the queue never leaks them."""
-        s = _storm_setup(seed=seed)
-        s["battle_modifiers_pending"] = [
-            {"id": f"X{i}", "side": "guelph", "effect": "storm_walls_minus",
-             "value": value}
-            for i in range(n_markers)
-        ]
-        # A non-storm marker must survive untouched.
-        s["battle_modifiers_pending"].append(
-            {"id": "KEEP", "side": "guelph", "effect": "some_other_effect"})
-        result = resolve_storm(
-            s, attackers=["firenze"], defenders=[],
-            active_id="firenze", locale_name="Volterra",
+if _HYP:  # guard: decorators below reference hypothesis names at class-body eval time
+    @pytest.mark.skipif(not _HYP, reason="hypothesis not installed")
+    class TestModifierConsumptionFuzz:
+        @given(
+            n_markers=st.integers(min_value=0, max_value=5),
+            value=st.integers(min_value=1, max_value=4),
+            seed=st.integers(min_value=1, max_value=500),
         )
-        leftover = [m for m in s["battle_modifiers_pending"]
-                    if m.get("effect") == "storm_walls_minus"]
-        assert leftover == [], f"storm_walls_minus leaked: {leftover}"
-        assert any(m["id"] == "KEEP" for m in s["battle_modifiers_pending"]), \
-            "unrelated modifier was wrongly consumed"
-        assert result["mode"] == "storm"
+        @settings(max_examples=60, deadline=4000)
+        def test_storm_walls_minus_always_consumed(self, n_markers, value, seed):
+            """SMOKE-Inferno-041 invariant: every one-shot storm_walls_minus
+            marker in battle_modifiers_pending is consumed by a single Storm,
+            regardless of count or value — the queue never leaks them."""
+            s = _storm_setup(seed=seed)
+            s["battle_modifiers_pending"] = [
+                {"id": f"X{i}", "side": "guelph", "effect": "storm_walls_minus",
+                 "value": value}
+                for i in range(n_markers)
+            ]
+            # A non-storm marker must survive untouched.
+            s["battle_modifiers_pending"].append(
+                {"id": "KEEP", "side": "guelph", "effect": "some_other_effect"})
+            result = resolve_storm(
+                s, attackers=["firenze"], defenders=[],
+                active_id="firenze", locale_name="Volterra",
+            )
+            leftover = [m for m in s["battle_modifiers_pending"]
+                        if m.get("effect") == "storm_walls_minus"]
+            assert leftover == [], f"storm_walls_minus leaked: {leftover}"
+            assert any(m["id"] == "KEEP" for m in s["battle_modifiers_pending"]), \
+                "unrelated modifier was wrongly consumed"
+            assert result["mode"] == "storm"
 
-    @given(seed=st.integers(min_value=1, max_value=500))
-    @settings(max_examples=40, deadline=4000)
-    def test_double_storm_does_not_reapply_consumed_marker(self, seed):
-        """A one-shot marker consumed by the first Storm must not affect a
-        second Storm (no resurrection from a stale queue)."""
-        s = _storm_setup(seed=seed)
-        s["battle_modifiers_pending"] = [
-            {"id": "OS", "side": "guelph", "effect": "storm_walls_minus",
-             "value": 2}]
-        resolve_storm(s, attackers=["firenze"], defenders=[],
-                      active_id="firenze", locale_name="Volterra")
-        assert not any(m.get("effect") == "storm_walls_minus"
-                       for m in s.get("battle_modifiers_pending", []))
-        # Rebuild a fresh siege and storm again — must run with no leftover.
-        s["locales"]["Volterra"]["siege"] = [
-            {"side": "guelph", "color": "gold", "count": 2}]
-        r2 = resolve_storm(s, attackers=["firenze"], defenders=[],
-                           active_id="firenze", locale_name="Volterra")
-        assert r2["mode"] == "storm"
+        @given(seed=st.integers(min_value=1, max_value=500))
+        @settings(max_examples=40, deadline=4000)
+        def test_double_storm_does_not_reapply_consumed_marker(self, seed):
+            """A one-shot marker consumed by the first Storm must not affect a
+            second Storm (no resurrection from a stale queue)."""
+            s = _storm_setup(seed=seed)
+            s["battle_modifiers_pending"] = [
+                {"id": "OS", "side": "guelph", "effect": "storm_walls_minus",
+                 "value": 2}]
+            resolve_storm(s, attackers=["firenze"], defenders=[],
+                          active_id="firenze", locale_name="Volterra")
+            assert not any(m.get("effect") == "storm_walls_minus"
+                           for m in s.get("battle_modifiers_pending", []))
+            # Rebuild a fresh siege and storm again — must run with no leftover.
+            s["locales"]["Volterra"]["siege"] = [
+                {"side": "guelph", "color": "gold", "count": 2}]
+            r2 = resolve_storm(s, attackers=["firenze"], defenders=[],
+                               active_id="firenze", locale_name="Volterra")
+            assert r2["mode"] == "storm"
