@@ -53,9 +53,15 @@ response to a pending decision owed by the other side).
   `cmd_sally` accept. Entries are accumulated across the response
   window and routed per side by each decision's `side`. Omit for the
   deterministic leftmost fallback.
-- `battle_decision` — in-Battle decisions via BattleDecisionContext
-- `concede` — 4.4.4
-- `retreat` — 4.4.5
+
+Battles resolve synchronously within the triggering action, so there are no
+separate `battle_decision`, `concede`, or `retreat` actions. In-Battle choices
+— array placement, reserve/center fill, flanker tie-breaks, hit allocation,
+and **concession** (4.4.4) — flow through the `BattleDecisionContext` via the
+`scripted_decisions` / callback channel above. The losing side's
+Retreat / Withdraw / Removed fate (4.4.5) is applied automatically in the
+post-Battle step; the one player election (withdraw into a Stronghold instead
+of Retreating) is taken from `meta.post_battle_withdraw` (a list of Lord ids).
 
 ### Campaign — Siege subsystem (Phase 3c)
 - `besiege_or_bypass` — 4.3.5 (mandatory choice)
