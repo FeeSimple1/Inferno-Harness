@@ -26,7 +26,10 @@ from inferno.scenarios import SCENARIO_IDS, SCENARIO_NAMES, list_scenarios, load
 
 # ----------------------------------------------------------------- imports
 def test_package_imports():
-    assert __version__ == "0.0.0"
+    # Version is single-sourced in src/inferno/__init__.py; assert the shape so
+    # this guards "did the package import" without pinning an exact value.
+    assert isinstance(__version__, str) and __version__.count(".") >= 1
+    assert __version__ != "0.0.0"  # 0.0.0 was the Phase-0 skeleton placeholder
 
 
 def test_all_six_scenarios_listed():

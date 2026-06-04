@@ -1620,3 +1620,99 @@ rationale recorded in RULES_DECISIONS.md (War Engineers flagged for review).
 
 **Verification:** `tests/test_v45_feed_scope.py` (3 tests, incl. a guard that no
 forbidden handler sets `moved_fought`). Full suite 604 pass.
+
+## v4.8 — Surface owner choices the harness auto-resolved (CPL 8.4)
+
+Two player choices the engine had silently auto-resolved are now opt-in through
+the BattleDecisionContext, with defaults unchanged. (A) Non-Select-Target Hit
+assignment (Battle&Storm 10.2, "the owner chooses units for any other Hits"):
+default stays cheapest-first, a consumer may elect a unit via
+`bdc.decide_optional("absorb_target", ...)`. (B) Post-Battle Withdraw
+(Battle&Storm 11.2): a losing Lord Defending at a Friendly Stronghold MAY
+Withdraw into it instead of Retreating; default Retreat, opt-in via
+`meta.post_battle_withdraw`.
+
+**Verification:** `tests/test_v48_owner_choices.py` (8 tests).
+
+## v4.9 — Storm armored-first absorption + striker Select-Target (Battle&Storm 10.2)
+
+(A) Hits AGAINST a Storm Attacker must assign to ARMORED units before Unarmored
+"regardless of who is choosing" (Battle&Storm 10.2 / Commands 210 / Rules Ref
+294) — a forced order, no owner choice. (B) Crossbow / Sudden-Clash Hits let the
+STRIKING side Select Target in Battle/Sally; default most-valuable-first,
+unchanged.
+
+**Verification:** `tests/test_v49_storm_armored_select.py` (6 tests).
+
+## v5.0 — Full rules-audit fixes
+
+A1 (4.4.1): a combined Relief-Sally loss reduces the Siege markers at the Locale
+to ONE. A2 (F23): Via Francigena's +1 Command excludes Guido Guerra and Orvieto.
+A5 (5.2): Campaign Victory sudden-death — a side with no Mustered Lords on the
+map during the command phase loses immediately.
+
+**Verification:** `tests/test_v50_audit_fixes.py` (7 tests).
+
+## v5.1 — First-Levy Capability This-Lord scope (3.1.2)
+
+A "This Lord" Capability must attach to exactly one Mustered Lord's mat (eligible
+per the card, max 2/mat; discard if none) rather than deploying side-wide. A
+genuinely side-wide Capability tucks at the map edge.
+
+**Verification:** `tests/test_v51_capability_scope.py` (10 tests).
+
+## v5.2 — Field-Battle tactical choices reachable from the action interface
+
+Storm and Sally exposed `scripted_decisions`, but ordinary March-triggered field
+Battles called `resolve_battle()` with no decision channel, so array placement,
+tie-breaks, hit allocation, and concession always fell back to the deterministic
+leftmost choice — an LLM on the public action interface could not control them.
+`approach_response` now accepts an optional `scripted_decisions` arg, accumulated
+across the response window and drained by `_finalize_approach` into the field
+Battle's BattleDecisionContext (`state['battle_callback']` is also threaded for
+self-play).
+
+**Verification:** `tests/test_v52_field_battle_decisions.py` (5 tests).
+
+## v5.3 — Post-Battle Withdraw/Retreat elections via the decision channel
+
+The withdraw-vs-retreat election was only settable by mutating
+`meta.post_battle_withdraw`, and the Retreat destination was always the
+deterministic leftmost Locale, so a pure-dispatch operator could make neither
+choice. `_apply_post_battle` now resolves both through a BattleDecisionContext
+fed by an optional `post_battle_decisions` list + callback: `post_battle_withdraw`
+(per eligible losing Lord) and `retreat_destination` (per Retreating Lord, among
+the legal targets exposed by the new `_retreat_candidates` helper). Defaults are
+byte-identical; resolved choices echo on `battle_result['post_battle_decisions']`.
+
+**Verification:** `tests/test_v53_post_battle_decisions.py` (6 tests).
+
+## v5.4 — Sally retreat parity + decision-channel discoverability
+
+(1) `cmd_sally` now resolves a losing-but-surviving Besieger's Retreat
+destination through the `post_battle_decisions` (`retreat_destination`) channel,
+matching the field-Battle path (default deterministic leftmost). (2)
+`enumerate_legal` tags each Battle-triggering move (the Stand `approach_response`,
+`cmd_storm`, `cmd_sally`) with an informational `accepts_decisions` key listing
+the decision-type vocabulary each optional channel accepts; it is a sibling of
+`args`, so `dispatch` ignores it and the move-replay sweep is unaffected. Also
+adds a multi-stander field-Battle test proving `scripted_decisions` accumulate
+FIFO across the response window.
+
+**Verification:** `tests/test_v54_decision_discoverability.py` (6 tests).
+
+## v5.5 — Stale Approach breadcrumb cleanup + Hypothesis-skip QA fix
+
+(1) Engine: `_finalize_approach` cleared `meta.approach_breadcrumb` only after a
+Battle; an all-Avoid / all-Withdraw resolution (no Battle) left a stale
+`{approached_from, approached_via}` in the serialized state. Now popped on the
+no-standers branch too. (2) Test-suite QA: `tests/test_invariants.py`
+module-level-skips when Hypothesis is absent, and several ordinary regression
+modules imported helpers through it, so they silently skipped too (hiding the
+new decision-interface checks). Invariant-assertion imports now come straight
+from `inferno.invariants`, and the shared `_place` helper moved to a neutral,
+dependency-free `tests/_helpers.py`.
+
+**Verification:** `tests/test_v55_breadcrumb_cleanup.py` (4 tests). Full suite:
+663 pass with Hypothesis; 657 pass + 1 skipped (the Hypothesis property module)
+without it.

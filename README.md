@@ -14,7 +14,7 @@ exposes a structured interface (`new`, `state`, `legal-moves`, `do`,
 This is a private project. See [`BRIEF.md`](BRIEF.md) for the
 authoring spec.
 
-## Status — v1.9
+## Status — v5.5
 
 Every rule mechanic in the Inferno Rules of Play has a state-mutating
 implementation. The harness plays a complete game start-to-finish
@@ -49,6 +49,10 @@ Highlights beyond the BRIEF Phase 0–4 core:
   Service (3.4.2).
 - BattleDecisionContext with scripted_decisions / callback / leftmost
   fallback priority.
+- Operator decision interface (v5.x): field Battles, Storms, and Sallies
+  accept `scripted_decisions`; post-Battle Withdraw-vs-Retreat and Retreat
+  destination accept `post_battle_decisions`; `enumerate_legal` advertises
+  these channels on each Battle-triggering move (see ACTIONS.md).
 - LLM-play harness (`src/inferno/llm/`) + `examples/play_with_claude.py`.
 - CLI `do` executes any action via `dispatch()` and persists state
   (e.g. `inferno do state.json '{"action":"levy_aow_draw","side":"guelph"}'`).
@@ -57,7 +61,7 @@ Highlights beyond the BRIEF Phase 0–4 core:
   result; Rebellion + Submission + 1.4.4 Exiles, with player choices
   surfaced as decisions (`cmd_resolve_revolt` / `cmd_resolve_exiles`).
 
-**386 tests pass** on Python 3.10 sandbox (project policy 3.11+).
+**663 tests pass** on the Python 3.10 sandbox (project policy 3.11+); without the optional Hypothesis package 657 pass and only the Hypothesis property-test module skips.
 46 SMOKE-Inferno-NNN markers with regression tests. Round-trip
 enumerator/handler sweep + greedy & strategic self-play sweeps +
 Hypothesis property-based invariant tests all green. Tier-2 sweep:
@@ -72,7 +76,7 @@ Requires Python 3.11+.
 git clone https://github.com/FeeSimple1/Inferno-Harness.git
 cd Inferno-Harness
 pip install -e ".[dev]"
-pytest -v                         # 386 tests
+pytest -v                         # 663 tests
 inferno scenarios                 # list the 6 scenarios
 inferno new A --seed 42 --out a.state.json
 inferno state a.state.json --mode summary
