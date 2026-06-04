@@ -12,20 +12,8 @@ from inferno.actions import dispatch, _h_cmd_march, _apply_post_battle, IllegalA
 from inferno.battle import resolve_battle
 from inferno import static_data as sd
 from inferno.rng import HarnessRNG
-from tests.test_invariants import assert_no_colocated_enemies
-
-
-def _place(s, lid, loc, inside=False, forces=None):
-    old = s["lords"][lid].get("location")
-    if old and old in s["locales"] and lid in s["locales"][old]["lords_present"]:
-        s["locales"][old]["lords_present"].remove(lid)
-    s["lords"][lid]["location"] = loc
-    s["lords"][lid]["status"] = "mustered"
-    if lid not in s["locales"][loc]["lords_present"]:
-        s["locales"][loc]["lords_present"].append(lid)
-    s["lords"][lid].setdefault("flags", {})["in_stronghold"] = inside
-    if forces is not None:
-        s["lords"][lid]["forces"] = dict(forces)
+from inferno.invariants import assert_no_colocated_enemies
+from tests._helpers import _place
 
 
 # ---- SMOKE-Inferno-087: muster eligibility + placement ----

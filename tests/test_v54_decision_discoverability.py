@@ -21,7 +21,7 @@ from inferno.rng import HarnessRNG
 from inferno.scenarios import load_scenario
 from inferno.battle import resolve_sally
 from tests.test_phase3b import _to_command_phase
-from tests.test_v40_colocation_fixes import _place
+from tests._helpers import _place
 
 
 # --------------------------------------------------------------------------- #

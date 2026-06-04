@@ -2695,6 +2695,11 @@ def _finalize_approach(state, locale_name, approaching_lord, defender_side) -> d
         # No battle; restore active player to the marching side.
         atk_side = state["meta"].pop("approach_attacker_side", attacker_side)
         state["meta"]["active_player"] = atk_side
+        # Clear the transient Approach breadcrumb on the no-Battle path too. The
+        # Stand path clears it after the Battle, but an all-Avoid / all-Withdraw
+        # resolution must not leak a stale origin/route into the serialized
+        # state (it feeds Retreat handling and could mislead external consumers).
+        state["meta"].pop("approach_breadcrumb", None)
         return {
             "state_changes": {"approach_resolved": "no_battle", "locale": locale_name},
             "rule_citation": "4.3.4",

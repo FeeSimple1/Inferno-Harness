@@ -20,7 +20,7 @@ from inferno.scenarios import load_scenario, SCENARIO_IDS
 from inferno.legal_moves import enumerate_legal
 import inferno.actions as A
 from inferno.actions import dispatch, IllegalAction
-import tests.test_invariants as inv
+from inferno import invariants as inv
 
 
 def _check_invariants(s):
