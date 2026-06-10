@@ -1716,3 +1716,36 @@ dependency-free `tests/_helpers.py`.
 **Verification:** `tests/test_v55_breadcrumb_cleanup.py` (4 tests). Full suite:
 663 pass with Hypothesis; 657 pass + 1 skipped (the Hypothesis property module)
 without it.
+
+
+## v5.6 — Independent (Fable) bug-hunt follow-ups (engine #2–#8)
+
+A second-pass adversarial review surfaced seven issues beyond the v5.2–v5.5
+work; all fixed here (the eighth, an Approach-Battle card-flow question, is held
+pending a rules second opinion).
+
+- **#2 validate-before-mutate**: `_h_approach_response` popped the pending entry
+  (and stored decision lists) BEFORE the Avoid/Withdraw validations, so a
+  rejected response stranded the whole Approach window (dispatch has no
+  rollback). Now it peeks, validates/applies, then consumes the entry.
+- **#3 enumerator/handler symmetry**: the handler rejected Avoid into ANY
+  enemy-occupied Locale, but `enumerate_legal` offers Avoid past an Enemy that
+  is Besieged inside. Handler now rejects only an UNBESIEGED Enemy (4.3.4).
+- **#4 freed-Siege sweep on Retreat**: a loser Retreating off the Battle Locale
+  is a departure too; `_apply_post_battle` now calls `_sweep_freed_stronghold`
+  when a Retreat actually relocates a Lord (gated so the relief-Sally
+  withdraw-inside case is untouched).
+- **#5 Withdraw capacity**: post-Battle Withdraw now counts Lords already inside
+  the Stronghold against its Size, mirroring the Approach-response path.
+- **#6 Friendly predicate**: `_can_withdraw_into_stronghold` now uses the
+  canonical `_is_friendly_locale` (current-Allegiance markers) instead of raw
+  printed allegiance (SMOKE-Inferno-052).
+- **#7 Disband clears flags**: `_disband_beyond_service_limit` now resets a
+  Lord's transient `flags`, so a re-Mustered Podestà is not phantom
+  `in_stronghold` / `moved_fought`.
+- **#8 scripted side**: `BattleDecisionContext` enforces a scripted entry's
+  `side` when it pins one (entries omitting `side` stay valid for either),
+  closing an adversarial two-operator scripting hole.
+
+**Verification:** `tests/test_v56_fable_followups.py` (13 tests). Full suite:
+676 pass with Hypothesis; 670 pass + 1 skipped without it.

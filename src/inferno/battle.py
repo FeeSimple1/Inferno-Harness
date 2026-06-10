@@ -56,6 +56,16 @@ class BattleDecisionContext:
                 raise ValueError(
                     f"Scripted decision type mismatch: expected {decision_type!r}, got {d.get('type')!r}"
                 )
+            # A scripted entry MAY pin the deciding side; if it does, it must
+            # match this choice point. This stops one operator from scripting
+            # the opponent's Battle choices (the `side` field is otherwise only
+            # advisory; entries that omit it stay valid for either side).
+            d_side = d.get("side")
+            if d_side is not None and d_side != side:
+                raise ValueError(
+                    f"Scripted decision side mismatch for {decision_type!r}: "
+                    f"this is a {side!r} choice but the entry is for {d_side!r}"
+                )
             choice = d.get("choice")
             if choice not in options:
                 raise ValueError(
@@ -90,7 +100,8 @@ class BattleDecisionContext:
         info = info or {}
         choice = default
         if self.scripted and isinstance(self.scripted[0], dict) and \
-                self.scripted[0].get("type") == decision_type:
+                self.scripted[0].get("type") == decision_type and \
+                self.scripted[0].get("side", side) == side:
             d = self.scripted.pop(0)
             c = d.get("choice")
             if c in options:

@@ -635,6 +635,9 @@ def _disband_beyond_service_limit(state, lid: str) -> None:
     lord["assets"] = {}
     lord["vassals"] = []
     lord["location"] = None
+    # Clear transient flags (in_stronghold, moved_fought, ...) so a Podesta that
+    # later re-Musters starts clean rather than phantom-Besieged / pre-Fought.
+    lord["flags"] = {}
 
     if lord.get("podesta"):
         # Place cylinder Service-Rating boxes ahead of current Turn.
@@ -2558,28 +2561,14 @@ def _h_approach_response(state, side, args, rng) -> dict[str, Any]:
             break
     if idx is None:
         raise IllegalAction("NO_PENDING", f"No pending approach_response for {lid}.", "4.3.4")
-    entry = pending.pop(idx)
+    # Peek (do NOT pop yet): the Avoid/Withdraw validations below may raise, and
+    # dispatch has no rollback — popping here would strand the Approach window
+    # on a rejected response. The entry is consumed only after validation.
+    entry = pending[idx]
     info = entry["info"]
     locale_name = info["locale"]
     approached_via = info["approached_via"]
     lord = state["lords"][lid]
-
-    # Operator-supplied Battle tactical choices for the field Battle this
-    # Approach may trigger (array placement, tie-breaks, hit allocation,
-    # concession). Mirrors the scripted_decisions channel that Storm/Sally
-    # already expose. Accumulated (FIFO) across the response window and
-    # drained by _finalize_approach. The single BDC queue routes per-side
-    # via each decision's `side`, so either player may supply entries.
-    _sd_in = args.get("scripted_decisions")
-    if _sd_in:
-        state.setdefault("approach_battle_decisions", {}) \
-             .setdefault(locale_name, []).extend(_sd_in)
-    # Post-Battle elections (withdraw-vs-retreat, Retreat destination) ride a
-    # parallel channel since they are resolved after resolve_battle returns.
-    _pbd_in = args.get("post_battle_decisions")
-    if _pbd_in:
-        state.setdefault("approach_post_battle_decisions", {}) \
-             .setdefault(locale_name, []).extend(_pbd_in)
 
     if choice == "avoid":
         # 4.3.4 AVOID BATTLE restrictions:
@@ -2608,14 +2597,18 @@ def _h_approach_response(state, side, args, rng) -> dict[str, Any]:
                 f"{lid} may not Avoid back along the Way the Active Lord approached "
                 f"({approached_via}) to {dest_name}.",
                 "4.3.4")
-        # Other enemy Lord at destination?
+        # 4.3.4: may NOT Avoid into a Locale holding an UNBESIEGED Enemy Lord.
+        # An Enemy Lord shut inside a Stronghold (Besieged) does not block the
+        # Avoid — this matches the enumerator (_enum_approach_response), which
+        # only filters out enemies with in_stronghold == False.
         target_loc = state["locales"][dest_name]
         for other_id in target_loc.get("lords_present", []):
-            if state["lords"][other_id]["side"] != side:
-                # Phase 3b: reject avoid into enemy-occupied
+            other = state["lords"][other_id]
+            if (other["side"] != side
+                    and not other.get("flags", {}).get("in_stronghold")):
                 raise IllegalAction(
                     "AVOID_INTO_ENEMY_LOCALE",
-                    f"Cannot Avoid into {dest_name}; Enemy Lord {other_id} present.",
+                    f"Cannot Avoid into {dest_name}; Unbesieged Enemy Lord {other_id} present.",
                     "4.3.4",
                 )
         # Move the Lord
@@ -2656,6 +2649,19 @@ def _h_approach_response(state, side, args, rng) -> dict[str, Any]:
     else:  # stand
         # Stand for Battle — handled when all pending approach_responses resolved.
         pass
+
+    # Validated and applied — only NOW consume the pending entry and record any
+    # operator-supplied Battle decisions. Deferring this past the validations
+    # means a rejected response leaves the Approach window intact (no leak).
+    pending.remove(entry)
+    _sd_in = args.get("scripted_decisions")
+    if _sd_in:
+        state.setdefault("approach_battle_decisions", {}) \
+             .setdefault(locale_name, []).extend(_sd_in)
+    _pbd_in = args.get("post_battle_decisions")
+    if _pbd_in:
+        state.setdefault("approach_post_battle_decisions", {}) \
+             .setdefault(locale_name, []).extend(_pbd_in)
 
     # If any remaining approach_response pendings, return — we still wait.
     remaining = [p for p in state.get("pending", [])
@@ -2897,7 +2903,10 @@ def _can_withdraw_into_stronghold(state, lid, battle_locale) -> bool:
         return False
     if loc.get("ruins") or loc.get("type") == "outpost":
         return False
-    return loc.get("allegiance") == state["lords"][lid]["side"]
+    # SMOKE-Inferno-052: use the canonical Friendly predicate so current
+    # Allegiance markers (1.3) override printed Allegiance — a marker-seized
+    # Stronghold is the seizer's, not the printed owner's.
+    return _is_friendly_locale(state, loc, state["lords"][lid]["side"])
 
 
 def _withdraw_capacity(state, battle_locale) -> int:
@@ -2954,9 +2963,19 @@ def _apply_post_battle(state, result, attackers: list[str], defenders: list[str]
     # at the Battle Locale MAY Withdraw into it (<= Stronghold Size) instead of
     # Retreating ("owner chooses for each"). Opt-in: the consumer lists lord_ids
     # in meta.post_battle_withdraw; default (absent) = Retreat, unchanged.
+    _any_retreat_off = False  # set when a loser actually relocates off battle_locale
     withdraw_elected = set(state["meta"].pop("post_battle_withdraw", []) or [])
-    _wd_count = 0
     _wd_cap = _withdraw_capacity(state, battle_locale)
+    # Count Lords already inside the Stronghold (e.g. Withdrawn during the
+    # Approach response) against capacity, so elected Withdraws can't overfill
+    # it — mirrors the already_in check on the Approach-response Withdraw path.
+    _loser_side = state["lords"][losers_ids[0]]["side"] if losers_ids else None
+    _wd_loc = state["locales"].get(battle_locale) if battle_locale else None
+    _wd_count = sum(
+        1 for _o in (_wd_loc.get("lords_present", []) if _wd_loc else [])
+        if state["lords"].get(_o, {}).get("flags", {}).get("in_stronghold")
+        and state["lords"][_o]["side"] == _loser_side
+    )
     for lid in losers_ids:
         if lid not in state["lords"]:
             continue
@@ -3030,6 +3049,7 @@ def _apply_post_battle(state, result, attackers: list[str], defenders: list[str]
                     bl["lords_present"].remove(lid)
             lord["location"] = dest
             state["locales"][dest].setdefault("lords_present", []).append(lid)
+            _any_retreat_off = True
             # Service shift
             has_carroccio = any(v.get("name") == "Carroccio" and v.get("on_mat")
                                 for v in lord.get("vassals", []))
@@ -3053,6 +3073,12 @@ def _apply_post_battle(state, result, attackers: list[str], defenders: list[str]
     # Clear the transient relief_sallying flags now that the battle is resolved.
     for a in attackers:
         state["lords"].get(a, {}).get("flags", {}).pop("relief_sallying", None)
+    # SMOKE-Inferno-088: a Retreat off the Battle Locale is a departure too, so
+    # sweep any Siege/Bypass marker the departing loser freed there (e.g. the
+    # last Besieger Retreated). The sweep is conservative — it lifts a marker
+    # only when no Mustered besieger of that side remains outside the Locale.
+    if battle_locale and _any_retreat_off:
+        _sweep_freed_stronghold(state, battle_locale)
     # Loss rolls for ALL participants (winners + losers) with their Routed piles
     loss_results: dict[str, dict] = {}
     for lid in attackers + defenders:
