@@ -14,7 +14,7 @@ exposes a structured interface (`new`, `state`, `legal-moves`, `do`,
 This is a private project. See [`BRIEF.md`](BRIEF.md) for the
 authoring spec.
 
-## Status — v5.6
+## Status — v5.7
 
 Every rule mechanic in the Inferno Rules of Play has a state-mutating
 implementation. The harness plays a complete game start-to-finish

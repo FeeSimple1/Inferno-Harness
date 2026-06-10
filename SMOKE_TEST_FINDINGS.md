@@ -1749,3 +1749,28 @@ pending a rules second opinion).
 
 **Verification:** `tests/test_v56_fable_followups.py` (13 tests). Full suite:
 676 pass with Hypothesis; 670 pass + 1 skipped without it.
+
+
+## v5.7 — Approach Battle ends the Command card (4.4.6 Recovery; bug-hunt #1)
+
+Ruling (definitive, RoP 4.4.6 Recovery): "Skip any Command actions remaining
+this card. Go to Feed/Pay/Disband (4.8). A Battle or Storm blocks any further
+Command actions on the current Command card." Cross-ref 4.2.1; the Sequence of
+Play confirms card ends -> both sides FPD -> the OTHER side flips next.
+
+`_finalize_approach` had been ending the marching card by manually nulling
+current_card/current_lord_id/actions_remaining while skipping `_run_fpd` (4.8)
+AND `_flip_active_side` (4.2) — so after an Approach Battle the attacker revealed
+another Command card, the defender's turn was skipped, and neither side's
+Fought Lords Fed. (Not a hard deadlock: the "0 legal moves" seen in single-Lord
+cases was a legitimate 5.2 sudden-death victory.) Now the path routes through
+the canonical `_finish_card_with`, the single correct card-end for all three
+combat actions (Battle / Storm / Sally) per 4.4.6. active_player is restored to
+the attacker first so the flip hands the turn to the defender (4.2), and FPD
+feeds BOTH sides' Fought Lords.
+
+**Verification:** `tests/test_v57_approach_battle_card_end.py` (4 tests:
+card_finished + FPD present, turn flips to the defender and the attacker cannot
+re-reveal, the defender's surviving Fought Lord is Fed, and the card still ends
+through FPD even when the lone defender is wiped). Full suite: 680 pass with
+Hypothesis; 674 pass + 1 skipped without it.

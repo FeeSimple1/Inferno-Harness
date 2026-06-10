@@ -2754,18 +2754,20 @@ def _finalize_approach(state, locale_name, approaching_lord, defender_side) -> d
                        callback=state.get("battle_callback"))
     state["meta"].pop("approach_breadcrumb", None)
     atk_side = state["meta"].pop("approach_attacker_side", attacker_side)
+    # 4.4.6 Recovery: a Battle ENDS the active side's Command card outright —
+    # "Skip any Command actions remaining this card. Go to Feed/Pay/Disband
+    # (4.8). A Battle or Storm blocks any further Command actions on the current
+    # Command card." (cross-ref 4.2.1). Storm and Sally route the same way, so
+    # use the canonical _finish_card_with helper (runs FPD for BOTH sides' Fought
+    # Lords, then flips to the OTHER side per 4.2) instead of nulling by hand.
+    # Restore active_player to the attacker FIRST so the flip in
+    # _finish_card_with hands the turn to the defender, not back to us.
     state["meta"]["active_player"] = atk_side
-    state["current_card"] = None
-    state["current_lord_id"] = None
-    state["actions_remaining"] = None
-    return {
-        "state_changes": {
-            "approach_resolved": "battle",
-            "battle_result": result,
-        },
-        "rolls": result.get("rolls", []),
-        "rule_citation": "4.4",
-    }
+    out = _finish_card_with(
+        {"approach_resolved": "battle", "battle_result": result},
+        state, atk_side, reason="approach_battle", citation="4.4 / 4.4.6")
+    out["rolls"] = result.get("rolls", [])
+    return out
 
 
 def _roll_routed_losses(state, specs, capture_knights: bool = True) -> dict:
