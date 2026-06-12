@@ -41,7 +41,12 @@ response to a pending decision owed by the other side).
 - `cmd_forage` — 4.6.2
 - `cmd_ravage` — 4.7.1
 - `cmd_supply` — 4.6
-- `cmd_sail` — 4.7.3 (Pisa Podestà only, entire card)
+- `cmd_sail` — 4.7.3 (Pisa Podestà only, entire card). Destinations
+  include enemy Ports free of Unbesieged Enemy Lords (arrival at an
+  Unbesieged Enemy Stronghold places a Siege marker). Optional arg
+  `discard`: `{"Provender": n, "Loot": m}` discarded per Greed (1.7.2)
+  before the Ship-capacity check; the enumerator offers a deterministic
+  minimal-discard variant when cargo exceeds Ships.
 - `cmd_pass` — 4.7.7
 
 ### Campaign — March and Battle (Phase 3b)

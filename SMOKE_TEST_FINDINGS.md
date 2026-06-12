@@ -1806,3 +1806,40 @@ a corrected retry resolves the Battle, exception-type back-compat). Full
 suite: 678 pass + 1 skipped without Hypothesis. Self-play: scenario F clean
 across aggressive / passive / chaos / rarity-weighted policies (20+ full
 games, zero anomalies).
+
+
+## v5.9 — Storm/Sally callback threading + Sail enemy-Port enumeration + Greed discard (edge-case hunt #10–#12)
+
+Round 2 of scenario-F bug-hunting aimed at the never-exercised paths: a
+random-valid `battle_callback` decision fuzzer (1,500 direct
+Battle/Storm/Sally resolutions, every decision type hit), plus staged-state
+fuzzers for Sail (190+ sails) and Treachery (37 Revolts/Bribes through the
+validated palette).
+
+**#10 — `cmd_storm` / `cmd_sally` dropped `state['battle_callback']`.**
+`resolve_storm`/`resolve_sally` accept a `callback`, field Battles pass it,
+and even the Sally POST-battle retreat context passed it — but the Storm and
+Sally combats themselves never did. A self-play operator steering tactics via
+callback silently lost control (concede, reserve adds, hit allocation all
+fell back to leftmost) in every Storm and Sally. Both call sites now thread
+the callback. `tests/test_v59_storm_sally_callback.py`.
+
+**#11 — Sail under-enumeration: enemy Ports never offered.** 4.7.3: "Move
+directly to any other Port that is free of Unbesieged Enemy Lords"; arrival at
+an Unbesieged Enemy Stronghold Besieges (Siege marker). The handler
+implemented this (SMOKE-Inferno-027) but the enumerator filtered destinations
+to FRIENDLY Ports only, so Sail-to-Enemy Siege was unreachable from
+`legal-moves` — invisible to the validated-palette check, which only catches
+over-enumeration. The enumerator now mirrors the handler.
+
+**#12 — No Greed discard for Sail.** 4.7.3: cargo that cannot be transported
+"must be discarded or left behind (per Greed, 1.7.2)" — the harness
+hard-blocked INSUFFICIENT_SHIPS with no discard mechanism, making Sail
+unusable for an over-laden Pisa. `cmd_sail` now accepts an optional `discard`
+arg ({"Provender": n, "Loot": m}), fully validated BEFORE any mutation (a
+rejected Sail consumes nothing); the enumerator offers a deterministic
+minimal-discard variant. `tests/test_v59_sail_enemy_port_and_greed.py`.
+
+**Verification:** suite 686 pass + 1 skipped. Combat fuzz: 1,500 resolutions,
+0 anomalies. Sail fuzz: 190+ sails (32 enemy-Port Besieges), 0 anomalies.
+Treachery fuzz: 0 anomalies.

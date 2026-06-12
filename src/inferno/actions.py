@@ -1877,21 +1877,49 @@ def _h_cmd_sail(state, side, args, rng) -> dict[str, Any]:
                 f"May NOT Sail into Locale with Unbesieged Enemy Lord {oid}.",
                 "4.7.3",
             )
-    # Ship transport validation per 4.7.3.
+    # 1.7.2 Greed: optional pre-Sail discard of Provender/Loot that cannot
+    # be transported ("must be discarded or left behind"). Horse units cannot
+    # be left behind, so they remain a hard requirement below.
+    discard = args.get("discard") or {}
+    if discard:
+        for asset in ("Provender", "Loot"):
+            n = int(discard.get(asset, 0) or 0)
+            if n < 0:
+                raise IllegalAction("BAD_DISCARD", f"Negative {asset} discard.", "1.7.2")
+            if n > lord["assets"].get(asset, 0):
+                raise IllegalAction(
+                    "BAD_DISCARD",
+                    f"Cannot discard {n} {asset}; {lid} has {lord['assets'].get(asset, 0)}.",
+                    "1.7.2",
+                )
+        unknown = set(discard) - {"Provender", "Loot"}
+        if unknown:
+            raise IllegalAction("BAD_DISCARD",
+                                f"Only Provender/Loot may be discarded to Sail, got {sorted(unknown)}.",
+                                "1.7.2")
+    # Ship transport validation per 4.7.3, against POST-discard cargo —
+    # validate fully BEFORE mutating (the discard is applied only once the
+    # whole Sail is known to be legal).
+    d_prov = int(discard.get("Provender", 0) or 0)
+    d_loot = int(discard.get("Loot", 0) or 0)
     ships = lord["assets"].get("Ship", 0)
     horse_units = sum(c for u, c in lord.get("forces", {}).items()
                       if sd.UNITS.get(u, {}).get("cat") == "horse")
-    prov = lord["assets"].get("Provender", 0)
-    loot = lord["assets"].get("Loot", 0)
+    prov = lord["assets"].get("Provender", 0) - d_prov
+    loot = lord["assets"].get("Loot", 0) - d_loot
     ships_needed = horse_units + prov + 2 * loot
     if ships_needed > ships:
         raise IllegalAction(
             "INSUFFICIENT_SHIPS",
             f"Sail needs {horse_units} (Horse) + {prov} (Provender) + 2x{loot} (Loot) = "
-            f"{ships_needed} Ships; {lid} has {ships}. Per 1.7.2 Greed, must discard "
-            f"excess before Sailing.",
+            f"{ships_needed} Ships; {lid} has {ships}. Per 1.7.2 Greed, may discard "
+            f"excess Provender/Loot via the optional `discard` arg.",
             "4.7.3",
         )
+    if d_prov:
+        lord["assets"]["Provender"] = lord["assets"].get("Provender", 0) - d_prov
+    if d_loot:
+        lord["assets"]["Loot"] = lord["assets"].get("Loot", 0) - d_loot
     # Move
     if src_name and lid in src.get("lords_present", []):
         src["lords_present"].remove(lid)
@@ -1914,6 +1942,7 @@ def _h_cmd_sail(state, side, args, rng) -> dict[str, Any]:
     return _finish_card_with({
         "sailed_from": src_name, "to": dest_name,
         "ships_used": ships_needed, "besieged_via_sail": besieged_via_sail,
+        "discarded": {k: v for k, v in (discard or {}).items() if v},
     }, state, side, reason="sail_entire_card", citation="4.7.3")
 
 
@@ -3323,6 +3352,7 @@ def _h_cmd_storm(state, side, args, rng) -> dict[str, Any]:
         state, attackers=[lid], defenders=defenders,
         active_id=lid, locale_name=locale_name,
         scripted_decisions=args.get("scripted_decisions"),
+        callback=state.get("battle_callback"),
     )
     # SMOKE-Inferno-081: 4.4.4 Loss rolls for Routed units. The Attacker is
     # "Attacking in Storm" -> Harsh Recovery; Storm Knights' Quarter happens
@@ -3492,6 +3522,7 @@ def _h_cmd_sally(state, side, args, rng) -> dict[str, Any]:
         state, sallying=[lid], besiegers=besiegers,
         active_id=lid, locale_name=locale_name,
         scripted_decisions=args.get("scripted_decisions"),
+        callback=state.get("battle_callback"),
     )
     if result["loser"] == "defender":
         # Besiegers lose: Siege ends (4.5.3)

@@ -777,8 +777,22 @@ def _enum_command_phase(state, side) -> list[dict[str, Any]]:
                               if sd.UNITS.get(u, {}).get("cat") == "horse")
             ships_needed = horse_units + lord["assets"].get("Provender", 0) + 2 * lord["assets"].get("Loot", 0)
             # SMOKE-Inferno-060: Sail needs Ships >= Horse + Provender + 2*Loot (4.7.3).
+            # 1.7.2 Greed: excess Provender/Loot MAY be discarded to fit the
+            # Ships; Horse units cannot be left behind, so Ships >= Horse is a
+            # hard floor. Offer a deterministic minimal-discard variant when
+            # cargo exceeds capacity (operator may pass a custom `discard`).
+            _excess = ships_needed - ships
+            _discard = None
+            if _excess > 0 and ships >= horse_units:
+                _d_prov = min(lord["assets"].get("Provender", 0), _excess)
+                _rem = _excess - _d_prov
+                _d_loot = (_rem + 1) // 2  # each Loot frees 2 Ships
+                if _d_loot <= lord["assets"].get("Loot", 0):
+                    _discard = {}
+                    if _d_prov: _discard["Provender"] = _d_prov
+                    if _d_loot: _discard["Loot"] = _d_loot
             if (season != "winter" and loc and loc.get("port") and not loc.get("siege")
-                    and ships_needed <= ships):
+                    and (ships_needed <= ships or _discard is not None)):
                 _es = "ghibelline" if side == "guelph" else "guelph"
                 for dest_name, dest in state["locales"].items():
                     if dest_name == lord.get("location"):
@@ -789,11 +803,24 @@ def _enum_command_phase(state, side) -> list[dict[str, Any]]:
                            and not state["lords"][o].get("flags", {}).get("in_stronghold")
                            for o in dest.get("lords_present", [])):
                         continue
-                    if dest.get("port") and _is_friendly_locale_quiet(state, dest, side):
+                    # 4.7.3: "Move directly to any other Port that is free of
+                    # Unbesieged Enemy Lords" — NOT only Friendly Ports. Sailing
+                    # to an Unbesieged Enemy Stronghold places a Siege marker
+                    # (Besiege), mirroring the handler (SMOKE-Inferno-027).
+                    if dest.get("port"):
+                        _args = {"lord_id": lid, "dest_locale": dest_name}
+                        if ships_needed > ships:
+                            _args["discard"] = dict(_discard)
+                        _to_enemy = (not _is_friendly_locale_quiet(state, dest, side)
+                                     and dest.get("type") != "outpost"
+                                     and not dest.get("ruins") and not dest.get("siege"))
                         moves.append({
                             "action": "cmd_sail", "side": side,
-                            "args": {"lord_id": lid, "dest_locale": dest_name},
-                            "description": f"{lid} Sails from {lord['location']} to {dest_name} (entire card).",
+                            "args": _args,
+                            "description": (f"{lid} Sails from {lord['location']} to {dest_name} (entire card"
+                                            + (", Besieges on arrival" if _to_enemy else "")
+                                            + (f", discarding {_args.get('discard')}" if ships_needed > ships else "")
+                                            + ")."),
                             "rule_citation": "4.7.3",
                         })
         except (KeyError, AttributeError):
