@@ -1774,3 +1774,35 @@ card_finished + FPD present, turn flips to the defender and the attacker cannot
 re-reveal, the defender's surviving Fought Lord is Fed, and the card still ends
 through FPD even when the lone defender is wiped). Full suite: 680 pass with
 Hypothesis; 674 pass + 1 skipped without it.
+
+
+## v5.8 — Transactional dispatch for operator decision channels (bug-hunt, scenario F self-play)
+
+Found by scripted-decision fuzzing during scenario-F self-play: an invalid
+`scripted_decisions` / `post_battle_decisions` entry (wrong type for the
+choice point, wrong side, or a choice outside the legal options) was rejected
+by `BattleDecisionContext.decide` only at the choice point itself — i.e. AFTER
+the Battle had begun mutating state. The bare `ValueError` escaped `dispatch`
+with units already Routed, the pending `approach_response` window consumed,
+and the Approach/card flow stranded; and because it was not an
+`IllegalAction`, the LLM player's retry loop (`play_with_callback`) could not
+catch it either, so one malformed decision killed the driver AND corrupted the
+game. The same applied to a `battle_callback` returning an invalid option.
+
+Fix: (a) those rejections are now a dedicated `ScriptedDecisionError`
+(`ValueError` subclass, so legacy catchers still work); (b) `dispatch`
+snapshots the state whenever a decision channel is live (args carry
+`scripted_decisions` / `post_battle_decisions`, a `battle_callback` is set, or
+scripts have accumulated across an Approach-response window) and restores it
+on ANY handler failure, then surfaces the decision error as
+`IllegalAction("BAD_DECISION")`. A rejected decision is now exactly like any
+other rejected action: state untouched, retry with a corrected script
+resolves the Battle normally. Handlers without a live decision channel follow
+validate-then-mutate and pay no snapshot cost.
+
+**Verification:** `tests/test_v58_decision_rollback.py` (4 tests: invalid
+choice and wrong-type entries raise `BAD_DECISION` with byte-identical state,
+a corrected retry resolves the Battle, exception-type back-compat). Full
+suite: 678 pass + 1 skipped without Hypothesis. Self-play: scenario F clean
+across aggressive / passive / chaos / rarity-weighted policies (20+ full
+games, zero anomalies).

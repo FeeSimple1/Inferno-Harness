@@ -131,7 +131,36 @@ def dispatch(state: dict[str, Any], action: dict[str, Any]) -> dict[str, Any]:
     args = action.get("args", {}) or {}
     rng = _build_rng(state)
     rolls_before = rng.advance_count
-    result = handler(state, side, args, rng)
+    # Transactional dispatch: handlers follow validate-then-mutate, so an
+    # IllegalAction normally leaves state untouched. The exception is the
+    # operator decision channels (scripted_decisions / post_battle_decisions /
+    # battle_callback): their entries can only be validated at each choice
+    # point DURING combat resolution, i.e. after mutation has begun. A bad
+    # entry used to escape as a bare ValueError with units half-routed and the
+    # Approach window consumed. Whenever a decision channel is live (including
+    # scripts accumulated across an Approach-response window), snapshot the
+    # state and restore it on ANY handler failure; the decision error then
+    # surfaces as IllegalAction(BAD_DECISION) so LLM/retry loops recover like
+    # from any other rejected action.
+    from .battle import ScriptedDecisionError
+    _decision_channel_live = bool(
+        args.get("scripted_decisions")
+        or args.get("post_battle_decisions")
+        or state.get("battle_callback") is not None
+        or state.get("approach_battle_decisions")
+        or state.get("approach_post_battle_decisions")
+    )
+    _snapshot = copy.deepcopy(state) if _decision_channel_live else None
+    try:
+        result = handler(state, side, args, rng)
+    except Exception as exc:
+        if _snapshot is not None:
+            state.clear()
+            state.update(_snapshot)
+        if isinstance(exc, ScriptedDecisionError):
+            raise IllegalAction("BAD_DECISION", str(exc),
+                                citation="ACTIONS.md decision channels") from exc
+        raise
     _check_campaign_victory(state)  # 5.2 sudden-death
     rolls_consumed = rng.advance_count - rolls_before
     state["meta"]["rng_advance"] = state["meta"].get("rng_advance", 0) + rolls_consumed

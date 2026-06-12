@@ -33,6 +33,15 @@ from . import static_data as sd
 # =====================================================================
 # Decision context
 # =====================================================================
+class ScriptedDecisionError(ValueError):
+    """An operator-supplied Battle decision (scripted_decisions /
+    post_battle_decisions entry, or a decision callback return) was invalid:
+    wrong type for this choice point, wrong side, or a choice not among the
+    legal options. dispatch() converts this into IllegalAction(BAD_DECISION)
+    and rolls the state back, so a bad operator input can never corrupt an
+    in-progress combat."""
+
+
 @dataclass
 class BattleDecisionContext:
     """Resolves player choice points during Battle.
@@ -53,7 +62,7 @@ class BattleDecisionContext:
         if self.scripted:
             d = self.scripted.pop(0)
             if d.get("type") != decision_type:
-                raise ValueError(
+                raise ScriptedDecisionError(
                     f"Scripted decision type mismatch: expected {decision_type!r}, got {d.get('type')!r}"
                 )
             # A scripted entry MAY pin the deciding side; if it does, it must
@@ -62,13 +71,13 @@ class BattleDecisionContext:
             # advisory; entries that omit it stay valid for either side).
             d_side = d.get("side")
             if d_side is not None and d_side != side:
-                raise ValueError(
+                raise ScriptedDecisionError(
                     f"Scripted decision side mismatch for {decision_type!r}: "
                     f"this is a {side!r} choice but the entry is for {d_side!r}"
                 )
             choice = d.get("choice")
             if choice not in options:
-                raise ValueError(
+                raise ScriptedDecisionError(
                     f"Scripted choice {choice!r} not in options {options!r} for {decision_type!r}"
                 )
         elif self.callback is not None:
@@ -77,7 +86,7 @@ class BattleDecisionContext:
                 "options": list(options), "info": info,
             })
             if choice not in options:
-                raise ValueError(
+                raise ScriptedDecisionError(
                     f"Callback returned {choice!r} not in options {options!r}"
                 )
         else:
