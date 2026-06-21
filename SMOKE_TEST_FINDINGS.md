@@ -1938,3 +1938,37 @@ multi-candidate path, now correctly). Guards: `tests/test_v61_conf010_submission
 
 **Verification:** full suite **702 pass** (2 new, +2 previously-skipping v19
 tests now active); Revolt matrix diff 72/72; six-scenario self-play smoke clean.
+
+---
+
+## v6.2 — Card-effect INTEGRATION fuzzing (clean round)
+
+New harness `cardfx_fuzz.py` forces all 52 Arts-of-War card effects into LIVE
+play rather than unit tests:
+  - **Capabilities × combat:** each Capability is deployed (conservation-faithful:
+    moved out of the deck into exactly one play slot) and then run through a 1v1
+    Battle, a Storm, a 2v2 Battle, and a Sally with randomized force compositions
+    (always incl. Armigieri/Men-at-Arms so Crossbows can fire). Every decision is
+    driven by a random-valid callback; invariants + `assert_combat_engaged` are
+    checked after each combat.
+  - **Events × live state:** each Event is reset to a clean in-hand state and
+    applied across seeds/arg-variants, with full invariants after (and faithful
+    discard so AoW card conservation stays a real signal).
+
+**Coverage win:** this is the first harness to exercise the Crossbow
+`select_target_unit` decision channel — 3,933 firings across a 10-seed run — which
+no full self-play game ever reached (flagged as the last unreached channel in the
+v5.9 edge-case report). Also fires `initial_placement_*` (Array), `center_fill`
+(Reposition), `concede`, and `absorb_target` across all 52 cards.
+
+**Result: 0 engine anomalies** across 52 cards × 10 seeds. The defects surfaced
+during harness development were all *staging* artifacts (double-counted AoW cards
+from registering a Capability without removing it from the deck; a Mustered Lord
+left without a location in 2v2 setup) — fixed in the fuzzer, not the engine. This
+is the first diverse round to come back empty, consistent with the bug-find rate
+beginning to flatten on the combat/card surfaces audited in v6.0–v6.1.
+
+Locked in as `tests/test_v62_cardfx_integration.py` (52 cards × 2 seeds; asserts
+no anomalies AND that the Crossbow/Array/absorb channels actually fire).
+
+**Verification:** full suite **703 pass** (1 new).
