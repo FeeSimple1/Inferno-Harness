@@ -1972,3 +1972,19 @@ Locked in as `tests/test_v62_cardfx_integration.py` (52 cards × 2 seeds; assert
 no anomalies AND that the Crossbow/Array/absorb channels actually fire).
 
 **Verification:** full suite **703 pass** (1 new).
+
+---
+
+## v6.2.1 — CI tooling (housekeeping)
+
+The hosted GitHub Actions workflow can't be pushed by the automated PAT (no
+`workflow` scope — GitHub blocks any push under `.github/workflows/`). To deal
+with this without losing the automation:
+  - `scripts/ci.sh` + `Makefile` run the identical checks locally / as a git
+    pre-push hook: full suite + six-scenario self-play smoke + card-effect fuzz,
+    non-zero exit on any failure.
+  - The workflow YAML is parked (version-controlled) at `ci/github-actions-ci.yml`
+    with `ci/README.md` documenting the one-line enable (web-UI add or a
+    `workflow`-scoped token).
+Also fixed the git remote to the repo's new canonical URL (Inferno-Harness).
+No engine changes.
