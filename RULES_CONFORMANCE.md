@@ -350,3 +350,19 @@ realized count, no phantom roll); `revolt_count=k` rolls `k` real Revolts via
   The engine follows the authoritative source — digest typos only.
 
 **Verification:** suite 700 pass (8 new).
+
+## v6.1 — Revolt subsystem (matrix + 1.4.1–1.4.4)
+
+Full audit of `revolt.py` vs `INFERNO_Revolt_Tables_Reference.txt` + RoP 1.4.
+Both 6×6 matrices byte-perfect (72/72 cells; all Locales valid; SUBMISSION 4/6).
+Dice convention, table selection, REBELLION presence (cylinder/marker-only),
+1.4.4 switch + Exiles, and economic Tax all conformant.
+
+### CONF-010 (FIX) — SUBMISSION requires a MARKED Enemy target
+RoP 1.4.2: SUBMISSION targets a Stronghold "marked with Enemy Allegiance (only,
+not printed Allegiance)." The code reused `is_eligible_for_revolt`, which accepts
+printed-enemy via `_effective_allegiance` — so un-marked printed-enemy Strongholds
+(53/57 at start) were illegal-but-offered SUBMISSION flips. Added
+`_is_marked_with_allegiance` gate to the SUBMISSION branch only (REBELLION
+correctly stays printed-eligible per 1.4.1). Guard:
+`tests/test_v61_conf010_submission.py`.

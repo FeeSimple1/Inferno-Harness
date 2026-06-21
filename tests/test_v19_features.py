@@ -130,7 +130,10 @@ class TestSubmission:
         # Need an eligible Guelph stronghold with a ghibelline cylinder adjacent.
         target = "Cortona"
         cort = s["locales"][target]
-        cort["current_allegiance"] = []  # printed guelph -> enemy to ghibelline
+        # CONF-010: SUBMISSION targets must be MARKED with Enemy (Guelph)
+        # Allegiance, not merely printed-enemy (RoP 1.4.2 "only, not printed").
+        cort["current_allegiance"] = [{"side": "guelph", "value": 1},
+                                      {"side": "guelph", "value": 1}]
         cort["ruins"] = None
         _clear_lords_near(s, target, "guelph")
         # Place a ghibelline mustered lord adjacent (Chiusi).
@@ -223,7 +226,8 @@ class TestPendingDecisionFlow:
             loc = s["locales"][n]
             if loc.get("type") in ("castle", "town"):
                 loc["allegiance"] = "guelph"
-                loc["current_allegiance"] = []
+                # CONF-010: SUBMISSION needs MARKED Enemy Allegiance, not printed.
+                loc["current_allegiance"] = [{"side": "guelph", "value": 1}]
                 loc["ruins"] = None
                 _clear_lords_near(s, n, "guelph")
                 made += 1
@@ -287,7 +291,8 @@ class TestTriggerParksDecision:
             loc = s["locales"][n]
             if loc.get("type") in ("castle", "town"):
                 loc["allegiance"] = "guelph"
-                loc["current_allegiance"] = []
+                # CONF-010: SUBMISSION needs MARKED Enemy Allegiance, not printed.
+                loc["current_allegiance"] = [{"side": "guelph", "value": 1}]
                 loc["ruins"] = None
                 _clear_lords_near(s, n, "guelph")
         # vs-Guelph SUBMISSION cell = (gold3, purple1). FakeRNG yields gold,purple.

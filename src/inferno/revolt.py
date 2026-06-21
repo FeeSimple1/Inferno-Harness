@@ -97,6 +97,13 @@ def _effective_allegiance(loc: dict) -> str | None:
     return loc.get("allegiance")
 
 
+def _is_marked_with_allegiance(loc: dict, side: str) -> bool:
+    """True iff `loc` currently bears an Allegiance MARKER of `side` (1.4.2
+    SUBMISSION: 'marked with Enemy Allegiance (only, not printed Allegiance)').
+    Distinct from `_effective_allegiance`, which falls back to printed."""
+    return any(m.get("side") == side for m in (loc.get("current_allegiance") or []))
+
+
 def _locales_within_1(name: str) -> set[str]:
     return {name} | {n for n, _ in sd.adjacent_to(name)}
 
@@ -229,9 +236,15 @@ def resolve_revolt(state: dict, losing_side: str, gold: int, purple: int,
             "gold": gold, "purple": purple, "cell": cell}
 
     if cell == SUBMISSION:
+        # CONF-010 (RoP 1.4.2 SUBMISSION): the target must be a Stronghold
+        # "marked with Enemy Allegiance (only, not printed Allegiance)" -- so
+        # require an actual losing-side Allegiance MARKER, not merely a
+        # printed-enemy baseline (53/57 Strongholds start printed-only). The
+        # presence check is a rolling-side Lord CYLINDER at or adjacent.
         candidates = sorted(
             name for name in state["locales"]
-            if is_eligible_for_revolt(state, name, rolling_side)
+            if _is_marked_with_allegiance(state["locales"][name], losing_side)
+            and is_eligible_for_revolt(state, name, rolling_side)
             and _rolling_presence_within_1(state, name, rolling_side, cylinder_only=True)
         )
         return _resolve_choice(state, rolling_side, candidates, choice,

@@ -1899,3 +1899,42 @@ Horse has no Archery; Militia melee is ×1) — and the engine follows the
 authoritative source. Digest-only typos; no code impact.
 
 **Verification:** full suite **700 pass** (8 new); no regression.
+
+---
+
+## v6.1 — Revolt-table conformance audit (CONF-010)
+
+Round-3 continued: full line-by-line audit of the Revolt subsystem (revolt.py)
+against `reference/INFERNO_Revolt_Tables_Reference.txt` + Rules of Play 1.4.1–1.4.4.
+
+**Verified conformant:** both 6×6 Revolt matrices are byte-perfect (72/72 cells
+diffed programmatically; every named Locale exists in the map data; SUBMISSION
+cell counts 4/6 correct; Playbook Chiusi example confirmed at gold6×purple5).
+Dice convention (row=gold, col=purple, no flip between tables) and table
+selection (loser→"Revolt Against <loser>") correct. REBELLION presence check
+correctly requires a real Lord cylinder OR Allegiance MARKER within 1 (not
+printed). 1.4.4 allegiance switch (place Value markers / revert-to-printed) and
+Exiles (cylinders left / Service right, count = markers placed-or-removed)
+conformant. Economic Tax spot-check (+1 Coin, Podestà +2, own-Seat only)
+conformant.
+
+**CONF-010 — SUBMISSION accepted printed-enemy (un-marked) targets (HIGH).**
+RoP 1.4.2 SUBMISSION: "select a Stronghold **marked with Enemy Allegiance
+(only, not printed Allegiance)** ... at or adjacent to which the rolling side
+has a Lord cylinder." The SUBMISSION branch reused `is_eligible_for_revolt`,
+whose `_effective_allegiance` falls back to *printed* allegiance — so a
+printed-enemy Stronghold with **no** Allegiance markers (53 of 57 Strongholds
+at game start) was wrongly offered as a SUBMISSION flip. Repro: a SUBMISSION
+roll offered un-marked printed-Ghibelline Pisa to the Guelphs. Fixed: SUBMISSION
+candidates now additionally require an actual losing-side Allegiance MARKER
+(`_is_marked_with_allegiance`). This is exactly the "(only, not printed)"
+distinction the Rules draw — and the same clause, on the REBELLION side, governs
+*presence* (already correct), which is why the two paths must differ. Matches
+the project's own Q-002 adjudication (RULES_DECISIONS.md). Two existing v19
+submission-flow tests built their states from un-marked printed-enemy
+Strongholds; updated to place real Enemy markers (so they keep exercising the
+multi-candidate path, now correctly). Guards: `tests/test_v61_conf010_submission.py`
++ updated `tests/test_v19_features.py`.
+
+**Verification:** full suite **702 pass** (2 new, +2 previously-skipping v19
+tests now active); Revolt matrix diff 72/72; six-scenario self-play smoke clean.
