@@ -293,20 +293,38 @@ def F1_event(state, side, args, rng):
 
 
 @register_event("F2")
-def F2_event(state, side, args, rng):
-    """F2 BETRAYALS: per Stronghold w/ side's Siege, roll Revolt OR add 1 Treachery."""
+def _betrayals(state, side, args, rng):
+    """F2/S2 BETRAYALS (AoW): for each Stronghold with the playing side's Siege
+    markers, that side chooses -- per Stronghold -- to roll on the Revolt table
+    (1.4.2) OR add 1 set-aside Treachery card (1.4.3), in any combination
+    summing to the Siege count.
+
+    CONF-009: the prior code rolled a die AND added a Treachery on every
+    Stronghold -- and the die roll applied no Revolt outcome at all (it was
+    logged and discarded). That both ignored the "OR" and left the Revolt
+    option unimplemented. Default now = add Treachery for every point
+    (a legal all-Treachery choice, deterministic, same realized count as
+    before minus the phantom rolls). Pass revolt_count=k to instead roll k
+    real Revolts (benefitting the playing side) and add (sieges-k) Treachery."""
     sieges = sum(1 for loc in state["locales"].values()
                  if any(s.get("side") == side for s in loc.get("siege", [])))
     if sieges == 0:
         return {"applied": True, "no_sieges": True}
-    log = {"sieges": sieges, "rolls": []}
-    for _ in range(sieges):
-        r = rng.roll(f"betrayals_{side}")
-        log["rolls"].append(r.value)
-        # Default: add 1 Treachery card from set-aside (player choice ignored in defaults)
-        added = _add_treachery_from_set_aside(state, side)
-        log.setdefault("treachery_added", []).append(added)
+    revolt_count = max(0, min(int(args.get("revolt_count", 0) or 0), sieges))
+    log = {"sieges": sieges, "revolt_count": revolt_count, "treachery_added": []}
+    for _ in range(sieges - revolt_count):
+        log["treachery_added"].append(_add_treachery_from_set_aside(state, side))
+    if revolt_count:
+        from . import revolt as _rv
+        enemy = "ghibelline" if side == "guelph" else "guelph"
+        log["revolts"] = _rv.trigger_revolts(state, enemy, revolt_count, rng,
+                                              f"betrayals_{side}")
     return {"applied": True, **log}
+
+
+def F2_event(state, side, args, rng):
+    """F2 BETRAYALS (Guelph) -- see _betrayals."""
+    return _betrayals(state, side, args, rng)
 
 
 @register_event("F3")
@@ -566,9 +584,19 @@ def F14_event(state, side, args, rng):
     if args.get("mode") == "treachery":
         added = _add_treachery_from_set_aside(state, "guelph")
         return {"applied": True, "added": added}
-    # Shift Provenzano cylinder right 2 boxes or Service left 2 boxes.
-    new = _shift_cylinder_left(state, "provenzano", boxes=2)
-    return {"applied": True, "shifted_to": new}
+    # CONF-008: Provenzano is an ENEMY of the Guelphs, so the shift is ADVERSE
+    # (AoW F14 Tips: "shift Provenzano's cylinder right or Service marker left").
+    # The prior code shifted his cylinder LEFT, advancing the enemy Lord's
+    # arrival -- the opposite of intent. Mirror F18/F19: cylinder RIGHT if on
+    # the Calendar, else Service LEFT if Mustered. mode="service" forces Service.
+    prov = state["lords"]["provenzano"]
+    if args.get("mode") != "service" and prov.get("calendar_box") is not None:
+        new = _shift_cylinder_right(state, "provenzano", boxes=2)
+        return {"applied": True, "cylinder_to": new}
+    if prov.get("service_box") is not None:
+        new = _shift_service_left(state, "provenzano", boxes=2)
+        return {"applied": True, "service_to": new}
+    return {"applied": False, "reason": "Provenzano has no Calendar marker"}
 
 
 @register_event("F15")
@@ -1079,17 +1107,8 @@ def S1_event(state, side, args, rng):
 
 @register_event("S2")
 def S2_event(state, side, args, rng):
-    """S2 BETRAYALS — Ghib version of F2."""
-    sieges = sum(1 for loc in state["locales"].values()
-                 if any(s.get("side") == "ghibelline" for s in loc.get("siege", [])))
-    if sieges == 0:
-        return {"applied": True, "no_sieges": True}
-    log = {"sieges": sieges, "rolls": [], "treachery_added": []}
-    for _ in range(sieges):
-        r = rng.roll("betrayals_ghibelline")
-        log["rolls"].append(r.value)
-        log["treachery_added"].append(_add_treachery_from_set_aside(state, "ghibelline"))
-    return {"applied": True, **log}
+    """S2 BETRAYALS (Ghibelline) -- mirror of F2; see _betrayals."""
+    return _betrayals(state, side, args, rng)
 
 
 @register_event("S3")

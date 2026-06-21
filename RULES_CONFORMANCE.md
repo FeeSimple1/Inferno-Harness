@@ -311,3 +311,42 @@ consumer opts in. It is deliberately NOT surfaced in Storm: Hits vs the Attacker
 are forced Armored-first (CONF-006), and Hits vs the Defender route through the
 garrison-first / Walls machinery — neither is a clean free choice, so surfacing
 there would not be strictly rules-compliant.
+
+## v6.0 — Arts-of-War per-card numeric re-derivation (closes the "Depth note")
+
+Full card-by-card re-derivation of all 52 AoW Event/Capability numerics vs
+`reference/Inferno_Arts_of_War_Reference.txt` — the residual surface the Section
+C/D Depth notes flagged ("per-card Event numerics verified for the cards touched
+by fixes and sampled across the rest"). 52/52 located; all combat/economic
+numerics re-confirmed exact. Two defects fixed:
+
+### CONF-008 (FIX) — F14 Provenzano adverse-shift direction
+AoW F14 Tips: "shift Provenzano's cylinder **right** or Service marker **left**."
+Provenzano is a Ghibelline, so the shift is adverse to the Guelph who plays F14.
+The handler shifted his cylinder **left** (cur−2), advancing the enemy Lord's
+arrival. Fixed to cylinder RIGHT (cur+2) / Service LEFT, mirroring the
+correctly-implemented F18 Grosseto and F19 Volterra. Guard:
+`tests/test_v60_conf008_009.py`.
+
+### CONF-009 (FIX) — F2/S2 Betrayals "OR" + phantom Revolt roll
+AoW F2: per Besieged Stronghold, roll Revolt **OR** add 1 Treachery (choices sum
+to the Siege count). The handler rolled a die AND added a Treachery on every
+Stronghold, and the roll applied no Revolt outcome (logged, discarded). Refactored
+both copies onto `_betrayals(...)`: default all-Treachery (deterministic, same
+realized count, no phantom roll); `revolt_count=k` rolls `k` real Revolts via
+`revolt.trigger_revolts` + `sieges−k` Treachery. Guard:
+`tests/test_v60_conf008_009.py`.
+
+### Investigated, ruled NOT defects
+- **F20 / S14 `event_kind`:** `hold` is correct for both. `event_kind` only
+  auto-invokes the handler for `immediate`; `hold` routes through the play-event
+  window (how S14's handler sets its `this_campaign` flag). F20's "before Feed"
+  timing would be wrong as `immediate` (fires at Levy-draw); the S20 mirror's
+  "Hold:" + "works the same as F20" Tips mark the missing F20 "Hold:" as a digest
+  artifact.
+- **Battle&Storm digest Forces table:** lists Light Horse "Archery ×1/2" and
+  Militia melee "×1/2"; both contradict the authoritative
+  `Inferno_Forces_and_Strongholds.md` (Light Horse no Archery; Militia melee ×1).
+  The engine follows the authoritative source — digest typos only.
+
+**Verification:** suite 700 pass (8 new).

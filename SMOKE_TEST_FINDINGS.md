@@ -1843,3 +1843,59 @@ minimal-discard variant. `tests/test_v59_sail_enemy_port_and_greed.py`.
 **Verification:** suite 686 pass + 1 skipped. Combat fuzz: 1,500 resolutions,
 0 anomalies. Sail fuzz: 190+ sails (32 enemy-Port Besieges), 0 anomalies.
 Treachery fuzz: 0 anomalies.
+
+---
+
+## v6.0 — Arts-of-War numeric conformance audit (CONF-008, CONF-009)
+
+Round-3 conformance pass: a full card-by-card re-derivation of all 52 Arts-of-War
+Event/Capability numerics against `reference/Inferno_Arts_of_War_Reference.txt`
+(the residual surface flagged in RULES_CONFORMANCE "Depth note" — per-card Event
+numerics were previously sampled, not re-derived field-by-field). All 52 located;
+combat/economic numerics (Feditori 4/3, Luceria ≤3 ×1.5, Doctors ceil, Camp
+Attack 2+2, Guastatori marker cap, garrison/Sovrintendente) re-confirmed exact.
+Two real defects found and fixed; two reported `event_kind` items investigated and
+ruled NOT bugs (see below).
+
+**CONF-008 — F14 Provenzano shifted the ENEMY Lord the WRONG WAY (HIGH).**
+AoW F14 Tips: "shift Provenzano's cylinder **right** or Service marker **left**"
+— an adverse shift, because Provenzano is a Ghibelline (enemy of the Guelph who
+plays F14). The handler called `_shift_cylinder_left(..., "provenzano", 2)`,
+advancing the enemy Lord's *arrival* by two boxes — a direct gift to the
+opponent — even though the inline comment said "right." Now mirrors the
+correctly-implemented sibling cards F18 Grosseto / F19 Volterra: cylinder RIGHT
+(+2) if on the Calendar, else Service LEFT (−2) if Mustered, with `mode="service"`
+to force the Service option. The prior test only exercised the no-Siege branch,
+so the reversed direction was never asserted. `tests/test_v60_conf008_009.py`.
+
+**CONF-009 — F2/S2 Betrayals double-applied and never resolved the Revolt (HIGH).**
+AoW F2: "For each Stronghold with any [side] Siege markers, roll on the Revolt
+table **OR** add 1 Treachery" — per Siege, choose one; the choices sum to the
+Siege count. The handler instead, on every Siege, rolled a die *and* added a
+Treachery card — and the die roll applied **no Revolt outcome at all** (it was
+logged and discarded). So it ignored the "OR" and left the Revolt option
+unimplemented while spending RNG on a phantom roll. Refactored both F/S copies
+onto a shared `_betrayals(...)`: default = add one Treachery per Siege (a legal
+all-Treachery choice, deterministic, same realized Treachery count as before
+minus the phantom rolls); pass `revolt_count=k` to roll `k` real Revolts through
+`revolt.trigger_revolts` (benefitting the playing side) and add `sieges−k`
+Treachery. `tests/test_v60_conf008_009.py`.
+
+**Investigated, NOT bugs (event_kind metadata).** The audit also flagged F20
+Heat & Frost ("should be immediate") and S14 Friars ("should be this_campaign").
+Both were ruled non-defects on verification: (a) `event_kind` only auto-invokes
+the handler for `immediate`; `hold` correctly routes through the play-event
+window where S14's handler sets its own `this_campaign` flag, so re-tagging S14
+would bypass the handler. (b) F20's effect fires "before Feed," a Campaign-phase
+window — tagging it `immediate` would fire Wastage at Levy-draw (wrong time); the
+S20 mirror reads "Hold:" and its Tips say it "works the same as F20," so the
+missing "Hold:" on F20 is a reference-digest transcription artifact, not a card
+difference. Left as-is and documented.
+
+**Also noted (doc, not engine):** the `Inferno_Battle_and_Storm.txt` digest's
+Forces table lists Light Horse with "Archery ×1/2" and Militia melee "×1/2";
+both contradict the authoritative `Inferno_Forces_and_Strongholds.md` (Light
+Horse has no Archery; Militia melee is ×1) — and the engine follows the
+authoritative source. Digest-only typos; no code impact.
+
+**Verification:** full suite **700 pass** (8 new); no regression.
