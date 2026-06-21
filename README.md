@@ -16,10 +16,9 @@ authoring spec.
 
 ## Status — v6.2
 
-CI: `bash scripts/ci.sh` (or `make ci`) runs the full suite + six-scenario
-self-play smoke + card-effect integration fuzz. The hosted GitHub Actions
-workflow is version-controlled at `ci/github-actions-ci.yml`; see `ci/README.md`
-to enable it (needs a `workflow`-scoped token or a one-time web-UI add).
+CI: hosted GitHub Actions (`.github/workflows/ci.yml`) runs the full suite +
+six-scenario self-play smoke on every push/PR. `bash scripts/ci.sh` (or
+`make ci`) runs those plus the card-effect integration fuzz locally.
 
 Every rule mechanic in the Inferno Rules of Play has a state-mutating
 implementation. The harness plays a complete game start-to-finish
