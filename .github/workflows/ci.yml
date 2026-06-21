@@ -41,3 +41,6 @@ jobs:
 
       - name: Card-effect integration fuzz (crossbow / array / sally channels)
         run: PYTHONPATH=src python cardfx_fuzz.py --seeds 6
+
+      - name: Save/load + replay determinism fuzz
+        run: PYTHONPATH=src python saveload_fuzz.py --seeds 8 --max-steps 8000

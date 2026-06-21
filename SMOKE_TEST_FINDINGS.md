@@ -2001,3 +2001,27 @@ doubt the step now uses `python -m pytest -q` (guarantees CWD on path — exactl
 how the suite is validated locally). Also added a `cardfx_fuzz.py --seeds 6` CI
 step so the Crossbow `select_target_unit` / Array / Sally channels are exercised
 on every push (the in-suite `test_v62` runs only 2 seeds). No engine changes.
+
+---
+
+## v6.3 — Save/load + replay-determinism fuzz (clean round)
+
+New harness `saveload_fuzz.py`: plays each scenario to a random mid-game
+checkpoint, JSON round-trips the state there, then continues BOTH the reloaded
+copy and the untouched control to game end under one deterministic policy
+(chosen from control, applied to both). Asserts: the checkpoint round-trips
+losslessly, the same action stays legal on the reloaded copy every step (no
+dispatch crash), the final states are deep-equal, and invariants hold.
+
+This is harness-level correctness no playtest exercises — it proves the
+serializable state form fully captures the game (no tuple/set/int-key drift, no
+hidden module-level or non-deterministic state).
+
+**Result: 0 anomalies across 360 full games** (6 scenarios x 60 seeds). State is
+JSON-clean without `default=` and round-trips with equality at every depth.
+Locked in as `tests/test_v63_saveload_determinism.py` (6 scenarios x 3 seeds) and
+added as a CI step (`saveload_fuzz.py --seeds 8`).
+
+This is the SECOND consecutive diverse round to come back empty (after v6.2
+card-effect integration fuzzing) — continued evidence the bug-find rate is
+flattening on the combat, card, and harness-correctness surfaces.
