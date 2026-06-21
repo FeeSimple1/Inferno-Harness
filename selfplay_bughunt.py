@@ -128,6 +128,8 @@ def main():
     print(f"TOTAL ANOMALIES: {len(ANOMALIES)}")
     if not ANOMALIES:
         print("No engine defects surfaced on this run.")
+    # CI hook: non-zero exit if any anomaly surfaced, so a smoke run can gate a build.
+    return 1 if ANOMALIES else 0
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
