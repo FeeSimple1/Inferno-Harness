@@ -1988,3 +1988,16 @@ with this without losing the automation:
     `workflow`-scoped token).
 Also fixed the git remote to the repo's new canonical URL (Inferno-Harness).
 No engine changes.
+
+---
+
+## v6.2.3 — CI hardening (pre-empt first-run failure)
+
+Before the first hosted run could go red on an environment difference: the
+workflow's test step used bare `pytest`, but the suite relies on the repo root
+being on `sys.path` (24 files do `from tests.X import ...` / `import cardfx_fuzz`).
+`tests/` is a package so pytest's rootdir insertion covers it, but to remove all
+doubt the step now uses `python -m pytest -q` (guarantees CWD on path — exactly
+how the suite is validated locally). Also added a `cardfx_fuzz.py --seeds 6` CI
+step so the Crossbow `select_target_unit` / Array / Sally channels are exercised
+on every push (the in-suite `test_v62` runs only 2 seeds). No engine changes.

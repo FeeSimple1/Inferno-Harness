@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "inferno-harness"
-version = "6.2.2"
+version = "6.2.3"
 description = "Rules-enforcement harness for GMT's Inferno (L&C Volume III)."
 requires-python = ">=3.11"
 readme = "README.md"
