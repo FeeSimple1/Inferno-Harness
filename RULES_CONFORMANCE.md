@@ -404,3 +404,14 @@ Forage tracks, Supply transport/sources, Ravage cost/marker/gains all conformant
 ### CONF-015 (FIX) — Ravage must act on the Lord's OWN Locale (was: any target_locale, remote Ravage exploit).
 ### CONF-016 (FIX) — Pisa Ship-Supply Port-Source blocked in Winter (4.6.2).
 Guards: `tests/test_v66_conf014_015_ravage.py`.
+
+## v6.7 — Victory scoring (5.1 / 5.2 / 5.3)
+
+VP sources (1 / ½ / ½ / 2), sudden-death, more-VP-wins/tie-draw, and Scenario
+C(+3 Ghib via S22-Manfredi)/E(double Guelph except Ravaged) all conformant.
+
+### CONF-017 (FIX) — winner decided from TRUE (uncapped) VP
+`_compute_final_vp` clamped to 17.5; the rules have no VP ceiling (2.2.5) and 5.3
+compares totals, so a >17.5 blow-out could become a false draw. Returns true
+totals now; the persisted running track stays clamped (assert_vp_cap). Guard:
+`tests/test_v67_conf017_vp_uncap.py`.

@@ -4348,9 +4348,10 @@ def _h_end_game_check(state, side, args, rng) -> dict[str, Any]:
         state["meta"]["phase"] = "victory"
         state["meta"]["game_over"] = True
         state["meta"]["winner"] = winner
-        # Persist final VP to state.vp
-        state["vp"]["guelph"] = g
-        state["vp"]["ghibelline"] = h
+        # CONF-017: winner is decided from the TRUE (uncapped) g,h above; the
+        # running track is clamped to 17.5 for the display bound / assert_vp_cap.
+        state["vp"]["guelph"] = min(g, 17.5)
+        state["vp"]["ghibelline"] = min(h, 17.5)
         return {
             "state_changes": {"game_ended": True, "winner": winner, "vp_g": g, "vp_h": h},
             "rule_citation": "4.9.3 / 5.3",
@@ -5121,10 +5122,12 @@ def _compute_final_vp(state) -> tuple[float, float]:
     if scenario == "C":
         if any(c.get("id") == "S22" for c in state.get("capabilities_in_play", [])):
             vp["ghibelline"] += 3
-    # Clamp.
-    vp["guelph"] = max(0, min(vp["guelph"], 17.5))
-    vp["ghibelline"] = max(0, min(vp["ghibelline"], 17.5))
-    return vp["guelph"], vp["ghibelline"]
+    # CONF-017: VP has NO upper cap in the rules (2.2.5: scores over 16½ go
+    # "off-map right of box 16"). 5.3 decides the winner by who has MORE VP, so
+    # the comparison must use TRUE totals — floor at 0 only. (The caller still
+    # clamps the running track `state["vp"]` to 17.5 to honor the display bound /
+    # assert_vp_cap invariant; the winner is decided from these uncapped values.)
+    return max(0.0, vp["guelph"]), max(0.0, vp["ghibelline"])
 
 
 

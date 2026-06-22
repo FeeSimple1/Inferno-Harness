@@ -2139,3 +2139,31 @@ Seat-Port still supplies normally).
 
 **Verification:** full suite **716 pass** (6 new); save/load determinism + six-
 scenario self-play smoke clean.
+
+---
+
+## v6.7 — Victory-scoring (5.x) audit (CONF-017)
+
+Re-derived 5.1/5.2/5.3 + scenario modifiers vs RoP.
+
+**Verified conformant:** 5.1 VP sources (1 VP per Allegiance marker, ½ VP per
+Ruins, ½ VP per Ravaged, 2 VP per Captured Carroccio); 5.2 Campaign sudden-death
+(a side with no Mustered Lords loses regardless of VP); 5.3 End-of-Scenario
+(more VP wins, tie = draw); Scenario E 'Resistance' doubles Guelph VP except
+Ravaged; Scenario C 'Alliance Treaty' adds +3 to Ghibelline iff the S22 card
+(whose Capability IS "Manfredi") is in play. Ruins/Ravaged marker colours score
+to the opposite-of-printed side. End-of-game step (4.9.3) on the last Campaign.
+
+**CONF-017 — End-game winner used CAPPED VP (LOW, edge).** `_compute_final_vp`
+clamped each side to 17.5, but VP has no upper cap in the rules (2.2.5: scores
+over 16½ are tracked off-map past box 16) and 5.3 decides the winner by who has
+MORE VP. In a blow-out where BOTH sides exceed 17.5 (reachable mainly via the
+Scenario-E Guelph doubling), the clamp could flatten a real win into a false
+DRAW, and always understated a high final score. Now `_compute_final_vp` returns
+true totals (floor 0) so the winner comparison is exact; the game-end handler
+still clamps the persisted running track `state["vp"]` to 17.5 to honor the
+display bound and the `assert_vp_cap` invariant. Guard:
+`tests/test_v67_conf017_vp_uncap.py`.
+
+**Verification:** full suite **719 pass** (3 new); save/load determinism + six-
+scenario self-play smoke clean.
