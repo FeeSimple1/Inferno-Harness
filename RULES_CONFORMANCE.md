@@ -366,3 +366,21 @@ printed-enemy via `_effective_allegiance` — so un-marked printed-enemy Strongh
 `_is_marked_with_allegiance` gate to the SUBMISSION branch only (REBELLION
 correctly stays printed-eligible per 1.4.1). Guard:
 `tests/test_v61_conf010_submission.py`.
+
+## v6.4 — Siege subsystem (4.3.4-.6 / 4.5.1)
+
+Full audit vs Inferno_Siege.txt + RoP. Siegeworks, Surrender threshold, Besiege/
+Bypass/Encamp/Sortie, Sally raid, marker removal, Repair erosion all conformant.
+
+### CONF-011 (FIX) — Surrender Allegiance flip + VP
+RoP 4.5.1 sets the Stronghold to the Besieger's Allegiance "either placing markers
+equal to Value OR removing markers already there; adjust Victory 5.1." The code
+always placed `size` markers and did ±size VP — wrong on a Besieger-printed
+Stronghold (should revert, place 0; was inflating final VP) and when the enemy
+held <size markers (over-subtracted the running VP behind the 4-VP CtA trigger).
+Now routed through `revolt.apply_allegiance_switch`. Surrender does NOT trigger
+1.4.4 Exiles (Revolt-specific). Guard: `tests/test_v64_conf011_surrender_vp.py`.
+
+### CONF-012 (FIX) — Encamp clears all co-located Bypassers
+Encamp cleared `bypassing` only on the active Lord; a co-located Bypasser was left
+flagged Bypassing a now-Besieged Locale. Now clears all. Same guard file.

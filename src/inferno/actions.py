@@ -3318,13 +3318,21 @@ def _apply_surrender(state, locale_name, side, rng, rolls_log):
     triggers Revolt/Treachery # = Stronghold Value."""
     loc = state["locales"][locale_name]
     size = sd.STRONGHOLDS[loc["type"]]["size"]
-    # Remove enemy Allegiance markers; add own
     enemy = "ghibelline" if side == "guelph" else "guelph"
-    loc["current_allegiance"] = [m for m in loc.get("current_allegiance", []) if m.get("side") != enemy]
-    for _ in range(size):
-        loc["current_allegiance"].append({"side": side, "value": 1})
-    state["vp"][side] = min(state["vp"].get(side, 0) + size, 17.5)
-    state["vp"][enemy] = max(state["vp"].get(enemy, 0) - size, 0)
+    # CONF-011: flip Allegiance + adjust VP via the shared 1.3.1 / 5.1 logic.
+    # RoP 4.5.1: "Set it to their Allegiance ... EITHER placing markers equal to
+    # its Value OR removing markers already there; adjust Victory (5.1)." The
+    # prior code ALWAYS placed `size` Besieger markers and did vp[side]+=size /
+    # vp[enemy]-=size. That was wrong two ways: (a) when the Stronghold's PRINTED
+    # Allegiance is the Besieger's, surrender reverts it to printed-Friendly
+    # (place 0 markers) rather than stacking `size` markers (which inflated the
+    # Besieger's final marker-counted VP); (b) the enemy loses VP only for the
+    # markers it ACTUALLY held, not always `size` (the over-subtraction fed the
+    # running-VP 4-VP Call-to-Arms trigger). `apply_allegiance_switch` already
+    # does exactly this (place Value when enemy-printed, else revert; VP by
+    # markers placed/removed). Surrender cites 1.3.1+5.1 only — NO 1.4.4 Exiles
+    # (that mechanic is Revolt-specific).
+    _revolt.apply_allegiance_switch(state, locale_name, side)
     # Remove all Siege markers
     loc["siege"] = []
     # Revolt + Treachery # = Size. `side` (besieger) benefits; `enemy` lost.
@@ -3951,8 +3959,14 @@ def _h_cmd_encamp(state, side, args, rng) -> dict[str, Any]:
     loc = state["locales"][bypassing_loc]
     loc["bypass"] = []
     loc.setdefault("siege", []).append({"side": side, "color": "gold" if side == "guelph" else "purple", "count": 1})
-    # Clear bypassing flag on this Lord
-    lord["flags"].pop("bypassing", None)
+    # CONF-012: replacing the Bypass with a Siege converts EVERY Bypassing Lord
+    # at the Locale into a Besieger (4.3.5/4.3.6: all outside Lords are either
+    # all Besieging OR all Bypassing). Clear the `bypassing` flag on all of them,
+    # not just the active Lord, so none is left flagged Bypassing a Locale that
+    # is now Besieged (a stale flag that would mislead a later Depart/Sortie).
+    for oid in loc.get("lords_present", []):
+        if state["lords"][oid].get("flags", {}).get("bypassing") == bypassing_loc:
+            state["lords"][oid]["flags"].pop("bypassing", None)
     lord.setdefault("flags", {})["moved_fought"] = True
     state["actions_remaining"] = 0
     state["card_action_consumed_by_entire_card"] = True

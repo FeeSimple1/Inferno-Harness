@@ -2025,3 +2025,47 @@ added as a CI step (`saveload_fuzz.py --seeds 8`).
 This is the SECOND consecutive diverse round to come back empty (after v6.2
 card-effect integration fuzzing) — continued evidence the bug-find rate is
 flattening on the combat, card, and harness-correctness surfaces.
+
+---
+
+## v6.4 — Siege subsystem conformance audit (CONF-011, CONF-012)
+
+Line-by-line audit of the Siege subsystem (Besiege/Bypass, Siege action,
+Encamp, Sortie, Surrender, Sally raid) vs reference/Inferno_Siege.txt + RoP
+4.3.4-.6 / 4.5.1.
+
+**Verified conformant:** Siegeworks (add 1 marker iff Besiegers ≥ Stronghold
+Size; Guastatori +2; War Engineers any size; MAX 4); Surrender threshold (Value
+dice, each ≤ Siege+Ravage markers; one Ravage marker adds 1 regardless of
+owner); Besiege (1 marker, ends card); Bypass (continues card); Encamp (replace
+all Bypass with ONE Siege, mark only the encamper); single-Lord Sortie; Sally
+raid (loser reduces Siege to 1); marker removal when a Stronghold is free of
+Enemy Lords; Repair erosion (Town/City 3-4 markers, Castles excluded — prior
+Section E). Group Sortie is a documented deferral (single-Lord is correct).
+
+**CONF-011 — Surrender flipped Allegiance / VP incorrectly (HIGH).**
+RoP 4.5.1: surrender sets the Stronghold to the Besieger's Allegiance "EITHER
+placing markers equal to its Value OR removing markers already there; adjust
+Victory (5.1)." `_apply_surrender` instead ALWAYS placed `size` Besieger markers
+and did vp[side]+=size / vp[enemy]-=size. Two errors: (a) on a Besieger-PRINTED
+Stronghold (flipped to the enemy then re-taken) it should revert to
+printed-Friendly — place 0 markers — but it stacked `size` markers, inflating the
+Besieger's final marker-counted VP (`_compute_final_vp` counts actual markers);
+(b) the enemy lost `size` VP even when it held fewer than `size` markers (e.g. a
+printed-enemy Stronghold with no markers — 53/57 at start), over-subtracting the
+running VP that feeds the 4-VP Call-to-Arms ("vp_lag") trigger. Fixed by routing
+the flip through the audited `revolt.apply_allegiance_switch` (place Value when
+enemy-printed, else revert; VP by markers actually placed/removed). Confirmed
+against the RoP that Surrender does NOT trigger 1.4.4 Exiles (the digest's
+Section 9 over-generalized — Exiles are Revolt-specific). Guard:
+`tests/test_v64_conf011_surrender_vp.py`.
+
+**CONF-012 — Encamp left co-located Bypassers flagged Bypassing (MED).**
+Encamp replaces the Bypass with a Siege, but cleared the `bypassing` flag only on
+the active Lord. A second Lord Bypassing the same Locale was left flagged
+Bypassing a now-Besieged Locale (violating 4.3.5/4.3.6 "all outside Lords are
+either all Besieging OR all Bypassing"), a stale flag that would mislead a later
+Depart/Sortie. Now clears every co-located Bypasser. Guard: same test file.
+
+**Verification:** full suite **708 pass** (4 new); save/load + self-play smokes
+clean.
