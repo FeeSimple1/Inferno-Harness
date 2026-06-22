@@ -384,3 +384,14 @@ Now routed through `revolt.apply_allegiance_switch`. Surrender does NOT trigger
 ### CONF-012 (FIX) — Encamp clears all co-located Bypassers
 Encamp cleared `bypassing` only on the active Lord; a co-located Bypasser was left
 flagged Bypassing a now-Besieged Locale. Now clears all. Same guard file.
+
+## v6.5 — Levy / Muster / FPD (3.1-3.5 / 4.8)
+
+Pay, Feed thresholds, FPD sequencing, Disband (3.3.1 1×/3× Podestà; 3.3.2 none),
+Fealty Muster all conformant.
+
+### CONF-013 (FIX) — Feed Sharing (1.5.2)
+The 4.8.1 Feed fed each Lord from his own assets only ("Sharing deferred"). 1.5.2
+makes co-located Friendly Sharing mandatory before a Lord is Unfed; an Unfed Lord
+must also consume his partial assets. Rewrote Feed as own-first then Shared-
+shortfall two passes. Guard: `tests/test_v65_conf013_feed_sharing.py`.

@@ -1974,22 +1974,51 @@ def _run_fpd(state) -> dict[str, Any]:
     only after both sides finish Pay (or immediately when neither side can Pay).
     """
     summary: dict[str, Any] = {"feed": [], "disband": []}
-    # 4.8.1 FEED
-    for lid, lord in state["lords"].items():
-        if not lord.get("flags", {}).get("moved_fought"):
-            continue
+    # 4.8.1 FEED (1.5.2 Sharing). CONF-013: two passes. PASS 1 — each Moved/
+    # Fought Lord feeds his OWN Forces first from his own Provender (preferred)
+    # then Loot. PASS 2 — co-located Friendly Mustered Lords MUST Share their
+    # remaining Provender/Loot to cover any shortfall ("a side may NOT withhold")
+    # BEFORE a Lord is left Unfed. A Lord still short has consumed what was
+    # available (own in pass 1 + shared in pass 2) AND shifts Service 1 box left.
+    # The prior code fed each Lord from his OWN assets only (Sharing was deferred)
+    # and, when Unfed, did not even consume his partial assets.
+    def _deduct_own(lrd, amt):
+        p = min(amt, lrd["assets"].get("Provender", 0))
+        lrd["assets"]["Provender"] = lrd["assets"].get("Provender", 0) - p
+        rem = amt - p
+        l = min(rem, lrd["assets"].get("Loot", 0))
+        lrd["assets"]["Loot"] = lrd["assets"].get("Loot", 0) - l
+        return p + l
+    feeders = [(lid, lord) for lid, lord in state["lords"].items()
+               if lord.get("flags", {}).get("moved_fought")]
+    residual = {}
+    for lid, lord in feeders:
         units = sum(lord.get("forces", {}).values())
         need = 0 if units == 0 else (1 if units <= 6 else 2 if units <= 12 else 3)
-        # Lord feeds himself first; Sharing deferred.
-        available = lord["assets"].get("Provender", 0) + lord["assets"].get("Loot", 0)
-        if available >= need:
-            paid_prov = min(need, lord["assets"].get("Provender", 0))
-            lord["assets"]["Provender"] = lord["assets"].get("Provender", 0) - paid_prov
-            need_after_prov = need - paid_prov
-            lord["assets"]["Loot"] = max(0, lord["assets"].get("Loot", 0) - need_after_prov)
-            summary["feed"].append({"lord_id": lid, "units": units, "need": need, "fed": True})
+        paid = _deduct_own(lord, need)
+        residual[lid] = {"units": units, "need": need, "short": need - paid}
+    for lid, lord in feeders:
+        info = residual[lid]
+        short = info["short"]
+        if short > 0:
+            side = lord.get("side"); loc = lord.get("location")
+            for asset in ("Provender", "Loot"):
+                if short <= 0:
+                    break
+                for oid, ol in state["lords"].items():
+                    if short <= 0:
+                        break
+                    if oid == lid or ol.get("side") != side \
+                            or ol.get("status") != "mustered" or ol.get("location") != loc:
+                        continue
+                    t = min(short, ol["assets"].get(asset, 0))
+                    if t:
+                        ol["assets"][asset] = ol["assets"].get(asset, 0) - t
+                        short -= t
+        if short <= 0:
+            summary["feed"].append({"lord_id": lid, "units": info["units"],
+                                    "need": info["need"], "fed": True})
         else:
-            # UNFED: Service marker shifts 1 box left.
             cur = lord.get("service_box")
             if cur is not None:
                 new = cur - 1
@@ -1998,7 +2027,8 @@ def _run_fpd(state) -> dict[str, Any]:
                     state["calendar"]["off_left_service"].append(lid)
                 else:
                     _place_service(state, lid, new)
-            summary["feed"].append({"lord_id": lid, "units": units, "need": need, "fed": False, "service_shift": -1})
+            summary["feed"].append({"lord_id": lid, "units": info["units"],
+                                    "need": info["need"], "fed": False, "service_shift": -1})
 
     # 4.8.2 PAY (optional, Guelphs then Ghibellines). SMOKE-Inferno-057: the Pay
     # sub-step was auto-skipped; it is a player choice (No-Agent), so when either

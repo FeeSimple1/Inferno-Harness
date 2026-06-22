@@ -2069,3 +2069,36 @@ Depart/Sortie. Now clears every co-located Bypasser. Guard: same test file.
 
 **Verification:** full suite **708 pass** (4 new); save/load + self-play smokes
 clean.
+
+---
+
+## v6.5 — Levy / Muster / Feed-Pay-Disband audit (CONF-013)
+
+Line-by-line audit of the Levy phase (3.1-3.5) and Campaign Feed/Pay/Disband
+(4.8) vs reference/Inferno_Commands.txt + RoP.
+
+**Verified conformant:** Pay (3.2 — 1 Coin/Loot = 1 box, Podestà 2/box, payer+
+target same Locale, Loot needs a Friendly unbesieged Locale); Feed thresholds
+(1-6→1, 7-12→2, 13+→3 Provender/Loot); FPD sequencing (Feed → optional Pay,
+Guelph then Ghibelline → Disband → remove Moved/Fought); Disband Beyond Service
+(3.3.1) triggers Revolt+Treachery 1× regular / 3× Podestà (Comune exempt),
+At-Service-Limit (3.3.2) does not; Fealty Muster (3.4.1 die ≤ F rating, Section C).
+
+**CONF-013 — Feed ignored mandatory Sharing (1.5.2) (MED/HIGH).**
+The 4.8.1 Feed step fed each Moved/Fought Lord from his OWN Provender/Loot only —
+the inline comment read "Sharing deferred." Rule 1.5.2 makes Sharing MANDATORY:
+"Lords at the same Locale MUST Share Provender/Loot to Feed any other Friendly
+Lord at that Locale who could not fully Feed ... a side may NOT withhold." So a
+Lord with a co-located Friendly Lord holding surplus was wrongly left Unfed and
+took a Service-left shift (cascading toward Disband Beyond Service → Revolt/
+Treachery). Separately, an Unfed Lord did not even consume his PARTIAL assets,
+though 1.5.2/4.8.1 say he "still consumes those AND suffers the shift." Rewrote
+Feed as two passes: (1) every Lord feeds from his own assets; (2) co-located
+Friendly Mustered Lords Share their remaining Provender/Loot to cover shortfalls
+before any Service shift; a Lord still short has consumed all available and
+shifts. (The harness already had `_share_available`/`_pay_from_locale` for the
+active-Lord commands — Feed simply never used them.) Guard:
+`tests/test_v65_conf013_feed_sharing.py`.
+
+**Verification:** full suite **710 pass** (2 new); save/load determinism (72
+games) + six-scenario self-play smoke clean after the Feed change.
