@@ -1631,7 +1631,9 @@ def _apply_ravage_gains(state, lid, target_type, no_loot=False) -> dict[str, int
     lord["assets"]["Provender"] = min(lord["assets"].get("Provender", 0) + prov, 16)
     gains = {"Provender": prov}
     if loot:
-        lord["assets"]["Loot"] = min(lord["assets"].get("Loot", 0) + loot, 8)
+        # CONF-014: the Asset maximum is 16 (1.7.3 Waste), same as Provender —
+        # the prior `8` wrongly capped Ravage Loot at half the legal ceiling.
+        lord["assets"]["Loot"] = min(lord["assets"].get("Loot", 0) + loot, 16)
         gains["Loot"] = loot
     return gains
 
@@ -1645,6 +1647,17 @@ def _h_cmd_ravage(state, side, args, rng) -> dict[str, Any]:
     target = state["locales"].get(target_name)
     if not target:
         raise IllegalAction("UNKNOWN_LOCALE", f"Locale {target_name!r} not found.", "4.7.2")
+    # CONF-015: Ravage (4.7.2) acts on the Active Lord's OWN Locale — he places a
+    # Ravaged marker where he stands. The handler previously honoured any
+    # `target_locale`, so a Lord could Ravage a Locale he was not at (gaining
+    # Provender/Loot/VP and a marker remotely). Adjacent-Outpost Ravage is the
+    # separate La Cavallata Capability, not this action.
+    if target_name != lord.get("location"):
+        raise IllegalAction(
+            "RAVAGE_NOT_AT_LOCALE",
+            f"Ravage acts on the Lord's own Locale ({lord.get('location')!r}); "
+            f"got {target_name!r}. (Adjacent-Outpost Ravage is La Cavallata.)",
+            "4.7.2")
 
     # SMOKE-Inferno-001: Ravage pre-checks — own-territory, ravaged, friendly. See CROSS_PROJECT_LESSONS §1.
     if target.get("ravaged"):
@@ -1705,12 +1718,17 @@ def _h_cmd_supply(state, side, args, rng) -> dict[str, Any]:
     loc_name = lord.get("location")
     if not loc_name:
         raise IllegalAction("NO_LOCATION", f"{lid} has no map Locale.", "4.6")
+    # CONF-016: Pisa's Ships do not operate in Winter (4.6.2 "not in Winter",
+    # mirroring Sail 4.7.3) — so a Port may only be a Ship-Source in non-Winter.
+    season = sd.SEASON_BY_BOX.get(state["meta"]["turn"], "winter")
+    ships_ok = season != "winter"
     # Determine Source: first try args.source, else Lord's Locale if his Seat
     source = args.get("source") or loc_name
     if source not in lord.get("seats", []):
         # Maybe Pisa via Ships at Port
         is_pisa_via_ships = (
-            lord["name"] == "Pisa Podestà"
+            ships_ok
+            and lord["name"] == "Pisa Podestà"
             and state["locales"].get(source, {}).get("port")
             and lord["assets"].get("Ship", 0) > 0
         )
@@ -1763,7 +1781,8 @@ def _h_cmd_supply(state, side, args, rng) -> dict[str, Any]:
     requested = max(1, min(requested, max_from_source))
     if way_count == 0:
         carts_needed = 0
-    elif (lord["name"] == "Pisa Podestà"
+    elif (ships_ok
+          and lord["name"] == "Pisa Podestà"
           and source_loc.get("port")
           and lord["assets"].get("Ship", 0) > 0):
         # Pisa Sail-Supply via Ship-Port: no Carts but limited by Ships

@@ -395,3 +395,12 @@ The 4.8.1 Feed fed each Lord from his own assets only ("Sharing deferred"). 1.5.
 makes co-located Friendly Sharing mandatory before a Lord is Unfed; an Unfed Lord
 must also consume his partial assets. Rewrote Feed as own-first then Shared-
 shortfall two passes. Guard: `tests/test_v65_conf013_feed_sharing.py`.
+
+## v6.6 — Supply / Forage / Ravage (4.6 / 4.7.1 / 4.7.2)
+
+Forage tracks, Supply transport/sources, Ravage cost/marker/gains all conformant.
+
+### CONF-014 (FIX) — Ravage Loot caps at 16 (1.7.3), was 8.
+### CONF-015 (FIX) — Ravage must act on the Lord's OWN Locale (was: any target_locale, remote Ravage exploit).
+### CONF-016 (FIX) — Pisa Ship-Supply Port-Source blocked in Winter (4.6.2).
+Guards: `tests/test_v66_conf014_015_ravage.py`.

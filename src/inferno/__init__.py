@@ -6,4 +6,4 @@ winner under automated agents. See BRIEF.md for the authoring spec and
 SMOKE_TEST_FINDINGS.md for the per-version changelog.
 """
 
-__version__ = "6.5.0"
+__version__ = "6.6.0"

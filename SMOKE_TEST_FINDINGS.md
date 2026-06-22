@@ -2102,3 +2102,40 @@ active-Lord commands — Feed simply never used them.) Guard:
 
 **Verification:** full suite **710 pass** (2 new); save/load determinism (72
 games) + six-scenario self-play smoke clean after the Feed change.
+
+---
+
+## v6.6 — Supply / Forage / Ravage audit (CONF-014, CONF-015, CONF-016)
+
+Re-derived line-by-line vs reference/Inferno_Commands.txt + RoP 4.6/4.7.1/4.7.2.
+
+**Verified conformant:** Forage (Ravaged/Besieged-by-≥Size blocks; Friendly
+unbesieged Stronghold auto +1; Summer auto; Spring/Autumn 1d6 ≤3 → +1; Winter
+none outside Friendly; no Moved/Fought); Supply (Source = own unruined Seat or
+Pisa-Ships-Port; route BFS avoiding un-Besieged/un-Bypassed enemy; 1 Cart per
+Provender per Way, 0 at own Seat; max = Stronghold Size / 1 Outpost / 4 with
+Stores & Well Water); Ravage cost (Castle 1, Town/City 2; Masnadieri 0), marker
+= opposite PRINTED Allegiance, +½ VP to that side, gains (Castle +1 Prov; Town/
+City +1 Prov +1 Loot; Berrovieri/Gualdana double).
+
+**CONF-014 — Ravage Loot capped at 8 instead of 16 (MED).** `_apply_ravage_gains`
+capped Loot at 8 while the Asset maximum is 16 (1.7.3; Provender caps at 16
+everywhere). A Lord Ravaging Towns/Cities was wrongly denied Loot past 8. → 16.
+
+**CONF-015 — Ravage accepted a REMOTE target (HIGH).** `cmd_ravage` honoured any
+`target_locale` without checking the Lord was there — so a Lord at Firenze could
+Ravage Pisa (non-adjacent), gaining Provender/Loot/VP and placing a Ravaged
+marker on a Locale he never occupied. Repro confirmed. Ravage (4.7.2) acts on the
+Lord's OWN Locale (adjacent-Outpost Ravage is the separate La Cavallata
+Capability); handler now rejects a target ≠ the Lord's Locale. The enumerator was
+already correct (only offers the Lord's Locale), so this was pure handler
+under-validation.
+
+**CONF-016 — Pisa Ship-Supply not blocked in Winter (LOW/MED).** 4.6.2: a Port is
+a Ship-Source "only ... not in Winter" (Ships don't operate in Winter, as with
+Sail 4.7.3). Supply allowed a remote Port Ship-Source year-round; now gated to
+non-Winter (a Winter Port-via-Ships Source is rejected BAD_SOURCE; Pisa's own
+Seat-Port still supplies normally).
+
+**Verification:** full suite **716 pass** (6 new); save/load determinism + six-
+scenario self-play smoke clean.
