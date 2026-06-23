@@ -2167,3 +2167,46 @@ display bound and the `assert_vp_cap` invariant. Guard:
 
 **Verification:** full suite **719 pass** (3 new); save/load determinism + six-
 scenario self-play smoke clean.
+
+---
+
+## v6.8 — Adversarial-input robustness fuzz (round-3 #3): CONF-018..021
+
+A new diverse technique: instead of valid play, `robustness_fuzz.py` feeds every
+handler malformed/illegal/mutated args (unknown actions, missing/None/wrong-type
+lord_ids, bad locales, negative/huge/non-numeric amounts, a legal move with one
+field corrupted, malformed envelopes) and asserts the dispatch contract:
+  1. bad input is ALWAYS rejected with IllegalAction — never a bare crash;
+  2. a REJECTED action leaves state byte-identical (validate-then-mutate);
+  3. an ACCEPTED action keeps the always-on invariants.
+Each mutation runs on an isolated JSON copy so probes never perturb the game.
+
+Found and fixed FOUR defect classes (all invisible to a valid-palette agent):
+
+**CONF-018 — Muster sub-handlers consumed Lordship before validating (MED).**
+`levy_muster_vassal/_lord/_transport/_capability` each called `_consume_lordship`
+up front, so a rejected Muster (unknown/not-ready/CtA-only Vassal, bad target/
+seat, non-Pisa Ship, empty deck) leaked a consumed Lordship action — a
+validate-then-mutate violation (same class as the original bug #9). All four now
+consume Lordship only AFTER validation passes (a failed Fealty/Sestiere roll
+still consumes, as the rules intend; a rejection consumes nothing).
+
+**CONF-019 — `plan_add_card` crashed on a non-string card_id (MED).** A
+missing/None card_id hit `cid.startswith(...)` → bare AttributeError instead of
+IllegalAction. Now type-checked up front.
+
+**CONF-020 — `cmd_march` Maremma latch leaked on rejection (LOW).** The Scenario-C
+dashed-line check memoized `meta.guelph_aggression_seen=True` mid-validation, so a
+March that rejected downstream left the flag set. The latch was only a cache;
+dropped it and recompute the gate each time (no behaviour change, no leak).
+
+**CONF-021 — `int(args[...])` crashed on non-numeric input (MED).** Five sites
+(`amount`, `provender`, `count`, `coin`, `languish_treachery`) did a raw `int()`
+on operator-supplied args → bare ValueError/TypeError. Added a guarded `_int_arg`
+that raises IllegalAction("BAD_INT_ARG").
+
+**Verification:** full suite **722 pass** (3 new); robustness fuzz now CLEAN
+across all six scenarios × 3 seeds (~30k+ rejected mutations, 0 crashes, 0
+transactional leaks). Locked in as `tests/test_v68_robustness.py` + a CI step.
+This was a productive round (4 finds), so it does NOT count toward the "empty
+rounds" release criterion — but the surface is now clean for re-runs.

@@ -44,3 +44,6 @@ jobs:
 
       - name: Save/load + replay determinism fuzz
         run: PYTHONPATH=src python saveload_fuzz.py --seeds 8 --max-steps 8000
+
+      - name: Adversarial-input robustness fuzz (dispatch contract)
+        run: PYTHONPATH=src python robustness_fuzz.py --seeds 3 --max-steps 6000 --probe-every 8

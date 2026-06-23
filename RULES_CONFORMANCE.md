@@ -415,3 +415,12 @@ C(+3 Ghib via S22-Manfredi)/E(double Guelph except Ravaged) all conformant.
 compares totals, so a >17.5 blow-out could become a false draw. Returns true
 totals now; the persisted running track stays clamped (assert_vp_cap). Guard:
 `tests/test_v67_conf017_vp_uncap.py`.
+
+## v6.8 — Dispatch robustness (adversarial input)
+
+`robustness_fuzz.py` fuzzes the dispatch boundary: bad input must reject with
+IllegalAction (never crash) and leave state byte-identical; accepted actions keep
+invariants. Fixed CONF-018 (4 Muster sub-handlers consumed Lordship before
+validating), CONF-019 (plan_add_card crash on bad card_id), CONF-020 (cmd_march
+Maremma-latch leak), CONF-021 (raw int() of operator args → guarded _int_arg).
+Now clean across all scenarios. Guard: `tests/test_v68_robustness.py`.

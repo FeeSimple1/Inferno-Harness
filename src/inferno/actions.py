@@ -45,6 +45,17 @@ class IllegalAction(Exception):
         super().__init__(f"[{code}] {message}" + (f" ({citation})" if citation else ""))
 
 
+def _int_arg(args, key, default):
+    """Coerce an integer action-arg, raising IllegalAction (not a bare
+    ValueError/TypeError) on non-numeric input — CONF-021 preserves the dispatch
+    contract: bad input is always a clean rejection, never a crash."""
+    v = args.get(key, default)
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        raise IllegalAction("BAD_INT_ARG", f"{key!r} must be an integer, got {v!r}.", "4.2")
+
+
 # =====================================================================
 # Dispatch
 # =====================================================================
@@ -401,7 +412,7 @@ def _apply_pay_action(state, side: str, args) -> dict[str, Any]:
     from_lid = args.get("from_lord_id")
     target_lid = args.get("target_lord_id", from_lid)
     asset = args.get("asset", "Coin")
-    boxes = int(args.get("amount", 1))
+    boxes = _int_arg(args, "amount", 1)
 
     if asset not in ("Coin", "Loot"):
         raise IllegalAction("BAD_ASSET", f"Asset must be Coin or Loot, got {asset!r}.", "3.2")
@@ -857,7 +868,6 @@ def _h_levy_muster_lord(state, side, args, rng) -> dict[str, Any]:
     muster_lord = _require_lord(state, mlid, side)
     if muster_lord["status"] != "mustered":
         raise IllegalAction("MUSTER_LORD_NOT_ON_MAP", f"{mlid} is not Mustered.", "3.4")
-    _consume_lordship(state, mlid)
     target_lord = _require_lord(state, tlid, side)
     if target_lord["status"] != "on_calendar":
         raise IllegalAction("TARGET_NOT_READY", f"{tlid} is not waiting on Calendar.", "3.4.1")
@@ -882,6 +892,9 @@ def _h_levy_muster_lord(state, side, args, rng) -> dict[str, Any]:
     if not _elig:
         raise IllegalAction("SEAT_NOT_MUSTERABLE", _why, "3.4.1")
 
+    # CONF-018: consume Lordship only after validation (a failed Fealty roll
+    # still consumes the action; a rejected Muster must not leak a Lordship).
+    _consume_lordship(state, mlid)
     # Fealty roll
     fealty = target_lord.get("ratings", {}).get("F", 0)
     r = rng.roll(f"fealty_{tlid}")
@@ -954,11 +967,11 @@ def _h_levy_muster_vassal(state, side, args, rng) -> dict[str, Any]:
     lord = _require_lord(state, lid, side)
     if lord["status"] != "mustered":
         raise IllegalAction("LORD_NOT_ON_MAP", f"{lid} is not Mustered.", "3.4")
-    # SMOKE-Inferno-066: F22 TAU COMPANY lets Firenze/Lucca Muster Altopascio for
-    # 0 Lordship (3.4.2 ALTOPASCIO); otherwise a Vassal Muster costs 1 Lordship.
+    # CONF-018: locate and fully validate the Vassal BEFORE consuming any
+    # Lordship — the prior code consumed Lordship here (top of the handler), so a
+    # rejected Muster (unknown/not-ready/CtA-only Vassal) leaked a consumed
+    # Lordship action (validate-then-mutate violation, same class as bug #9).
     from .battle import _lord_has_capability
-    if not (vname == "Altopascio" and _lord_has_capability(state, lid, "Tau Company")):
-        _consume_lordship(state, lid)
     target = next((v for v in lord["vassals"] if v["name"] == vname), None)
     # CONF-001 / SMOKE-Inferno-073: a Commander INSIDE his Leading City may
     # also Muster a Ready Sestiere/Terzo on the in-play Comune mat via a regular
@@ -988,6 +1001,9 @@ def _h_levy_muster_vassal(state, side, args, rng) -> dict[str, Any]:
                                 f"a Comune {vname}.", "3.4.2")
         if not target.get("ready"):
             raise IllegalAction("VASSAL_NOT_READY", f"{vname} is not Ready.", "3.4.2")
+        # CONF-018: consume Lordship only after validation (a wasted die roll
+        # still consumes the action; a rejected Muster must not).
+        _consume_lordship(state, lid)
         md = target.get("muster_die")
         r = rng.roll(f"sestiere_muster_{vname}")
         if md is None or r.value > md:
@@ -1005,6 +1021,10 @@ def _h_levy_muster_vassal(state, side, args, rng) -> dict[str, Any]:
 
     if not target.get("ready"):
         raise IllegalAction("VASSAL_NOT_READY", f"{vname} is not Ready.", "3.4.2")
+    # CONF-018: consume Lordship only after validation. SMOKE-066: Altopascio via
+    # Tau Company costs 0 Lordship.
+    if not (vname == "Altopascio" and _lord_has_capability(state, lid, "Tau Company")):
+        _consume_lordship(state, lid)
     # Slide marker into Forces (Ready -> not Ready); add Forces.
     target["ready"] = False
     for unit, count in target.get("forces", {}).items():
@@ -1032,7 +1052,6 @@ def _h_levy_muster_transport(state, side, args, rng) -> dict[str, Any]:
     lord = _require_lord(state, lid, side)
     if lord["status"] != "mustered":
         raise IllegalAction("LORD_NOT_ON_MAP", f"{lid} is not Mustered.", "3.4")
-    _consume_lordship(state, lid)
     if kind == "Ship" and lord["name"] != "Pisa Podestà":
         raise IllegalAction(
             "SHIPS_PISA_ONLY",
@@ -1041,6 +1060,7 @@ def _h_levy_muster_transport(state, side, args, rng) -> dict[str, Any]:
         )
     if kind not in ("Cart", "Ship"):
         raise IllegalAction("BAD_TRANSPORT", f"kind must be Cart or Ship, got {kind!r}.", "3.4.3")
+    _consume_lordship(state, lid)  # CONF-018: after validation
     lord["assets"][kind] = lord["assets"].get(kind, 0) + 1
     return {
         "state_changes": {"lord_id": lid, "transport": kind, "new_total": lord["assets"][kind]},
@@ -1065,10 +1085,10 @@ def _h_levy_muster_capability(state, side, args, rng) -> dict[str, Any]:
     lord = _require_lord(state, lid, side)
     if lord["status"] != "mustered":
         raise IllegalAction("LORD_NOT_ON_MAP", f"{lid} is not Mustered.", "3.4")
-    _consume_lordship(state, lid)
     deck = state["decks"][side]["aow_deck"]
     if not deck:
         raise IllegalAction("EMPTY_DECK", "No AoW cards left to draw.", "3.4.4")
+    _consume_lordship(state, lid)  # CONF-018: after validation
     r = rng.roll("levy_cap_index")
     idx = (r.value - 1) % len(deck)
     cid = deck.pop(idx)
@@ -1275,6 +1295,12 @@ def _h_plan_add_card(state, side, args, rng) -> dict[str, Any]:
     if current_campaign_step(state) != "plan":
         raise IllegalAction("WRONG_STEP", f"plan_add_card requires Campaign step plan; got {current_campaign_step(state)!r}.", "4.1")
     cid = args.get("card_id")
+    # CONF-019: validate the card_id type before any .startswith — a missing/None
+    # card_id previously crashed with a bare AttributeError instead of a clean
+    # IllegalAction (dispatch contract: reject bad input, never crash).
+    if not isinstance(cid, str) or not cid:
+        raise IllegalAction("MISSING_CARD_ID",
+                            "plan_add_card requires a non-empty string card_id.", "4.1.1")
     stack = state["plan_stacks"][side]
     # Validate card type and availability.
     if cid == cd_PASS_CARD_ID():
@@ -1777,7 +1803,7 @@ def _h_cmd_supply(state, side, args, rng) -> dict[str, Any]:
 
     # Transport requirement: 1 Cart per Provender per Way (no Carts at own Seat or Pisa-Ships-Port)
     carts_avail = lord["assets"].get("Cart", 0)
-    requested = int(args.get("provender", max_from_source))
+    requested = _int_arg(args, "provender", max_from_source)
     requested = max(1, min(requested, max_from_source))
     if way_count == 0:
         carts_needed = 0
@@ -1968,7 +1994,7 @@ def _h_cmd_sail(state, side, args, rng) -> dict[str, Any]:
 def _h_cmd_pass(state, side, args, rng) -> dict[str, Any]:
     """4.7.7 PASS — burn 1 (or all remaining) actions doing nothing."""
     _require_active_lord(state, side, args.get("lord_id"))
-    n = int(args.get("count", 1))
+    n = _int_arg(args, "count", 1)
     n = min(n, state["actions_remaining"] or 0)
     state["actions_remaining"] = max(0, (state["actions_remaining"] or 0) - n)
     return _maybe_end_card({"passed_actions": n}, state, side, citation="4.7.7")
@@ -2450,21 +2476,20 @@ def _h_cmd_march(state, side, args, rng) -> dict[str, Any]:
 
     # SMOKE-Inferno-039: Scenario C 'Maremma War' — Ghibelline Lords
     # may not cross the dashed line until Guelphs place a Siege or Ravage marker.
-    if (state["meta"]["scenario"] == "C" and side == "ghibelline"
-            and not state["meta"].get("guelph_aggression_seen")):
+    if state["meta"]["scenario"] == "C" and side == "ghibelline":
         src_region = sd.LOCALES.get(cur_loc_name, {}).get("region")
         dest_region = sd.LOCALES.get(dest_name, {}).get("region")
         if src_region and dest_region and src_region != dest_region:
-            # Crossing the dashed line. Check if Guelphs have placed any
-            # Siege or Ravage marker.
+            # Crossing the dashed line is allowed only once Guelphs have placed a
+            # Siege or Ravage marker. CONF-020: recompute this gate each time
+            # (the prior `guelph_aggression_seen` memo MUTATED meta mid-validation,
+            # leaking the flag when a later check rejected the March).
             any_guelph_aggression = any(
                 any(s.get("side") == "guelph" for s in (loc.get("siege") or []))
                 or loc.get("ravaged") == "gold"
                 for loc in state["locales"].values()
             )
-            if any_guelph_aggression:
-                state["meta"]["guelph_aggression_seen"] = True
-            else:
+            if not any_guelph_aggression:
                 raise IllegalAction(
                     "MAREMMA_LINE_CROSS",
                     "Scenario C: Ghibelline Lords may not cross the dashed "
@@ -3674,7 +3699,7 @@ def _h_cmd_treachery_revolt(state, side, args, rng) -> dict[str, Any]:
     # S18 Cortona free-Treachery is available only when target IS Cortona.
     cortona_free_available = (target_name == "Cortona"
                               and _peek_cortona_free(state, side) is not None)
-    coin = int(args.get("coin", 0 if cortona_free_available else 1))
+    coin = _int_arg(args, "coin", 0 if cortona_free_available else 1)
     if cortona_free_available:
         if not (0 <= coin <= 4):
             raise IllegalAction("BAD_COIN", "Revolt commits 0-4 Coin (Cortona free).", "4.7.5")
@@ -4305,7 +4330,7 @@ def _h_end_ransom(state, side, args, rng) -> dict[str, Any]:
         # adds (a double penalty). The captor chooses the split; default is all
         # Revolt rolls ("Revolt rolls in lieu of Treachery are mandatory").
         n_events = (total_captured + 5) // 6
-        n_treachery = max(0, min(int(args.get("languish_treachery", 0)), n_events))
+        n_treachery = max(0, min(_int_arg(args, "languish_treachery", 0), n_events))
         n_revolt = n_events - n_treachery
         enemy = "ghibelline" if side == "guelph" else "guelph"
         if n_revolt:
