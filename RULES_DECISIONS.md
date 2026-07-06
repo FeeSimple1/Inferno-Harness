@@ -108,3 +108,9 @@ a Siege action at the Locale (609) — independent of these capability actions.
   Defenders; the Front Defenders (opposed by the main Attackers) do not
   strike back at the relief theater — per 4.4.2 STRIKE they hit "the Lord
   directly opposite them or—if none opposite—an Enemy they are Flanking".
+
+## Storm six-Melee-Hit cap (v6.11, CONF-038)
+- The cap reads "Each LORD ... adds no more than six Hits in Melee"; the
+  Garrison is "separate from any Defending Lord" (4.5.2) and is not a Lord,
+  so Garrison Melee (max 9 at a City) is NOT capped. The cap is applied after
+  per-Lord Capability modifiers.

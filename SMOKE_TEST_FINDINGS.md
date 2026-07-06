@@ -2271,3 +2271,12 @@ optional (`relief_sally_join`, default join). Found + fixed en route: stale
 `in_stronghold` flag on March-out (misclassified a later Approach as Relief
 Sally; selfplay D/2). Tests: +5 (`tests/test_v610_relief_sally.py`) → 756.
 Fuzzers: cardfx, robustness (ADF×2), selfplay A-F — clean.
+
+---
+
+# v6.11 — CONF-038: Storm six-Melee-Hit cap (was entirely missing)
+
+4.5.2 caps each Lord at six Melee Hits per Storm step (Archery unlimited).
+The engine had no cap at all. Now capped post-Capability, pre-Garrison.
+Regression test is counterfactual-verified (fails when the cap is removed).
+Tests → 757. cardfx fuzz clean.

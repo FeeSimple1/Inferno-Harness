@@ -139,3 +139,30 @@ class TestReliefJoinChoice:
         assert captured["relief"] == []
         assert "arezzo" not in captured["attackers"]
         assert not s["lords"]["arezzo"].get("flags", {}).get("relief_sallying")
+
+
+class TestConf038StormMeleeCap:
+    """RoP 4.5.2: 'Each Lord of each side in Storm adds no more than six Hits
+    in Melee. (Archery is unlimited.)'"""
+
+    def test_lord_melee_capped_at_six_in_storm(self, monkeypatch):
+        s = load_scenario("A", seed=1)
+        _place(s, "firenze", "Volterra")
+        s["locales"]["Volterra"]["siege"] = [
+            {"side": "guelph", "color": "gold", "count": 1}]
+        # 16 Men-at-Arms: even after the Garrison's Round-1 strikes rout a
+        # few, the Lord retains far more than 6 — uncapped he would add
+        # ~10+ Melee Hits (storm attacker x1); 4.5.2 caps him at six.
+        s["lords"]["firenze"]["forces"] = {"Men-at-Arms": 16}
+        # Determinism: disable Walls cancellation so the applied-Hit count in
+        # Round 1's attacker Melee step equals the (capped) Hits generated.
+        monkeypatch.setattr(battle_mod, "_apply_walls",
+                            lambda n, rng_range, rng_roll, ctx: n)
+        from inferno.battle import resolve_storm
+        r = resolve_storm(s, attackers=["firenze"], defenders=[],
+                          active_id="firenze", locale_name="Volterra")
+        # Round 1, atk_all_melee: garrison hit-log entries = applied Hits.
+        rd1 = r["rounds"][0]
+        melee_entries = [h for h in rd1.get("hit_log", [])
+                         if h.get("garrison_unit") and not h.get("crossbow")]
+        assert len(melee_entries) == 6,             f"4.5.2 caps each Lord at six Melee Hits in Storm; applied "             f"{len(melee_entries)}"

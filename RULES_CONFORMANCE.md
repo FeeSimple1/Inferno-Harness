@@ -589,3 +589,16 @@ now cleared on movement and the relief candidate set excludes the Approacher.
 - Concede+Retreat Spoils use 2×Carts (Road) as the "could move without being
   Laden" Provender threshold regardless of the actual Retreat Way (a Track
   Retreat arguably allows only 1×Carts). Filed in RULES_QUESTIONS.md.
+
+## v6.11 — CONF-038 (FIX): Storm six-Melee-Hit cap was never implemented
+
+RoP 4.5.2: "Each Lord of each side in Storm adds no more than six Hits in
+Melee. (Archery is unlimited.)" No cap existed anywhere in the engine — a
+large stack (e.g. 10+ Men-at-Arms) added its full Melee output. Now capped at
+6.0 per Lord per Melee step, applied AFTER Capability strike modifiers and
+BEFORE the Garrison's separate contribution (the Garrison "is separate from
+any Defending Lord" and is not a Lord, so it is not capped — logged in
+RULES_DECISIONS.md). Sally is a Battle (4.4) and remains uncapped. Found by
+force-testing the briefing's "6-Melee-Hits-per-Lord Storm cap" item — the
+prior arc had it listed as covered, but the check shows the rule was absent.
+Regression: counterfactual-verified (test fails with the cap removed).

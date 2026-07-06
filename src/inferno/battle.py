@@ -1795,6 +1795,13 @@ def _resolve_storm_step(state, step, positions, reserve, conceded,
         # Lord units: Storm melee + Capability archery (no base Lord archery).
         h = _strike_hits_storm(lord_units, step)
         h += _capability_strike_modifier(state, striker_id, lord_units, step, 1, "storm")
+        # CONF-038 (RoP 4.5.2): "Each Lord of each side in Storm adds no more
+        # than six Hits in Melee. (Archery is unlimited.)" — capped per Lord
+        # AFTER Capability modifiers, BEFORE the (separate, non-Lord) Garrison
+        # contribution (RULES_DECISIONS: the Garrison is "separate from any
+        # Defending Lord" and is not itself a Lord, so it is not capped).
+        if step.endswith("all_melee") and h > 6.0:
+            h = 6.0
         # CONF-026: Crossbows Select Targets in Storm only when DEFENDING
         # (Balestrieri / Balestre Grosse card texts; Palvesari makes
         # Balestrieri-Armigeri Crossbows always select).
