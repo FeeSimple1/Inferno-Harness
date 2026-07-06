@@ -32,7 +32,7 @@ class TestMusterEligibility:
         tl = s["lords"]["orvieto"]
         assert tl.get("podesta") is False
         ok, inside, why = sd.muster_seat_status(s, tl, seat)
-        assert not ok and "Enemy-occupied" in why
+        assert not ok and "Besieged" in why
 
     def test_predicate_podesta_main_seat_besieged_placed_inside(self):
         s = load_scenario("B", seed=1)

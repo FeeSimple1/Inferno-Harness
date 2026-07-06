@@ -2210,3 +2210,50 @@ across all six scenarios × 3 seeds (~30k+ rejected mutations, 0 crashes, 0
 transactional leaks). Locked in as `tests/test_v68_robustness.py` + a CI step.
 This was a productive round (4 finds), so it does NOT count toward the "empty
 rounds" release criterion — but the surface is now clean for re-runs.
+
+---
+
+# v6.9 — Digest-vs-PDF re-derivation round (CONF-022 … CONF-036)
+
+Method: four parallel line-by-line diffs of the `reference/*.txt` digests
+against `pdftotext -layout` of the Rules of Play (+ Playbook + errata), every
+candidate re-verified against the PDF first-hand, then against the engine.
+~30 digest discrepancies found; roughly half were digest-only (engine already
+followed the PDF — logged in RULES_CONFORMANCE.md), the rest were inherited:
+
+- **CONF-022 (HIGH)** Lords removed in Battle/Sally now receive Knights'
+  Quarter for ALL their Cavalieri/Ritter (owner's Captured Knights box, 4.4.5).
+- **CONF-023 (MED)** Battle/Sally Concede now available at the start of
+  Round 1 (4.4.2); Storm stays Round ≥ 2 Attacker-only.
+- **CONF-024 (HIGH)** Multi-Lord Storm and Sally: all own-side Lords at the
+  Locale join (Active at Front, rest Reserve), all marked Moved/Fought;
+  Storm-emptied Lords removed per 4.4.5.
+- **CONF-025 (MED)** Storm: Reserve Lord FORCED to an empty Front (4.5.2).
+- **CONF-026 (HIGH)** Crossbow Select-Target only in Storm Defense or with
+  Balestrieri+Palvesari; other crossbow Hits stay -2 Armor but owner-assigned.
+- **CONF-027 (LOW)** Comune may take Front center when its Commander is the
+  Active Lord (Battle + Storm); Storm defender front choice surfaced.
+- **CONF-028 (MED)** Carroccio Concede-Service 1-box shift applies to EVERY
+  Retreated Lord of the Conceding side, not just the carrier.
+- **CONF-029 (HIGH)** Muster Seat eligibility: Enemy-ALLEGIANCE now blocks
+  (was unchecked — could Muster at a Revolted Seat!); Ruins allowed unless
+  enemy-occupied; Bypassed Seats allowed (Lord comes up inside).
+- **CONF-030 (MED)** Emergency Army implemented (Podestà Ready-waiver when
+  enemy Lords at his Main Seat), handler + enumerator.
+- **CONF-031 (MED)** 3.5.4 auto-Muster now requires Ready.
+- **CONF-032 (MED)** 3.5.2 Commander Muster validates Leading-City
+  eligibility (Enemy-aligned blocks; Urban Army besieged-entry kept).
+- **CONF-033 (MED)** Surrender roll optional (`roll_surrender: false`);
+  declined roll still accrues Siegeworks.
+- **CONF-034 (NOTE)** Sortie→Avoid was already reachable; misleading pending
+  metadata fixed + end-to-end regression test.
+- **CONF-035 (LOW)** Sail requires a FRIENDLY unbesieged start Port.
+- **CONF-036 (MED)** Scenario F Exhaustion: unclamped slide + immediate end
+  when Levy and End meet; ALL fallback endings now score from computed final
+  VP (was running VP — Scenario F's normal ending always mis-scored).
+
+Open: CONF-037 (Relief Sally rear-array/Reserve-first targeting) — needs a
+two-front battle model, deferred.
+
+Tests: +29 (`tests/test_v69_conformance.py`) → 751 passing. Fuzzers: cardfx,
+saveload (via suite), robustness (ABCDEF×2), selfplay A/C/E/F — all clean.

@@ -1888,50 +1888,93 @@ def forage_besieged_block(state: dict, loc: dict, side: str) -> bool:
     return len(besiegers) >= size
 
 
+def emergency_army_ready(state: dict, target_lord: dict) -> bool:
+    """CONF-030 (RoP 3.4.1 EMERGENCY ARMY): "If any Enemy Lords are at a
+    Podestà's Main Seat, treat him as Ready to be Mustered, wherever his
+    cylinder is on the Calendar." (EXAMPLE: Guelph Lords Besiege Pisa —
+    Ghibellines could Muster Pisa's Podestà there even if not yet Ready.)"""
+    if not target_lord.get("podesta"):
+        return False
+    seats = target_lord.get("seats") or []
+    if not seats:
+        return False
+    loc = state["locales"].get(seats[0])
+    if not loc:
+        return False
+    enemy_side = "ghibelline" if target_lord.get("side") == "guelph" else "guelph"
+    return any(state["lords"].get(oid, {}).get("side") == enemy_side
+               and state["lords"][oid].get("status") == "mustered"
+               for oid in loc.get("lords_present", []))
+
+
 def muster_seat_status(state: dict, target_lord: dict, seat: str) -> tuple:
-    """SMOKE-Inferno-087: shared eligibility + placement predicate for Mustering
-    a Lord at a Seat (3.4.1 Fealty / 3.5.4 Allies auto-Muster).
+    """SMOKE-Inferno-087 / CONF-029: shared eligibility + placement predicate
+    for Mustering a Lord at a Seat (3.4.1 Fealty / 3.5.2 Commander to Arms /
+    3.5.4 Allies auto-Muster).
 
     Returns (eligible: bool, place_inside: bool, reason: str).
 
-    Rule 3.4.1: target Seat must be Friendly-ish and "not Enemy-occupied, not
-    Ruins" (Bypassed/Ravaged are OK). A Seat is treated as Enemy-occupied /
-    Besieged when an Enemy Lord is present there or an Enemy Siege marker sits on
-    it. Mustering onto such a Seat is ILLEGAL -- EXCEPT the Urban Army exception
-    (3.4): a Podesta may Muster at his Main Seat (seats[0]) even if Besieged, in
-    which case he comes up INSIDE the Stronghold as a besieged defender
-    (place_inside=True), provided Stronghold Size has room. Leaving a mustered
-    Lord in the OPEN beside Enemy besiegers (the old behaviour) produced an
-    illegal co-located-enemies board state with no Battle (4.3.5 / Siege Sec. 3).
+    RoP 3.4.1 FEALTY ROLL: "he must have a Seat free, neither Enemy aligned,
+    nor Besieged, nor—if Ruins—occupied by an Enemy Lord (it may be Bypassed,
+    4.3.5, or Ravaged, 4.7.2)". So:
+      - ENEMY ALIGNED (effective Allegiance = markers override printed):
+        ILLEGAL, no exception ("A Podestà still may not Muster at Enemy
+        Allegiance or at Ruins with Enemy Lords").
+      - RUINS: LEGAL unless an Enemy Lord is present (Ruins have no
+        Stronghold, so the Lord comes up in the open).
+      - BESIEGED (Enemy Siege markers): ILLEGAL — except Urban Army: a
+        Podestà may Muster at his Main Seat even if Besieged, coming up
+        INSIDE the Stronghold (room permitting).
+      - BYPASSED (Enemy Lords present, no Siege): LEGAL — the Lord comes up
+        INSIDE the (Friendly, Bypassed) Stronghold, room permitting.
+      - RAVAGED: no effect on Muster.
     """
     loc = state["locales"].get(seat)
     if loc is None:
         return (False, False, f"unknown seat {seat!r}")
-    if loc.get("ruins"):
-        return (False, False, f"Seat {seat} is Ruins")
-    enemy_side = "ghibelline" if target_lord.get("side") == "guelph" else "guelph"
+    my_side = target_lord.get("side")
+    enemy_side = "ghibelline" if my_side == "guelph" else "guelph"
+    # Effective Allegiance: current markers override printed (1.3.1 / 1.4.4).
+    markers = loc.get("current_allegiance") or []
+    eff = markers[0].get("side") if markers else loc.get("allegiance")
     enemy_lords = [oid for oid in loc.get("lords_present", [])
                    if state["lords"].get(oid, {}).get("side") == enemy_side
                    and state["lords"][oid].get("status") == "mustered"]
+    if loc.get("ruins"):
+        # Ruins: Allegiance remains as printed and Seats remain for Muster
+        # (1.3.1) — blocked only by an Enemy Lord's presence.
+        if enemy_lords:
+            return (False, False, f"Seat {seat} is Ruins occupied by an Enemy Lord")
+        return (True, False, "")  # no Stronghold at Ruins: come up in the open
+    if eff == enemy_side:
+        return (False, False, f"Seat {seat} is Enemy aligned")
     enemy_siege = any(m.get("side") == enemy_side for m in (loc.get("siege") or []))
-    contested = bool(enemy_lords) or enemy_siege
-    if not contested:
-        return (True, False, "")  # ordinary Muster, placed in the open
-    # Contested Seat: only the Urban Army exception permits Mustering here.
-    seats = target_lord.get("seats") or []
-    is_main_seat = bool(seats) and seats[0] == seat
-    if target_lord.get("podesta") and is_main_seat:
+
+    def _room_inside() -> bool:
         size = STRONGHOLDS.get(loc.get("type"), {}).get("size", 0)
         inside_count = sum(
             1 for oid in loc.get("lords_present", [])
-            if state["lords"].get(oid, {}).get("side") == target_lord.get("side")
+            if state["lords"].get(oid, {}).get("side") == my_side
             and state["lords"][oid].get("flags", {}).get("in_stronghold"))
-        if size >= 1 and inside_count < size:
-            return (True, True, "")  # Urban Army: place inside the Stronghold
+        return size >= 1 and inside_count < size
+
+    if enemy_siege:
+        # Besieged: Urban Army only (Podestà at his Main Seat), placed inside.
+        seats = target_lord.get("seats") or []
+        if target_lord.get("podesta") and seats and seats[0] == seat:
+            if _room_inside():
+                return (True, True, "")
+            return (False, False,
+                    f"Seat {seat} Besieged and Stronghold has no room inside")
+        return (False, False, f"Seat {seat} is Besieged; no Urban Army exception")
+    if enemy_lords:
+        # No Siege but Enemy Lords present: the Seat is Bypassed (4.3.5) —
+        # explicitly legal; the Lord comes up INSIDE the Friendly Stronghold.
+        if _room_inside():
+            return (True, True, "")
         return (False, False,
-                f"Seat {seat} Besieged and Stronghold (Size {size}) has no room inside")
-    return (False, False,
-            f"Seat {seat} is Enemy-occupied/Besieged; no Urban Army exception")
+                f"Seat {seat} Bypassed and Stronghold has no room inside")
+    return (True, False, "")  # ordinary Muster, placed in the open
 
 
 # ============================================================================

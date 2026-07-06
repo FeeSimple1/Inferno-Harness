@@ -327,7 +327,10 @@ def _enum_muster(state, side) -> list[dict[str, Any]]:
         if used >= rating + bonus:
             continue
         for tlid, tlord in own_on_calendar.items():
-            if (tlord.get("calendar_box") or 0) <= levy_box:
+            # CONF-030 (3.4.1 EMERGENCY ARMY): a Podestà with Enemy Lords at
+            # his Main Seat counts as Ready wherever his cylinder is.
+            if ((tlord.get("calendar_box") or 0) <= levy_box
+                    or sd.emergency_army_ready(state, tlord)):
                 for seat in tlord.get("seats", []):
                     # SMOKE-Inferno-087: only offer Seats where the Muster is
                     # legal (3.4.1: not Enemy-occupied/Besieged/Ruins, unless the
@@ -476,6 +479,13 @@ def _enum_cta(state, side) -> list[dict[str, Any]]:
             if lord.get("side") != side or lid == cmd_id or lord.get("commander"):
                 continue
             if lord.get("status") == "on_calendar":
+                # CONF-031: mirror the handler's Ready gate ("otherwise per
+                # 3.4.1"): cylinder at/left of the Levy marker, or the
+                # Emergency Army waiver (Enemy Lords at a Podestà's Main Seat).
+                _levy_box = state["calendar"]["levy_box"]
+                if ((lord.get("calendar_box") or 0) > _levy_box
+                        and not sd.emergency_army_ready(state, lord)):
+                    continue
                 for seat in lord.get("seats", []):
                     # Mirror the handler's 3.4.1 Seat-eligibility gate (not
                     # Enemy-occupied/Besieged/Ruins, Urban-Army exception) so we
@@ -791,7 +801,9 @@ def _enum_command_phase(state, side) -> list[dict[str, Any]]:
                     _discard = {}
                     if _d_prov: _discard["Provender"] = _d_prov
                     if _d_loot: _discard["Loot"] = _d_loot
+            # CONF-035: Sail must START at a FRIENDLY, Unbesieged Port (4.7.3).
             if (season != "winter" and loc and loc.get("port") and not loc.get("siege")
+                    and _is_friendly_locale_quiet(state, loc, side)
                     and (ships_needed <= ships or _discard is not None)):
                 _es = "ghibelline" if side == "guelph" else "guelph"
                 for dest_name, dest in state["locales"].items():
@@ -901,6 +913,19 @@ def _enum_command_phase(state, side) -> list[dict[str, Any]]:
                 "description": f"{lid} pursues Siege at {lord['location']} (entire card).",
                 "rule_citation": "4.5.1",
             })
+            # CONF-033: the Surrender roll is optional — offer the declined
+            # variant whenever a roll would otherwise happen (no Lords inside).
+            _enemy_side_s = "ghibelline" if side == "guelph" else "guelph"
+            _inside_s = [oid for oid in loc.get("lords_present", [])
+                         if state["lords"][oid].get("flags", {}).get("in_stronghold")
+                         and state["lords"][oid]["side"] == _enemy_side_s]
+            if not _inside_s:
+                moves.append({
+                    "action": "cmd_siege", "side": side,
+                    "args": {"lord_id": lid, "roll_surrender": False},
+                    "description": f"{lid} pursues Siege at {lord['location']}, declining the Surrender roll (4.5.1).",
+                    "rule_citation": "4.5.1",
+                })
             # Storm if at least 1 Siege marker
             moves.append({
                 "action": "cmd_storm", "side": side, "args": {"lord_id": lid},

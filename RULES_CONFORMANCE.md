@@ -424,3 +424,151 @@ invariants. Fixed CONF-018 (4 Muster sub-handlers consumed Lordship before
 validating), CONF-019 (plan_add_card crash on bad card_id), CONF-020 (cmd_march
 Maremma-latch leak), CONF-021 (raw int() of operator args → guarded _int_arg).
 Now clean across all scenarios. Guard: `tests/test_v68_robustness.py`.
+
+## v6.9 — Digest re-derivation vs the Rules of Play PDF (CONF-022 … CONF-036)
+
+Systematic diff of every `reference/*.txt` digest against the PDF (the
+briefing's top-ranked residual risk). The digest audit surfaced ~30 candidate
+discrepancies; each was re-verified against the PDF text first-hand, then
+checked against the engine. Digest errors NOT inherited by the engine (no code
+change; noted for the record): Sack captured-knights box side, Grow timing,
+Ransom half-recovery, Waste trigger, Tax yields, Pay-with-Coin locale freedom,
+Feed/Pay/Disband scope, Battle/Storm Reposition timing, Storm Array fronts,
+instant-victory scope, Revolt third Rebellion branch, Submission "at or
+adjacent", Sortie "Besieged" mislabel, Sail unit-discard, campaign-victory
+during-Campaign gate.
+
+### CONF-022 (FIX) — 4.4.5 Knights' Quarter for Lords removed in Battle/Sally
+"Lords removed in Battle (4.4.3-.4) or Storm (4.5.2) … suffer removal as if
+Disbanding Beyond Service (3.3.1, including Revolt and Treachery) plus—if in
+Battle—receive Knights' Quarter for all Cavalieri and Ritter." The engine
+disbanded removed Lords without capturing their knights. Now
+`_knights_quarter_all` sweeps Forces + Routed piles into the OWNER side's
+Captured Knights box in both Battle removal paths and the Sally removal path.
+Storm removals correctly do NOT use it (Storm capture only via Sack).
+
+### CONF-023 (FIX) — Concede available in Round 1 (Battle and Sally)
+4.4.2: "At the start of EACH Battle Round, the Attacker then the Defender may
+declare…"; "Battles last at least one Round" only means a Round-1 Concede still
+plays that Round out (at halved Hits). The engine gated Concede to Round ≥ 2,
+forcing an unwilling side through two full Rounds. Storm Concede remains
+Round ≥ 2 / Attacker-only (explicit 4.5.2 text).
+
+### CONF-024 (FIX) — Multi-Lord Storm and Sally
+4.5.2 ARRAY: "…for the Attacker, the Active Lord (or Comune); other Lords start
+in Reserve. (More Lords may later move up…)"; "Mark all Lords there as
+Moved/Fought, even Lords who remained in Reserve." The Storm handler passed
+`attackers=[active]` only — multi-Lord Storms were impossible and co-Besiegers
+went unmarked. Same for Sally (4.5.3 "other Lords start in Reserve"). Both
+handlers now include all own-side Lords at the Locale. Also: Lords left with NO
+Forces after a Storm are now removed per 4.4.5 ("Loss of all his Forces"),
+without Knights' Quarter.
+
+### CONF-025 (FIX) — Forced Front refill in Storm
+4.5.2 REPOSITION: "If all Front Lords Routed, a Reserve Lord (if any present)
+MUST move to Front." The engine's Reserve add was purely voluntary, so a side
+could illegally idle in Reserve behind an empty Front. Sally already had the
+forced promotion; Storm now forces it too (choice of WHICH Lord surfaced via
+`storm_forced_front`).
+
+### CONF-026 (FIX) — Crossbow Select-Target conditions
+4.4.2 + PLAY NOTE + card texts: Crossbow Hits always apply -2 Armor (min 1),
+but Select Target applies ONLY when Defending a Stronghold in Storm (incl.
+Garrison foot) or when the Lord has BOTH Balestrieri and Palvesari ("Their
+Crossbows always select targets"; Palvesari enhance Armigeri only — never
+Balestre Grosse). The engine treated ALL crossbow Hits as striker-select
+everywhere. `_crossbow_archery_hits` now returns (select, no_select); a new
+owner-assigned `crossbow_noselect_hits` channel flows through `_absorb_hits`
+and `_absorb_garrison_hits` at -2 Armor.
+
+### CONF-027 (FIX) — Comune may start at Front center
+4.4.1: "It may start at Front center if its Commander is the Active Lord";
+4.5.2 ARRAY: "the Active Lord (or Comune)". Surfaced as optional decision
+`array_center` in Battle and Storm arrays (default: Active Lord — legacy
+callers byte-identical). Storm defender's 1-Front choice also surfaced
+(`storm_defender_front`, was silently defenders[0]).
+
+### CONF-028 (FIX) — Carroccio Concede-Service exception is SIDE-scoped
+4.4.3 EXCEPTION: "EACH Lord of a side that Conceded and Retreated with a
+Carroccio (3.5.3) shifts Service just one box left." The engine applied the
+flat 1-box shift only to the individual Lord carrying the Carroccio; other
+Retreating Lords of the Conceding side wrongly rolled 1-3 boxes. Shifts are now
+deferred until all losers' fates are known, then applied side-wide.
+
+### CONF-029 (FIX) — Muster Seat eligibility (3.4.1)
+"…a Seat free, neither Enemy aligned, nor Besieged, nor—if Ruins—occupied by an
+Enemy Lord (it may be Bypassed, 4.3.5, or Ravaged, 4.7.2)." Three defects in
+`muster_seat_status`: (a) MISSING Enemy-Allegiance check — a Lord could Muster
+at a Seat that had Revolted to the enemy (the p.12 worked example makes this
+explicit); (b) ALL Ruins Seats rejected — legal unless an Enemy Lord occupies
+them ("Any Seats there remain for Muster", 1.3.1); (c) Bypassed Seats (enemy
+Lords, no Siege) rejected — explicitly legal; the Lord now comes up INSIDE the
+Friendly Stronghold, room permitting.
+
+### CONF-030 (FIX) — Emergency Army missing (3.4.1)
+"If any Enemy Lords are at a Podestà's Main Seat, treat him as Ready to be
+Mustered, wherever his cylinder is on the Calendar." Not implemented at all.
+Now `emergency_army_ready` waives the Ready gate in 3.4.1 Fealty Muster and
+3.5.4 auto-Muster (handler + enumerator).
+
+### CONF-031 (FIX) — 3.5.4 Allies auto-Muster ignored Ready
+"Muster any one Lord other than the Commander automatically, without a Fealty
+roll or Levy action, OTHERWISE PER 3.4.1"; Playbook: "by the usual rules
+(3.4.1, including needing to be Ready on the Calendar) with automatic Fealty
+success." The handler accepted any on-Calendar Lord regardless of box. Now
+requires Ready (or Emergency Army). Enumerator gated to match.
+
+### CONF-032 (FIX) — 3.5.2 Commander to Arms ignored Seat eligibility
+"Then, if desired and AS ABLE PER 3.4.1, Muster the Commander inside his
+Leading City, from anywhere on the Calendar." The handler mustered him
+unconditionally — even into an Enemy-aligned Leading City. Now validated via
+`muster_seat_status` (Urban Army still admits him into his Besieged Main Seat);
+`muster_only` rejects transactionally, `disband_and_remuster` logs the
+not-able Muster as skipped (the Disband stands, per the rule's two-step "if
+desired" wording).
+
+### CONF-033 (FIX) — Surrender roll is optional
+4.5.1: "the Besieging side MAY roll for Surrender"; SIEGEWORKS: "If the
+Stronghold did not Surrender (INCLUDING BECAUSE THE BESIEGER DECLINED TO
+ROLL)…". The engine forced the roll whenever no Lords were inside — taking away
+the real choice to hold out for a Storm+Sack (Spoils + Ruins ½VP vs Allegiance
+flip). `cmd_siege` now accepts `roll_surrender: false`; enumerator offers both.
+
+### CONF-034 (NOTE + guard) — Sortie → Avoid Battle
+4.3.6 SORTIE invokes the full 4.3.4 Approach, so the Bypassing Enemy MAY Avoid.
+Behavior was already correct (the generic approach_response enumerator/handler
+pair allows legal Avoids), but the Sortie pending advertised `options:
+["stand"]` with a comment claiming Bypassers can't Avoid. Metadata corrected;
+regression test pins the Avoid path end-to-end.
+
+### CONF-035 (FIX) — Sail must start at a FRIENDLY, Unbesieged Port
+4.7.3: "The Podestà of Pisa (only) AT A FRIENDLY, UNBESIEGED PORT…". The
+handler checked Port + Unbesieged but not Friendly, so a Pisa Podestà BYPASSING
+an enemy Port (no Siege marker) could Sail out of it. Handler + enumerator now
+require the Friendly start.
+
+### CONF-036 (FIX) — Scenario F Exhaustion end mechanics + fallback scoring
+Scenario F: "…slide it one box left (lower). End the game THE MOMENT that the
+Levy and End markers are in the same box together, otherwise at Game End step
+of Turn 16." Three defects: (a) the slide was clamped to `turn+1`, making the
+immediate-end trigger unreachable (a full extra Turn was played); (b) the
+Levy-meets-End / Calendar-exhausted ending decided the winner from the RUNNING
+VP tallies instead of the computed final VP (5.1 marker recount + scenario
+modifiers, uncapped per CONF-017) — Scenario F's normal full-length ending
+always took this path; (c) both now route through `_end_game_now`
+(`_compute_final_vp`).
+
+### Known OPEN items (logged, not yet fixed)
+- **CONF-037 (OPEN) — Relief Sally array/targeting.** 4.4.1 RELIEF SALLY:
+  Sallying Attackers array BEHIND the Defenders; "Array any Reserve Defenders
+  as if Front Defenders, facing the Sallying Attackers. Sallying Lords Attack
+  Reserve Defenders or, if none, Front Defenders as if Flanking them all of
+  them equally closely"; Siegeworks benefit strikes BY Sallying Attackers only.
+  The engine folds relief-Sallying Lords into the normal attacker array (no
+  rear theater, no Reserve-first targeting). Needs a two-front battle model —
+  deferred as its own work item.
+- Storm Defender's Select-Target unit choice (within the armored-first
+  constraint) is not surfaced as a decision (defaults valuable-first).
+- Concede+Retreat Spoils use 2×Carts (Road) as the "could move without being
+  Laden" Provender threshold regardless of the actual Retreat Way (a Track
+  Retreat arguably allows only 1×Carts). Filed in RULES_QUESTIONS.md.

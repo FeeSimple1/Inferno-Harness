@@ -56,14 +56,18 @@ class TestCrossbowArcheryCount:
         s = load_scenario("A", seed=1)
         s["lords"]["arezzo"]["capabilities"] = ["F10"]  # Balestrieri
         units = {"Armigieri": 2}
-        assert B._crossbow_archery_hits(s, "arezzo", units, "atk_archery", "battle") == 2.0
+        # CONF-026: Battle Crossbows without Palvesari are NON-selecting.
+        assert B._crossbow_archery_hits(s, "arezzo", units, "atk_archery", "battle") == (0.0, 2.0)
+        # With Palvesari on the same Lord, they always Select Targets.
+        s["lords"]["arezzo"]["capabilities"] = ["F10", "F13"]
+        assert B._crossbow_archery_hits(s, "arezzo", units, "atk_archery", "battle") == (2.0, 0.0)
         s["lords"]["arezzo"]["capabilities"] = []
-        assert B._crossbow_archery_hits(s, "arezzo", units, "atk_archery", "battle") == 0.0
+        assert B._crossbow_archery_hits(s, "arezzo", units, "atk_archery", "battle") == (0.0, 0.0)
 
     def test_militia_archery_is_not_crossbow(self):
         s = load_scenario("A", seed=1)
         s["lords"]["arezzo"]["capabilities"] = ["F16"]  # Arcieri (Militia x1, NOT crossbow)
-        assert B._crossbow_archery_hits(s, "arezzo", {"Militia": 3}, "atk_archery", "battle") == 0.0
+        assert B._crossbow_archery_hits(s, "arezzo", {"Militia": 3}, "atk_archery", "battle") == (0.0, 0.0)
 
 
 class TestStormArchery:

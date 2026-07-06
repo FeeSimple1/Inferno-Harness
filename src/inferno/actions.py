@@ -871,9 +871,12 @@ def _h_levy_muster_lord(state, side, args, rng) -> dict[str, Any]:
     target_lord = _require_lord(state, tlid, side)
     if target_lord["status"] != "on_calendar":
         raise IllegalAction("TARGET_NOT_READY", f"{tlid} is not waiting on Calendar.", "3.4.1")
-    # Ready check: cylinder at or left of Levy marker.
+    # Ready check: cylinder at or left of Levy marker. CONF-030 (3.4.1
+    # EMERGENCY ARMY): a Podestà with Enemy Lords at his Main Seat is treated
+    # as Ready wherever his cylinder is.
     levy_box = state["calendar"]["levy_box"]
-    if (target_lord.get("calendar_box") or 0) > levy_box:
+    if ((target_lord.get("calendar_box") or 0) > levy_box
+            and not sd.emergency_army_ready(state, target_lord)):
         raise IllegalAction(
             "TARGET_NOT_READY",
             f"{tlid} at box {target_lord['calendar_box']} is right of Levy box {levy_box}.",
@@ -1905,6 +1908,13 @@ def _h_cmd_sail(state, side, args, rng) -> dict[str, Any]:
         raise IllegalAction("NOT_AT_PORT", f"Sail requires a Port; {lid} is at {src_name!r}.", "4.7.3")
     if src.get("siege"):
         raise IllegalAction("BESIEGED", f"{lid} is Besieged at {src_name}.", "4.7.3")
+    # CONF-035 (RoP 4.7.3): "The Podestà of Pisa (only) at a FRIENDLY,
+    # Unbesieged Port ... may use all actions ... to move" — a Pisa Podestà
+    # Bypassing an Enemy Port (no Siege marker) may NOT Sail out of it.
+    if not _is_friendly_locale(state, src, side):
+        raise IllegalAction("PORT_NOT_FRIENDLY",
+                            f"Sail must start at a Friendly Port; {src_name} is not Friendly to {side}.",
+                            "4.7.3")
     dest_name = args.get("dest_locale")
     dest = state["locales"].get(dest_name)
     if not dest:
@@ -2902,6 +2912,29 @@ def _finalize_approach(state, locale_name, approaching_lord, defender_side) -> d
     return out
 
 
+def _knights_quarter_all(state, lid: str) -> dict[str, int]:
+    """CONF-022 (RoP 4.4.5): a Lord removed in Battle (or Sally, which follows
+    Battle rules) receives Knights' Quarter for ALL his Cavalieri and Ritter —
+    they go to the OWNER side's Captured Knights box (for Ransom 4.9.2) instead
+    of returning to the pool with the rest of his Forces. Sweeps both the mat
+    Forces and the Routed pile; call BEFORE _disband_beyond_service_limit.
+    Storm removals do NOT use this (Storm capture happens only via Sack)."""
+    lord = state["lords"].get(lid)
+    if not lord:
+        return {}
+    cap = state.setdefault("captured_knights", {}).setdefault(lord["side"], {})
+    taken: dict[str, int] = {}
+    for pool_key in ("forces", "routed_units"):
+        pool = lord.get(pool_key, {})
+        for u in ("Cavalieri", "Ritter"):
+            c = pool.get(u, 0)
+            if c > 0:
+                cap[u] = cap.get(u, 0) + c
+                taken[u] = taken.get(u, 0) + c
+                pool.pop(u, None)
+    return taken
+
+
 def _roll_routed_losses(state, specs, capture_knights: bool = True) -> dict:
     """SMOKE-Inferno-081: roll the 4.4.4 Loss rolls for a set of Lords' Routed
     units. `specs` is a list of (lord_id, harsh_recovery). Builds a fresh RNG
@@ -3110,15 +3143,18 @@ def _apply_post_battle(state, result, attackers: list[str], defenders: list[str]
         if state["lords"].get(_o, {}).get("flags", {}).get("in_stronghold")
         and state["lords"][_o]["side"] == _loser_side
     )
+    _retreated_for_shift: list[str] = []
     for lid in losers_ids:
         if lid not in state["lords"]:
             continue
         # Determine fate: removed (zero forces) / retreated / withdrew
         lord = state["lords"][lid]
         if sum(lord.get("forces", {}).values()) == 0 or lid in result.get("removed_lords", []):
-            # Removed per 4.4.5
+            # Removed per 4.4.5: Spoils, then Knights' Quarter for ALL his
+            # Cavalieri/Ritter (CONF-022), then removal as Beyond Service.
             transfer_spoils(state, lid, winners_alive,
                             retreated=False, conceded=conceded, withdrew=False)
+            _knights_quarter_all(state, lid)
             _disband_beyond_service_limit(state, lid)
             combat_removed.append(lid)
         elif lord.get("flags", {}).get("in_stronghold"):
@@ -3167,9 +3203,11 @@ def _apply_post_battle(state, result, attackers: list[str], defenders: list[str]
                     "retreat_destination", lord["side"], options=_cands,
                     default=_default_dest, info={"lord_id": lid})
             if dest is None:
-                # No legal Retreat target -> Removed (4.4.5).
+                # No legal Retreat target -> Removed (4.4.5): Spoils, then
+                # Knights' Quarter for ALL his Cavalieri/Ritter (CONF-022).
                 transfer_spoils(state, lid, winners_alive,
                                 retreated=False, conceded=conceded, withdrew=False)
+                _knights_quarter_all(state, lid)
                 _disband_beyond_service_limit(state, lid)
                 combat_removed.append(lid)
                 continue
@@ -3184,12 +3222,24 @@ def _apply_post_battle(state, result, attackers: list[str], defenders: list[str]
             lord["location"] = dest
             state["locales"][dest].setdefault("lords_present", []).append(lid)
             _any_retreat_off = True
-            # Service shift
-            has_carroccio = any(v.get("name") == "Carroccio" and v.get("on_mat")
-                                for v in lord.get("vassals", []))
+            # Service shift deferred: CONF-028 (RoP 4.4.3 EXCEPTION) is
+            # SIDE-scoped — "EACH Lord of a side that Conceded and Retreated
+            # with a Carroccio shifts Service just one box left" — so the
+            # 1-box shift is decided only once every loser's fate is known.
+            _retreated_for_shift.append(lid)
+    # CONF-028: if the side Conceded and its (retained) Carroccio Retreated,
+    # EVERY Retreated Lord of that side shifts exactly one box; otherwise each
+    # rolls the normal 1-3 box die (4.4.3). Previously only the Lord personally
+    # carrying the Carroccio got the flat 1-box shift.
+    _side_carroccio = bool(conceded) and any(
+        any(v.get("name") == "Carroccio" and v.get("on_mat")
+            for v in state["lords"][r].get("vassals", []))
+        for r in _retreated_for_shift if r in state["lords"])
+    for _rid in _retreated_for_shift:
+        if _rid in state["lords"]:
             service_shift_for_retreated(
-                state, lid,
-                conceded_with_carroccio=(conceded and has_carroccio),
+                state, _rid,
+                conceded_with_carroccio=_side_carroccio,
                 rng_caller=rng.roll,
             )
     if bdc.trace:
@@ -3343,10 +3393,18 @@ def _h_cmd_siege(state, side, args, rng) -> dict[str, Any]:
     )
     surrender = None
     rolls = []
+    # CONF-033 (RoP 4.5.1 SURRENDER?): "the Besieging side MAY roll for
+    # Surrender" — the Besieger can decline (e.g. to keep the option of a
+    # Storm+Sack for Spoils/Ruins). Siegeworks still accrue: "If the
+    # Stronghold did not Surrender (including because the Besieger declined
+    # to roll) ... add one Siege marker."
+    roll_surrender = bool(args.get("roll_surrender", True))
     if auto_surrender:
         surrender = True
         _apply_surrender(state, locale_name, side, rng, rolls)
-    if not inside and not auto_surrender:
+    if not inside and not auto_surrender and not roll_surrender:
+        surrender = False
+    if not inside and not auto_surrender and roll_surrender:
         # Roll Surrender dice
         size = sd.STRONGHOLDS[loc["type"]]["size"]
         threshold = siege_count + ravage_bonus
@@ -3429,9 +3487,20 @@ def _h_cmd_storm(state, side, args, rng) -> dict[str, Any]:
     defenders = [oid for oid in loc.get("lords_present", [])
                  if state["lords"][oid].get("flags", {}).get("in_stronghold")
                  and state["lords"][oid]["side"] == enemy_side]
+    # CONF-024 (RoP 4.5.2 ARRAY): "for the Attacker, the Active Lord (or
+    # Comune); other Lords start in Reserve. (More Lords may later move up,
+    # see REPOSITION below.)" and "Mark all Lords there as Moved/Fought, even
+    # Lords who remained in Reserve. NOTE: Lords at a Storm Locale may not
+    # simply sit it out." The prior code passed attackers=[lid] only, making
+    # multi-Lord Storms impossible and leaving co-Besiegers unmarked.
+    attackers = [lid] + [oid for oid in loc.get("lords_present", [])
+                         if oid != lid
+                         and state["lords"][oid]["side"] == side
+                         and state["lords"][oid].get("status") == "mustered"
+                         and not state["lords"][oid].get("flags", {}).get("in_stronghold")]
     from .battle import resolve_storm
     result = resolve_storm(
-        state, attackers=[lid], defenders=defenders,
+        state, attackers=attackers, defenders=defenders,
         active_id=lid, locale_name=locale_name,
         scripted_decisions=args.get("scripted_decisions"),
         callback=state.get("battle_callback"),
@@ -3442,16 +3511,32 @@ def _h_cmd_storm(state, side, args, rng) -> dict[str, Any]:
     # so per-unit captures are disabled here (failed Knights are Lost).
     if result["outcome"] == "sack":
         _apply_sack(state, locale_name, side, result, rng)
-        # Inside losers are removed by the Sack; only the Attacker's own Routed
+        # Inside losers are removed by the Sack; only the Attackers' own Routed
         # units remain to roll (Harsh).
-        loss_results = _roll_routed_losses(state, [(lid, True)], capture_knights=False)
+        loss_results = _roll_routed_losses(state, [(a, True) for a in attackers],
+                                           capture_knights=False)
     elif result["outcome"] == "attacker_loss":
         # Per 4.5.2: Attackers neither Retreat nor give Spoils. Siege markers stay.
-        # No Sack -> no Knights' Quarter. Attacker Harsh, Defenders Standard.
-        specs = [(lid, True)] + [(d, False) for d in defenders]
+        # No Sack -> no Knights' Quarter. Attackers Harsh, Defenders Standard.
+        specs = [(a, True) for a in attackers] + [(d, False) for d in defenders]
         loss_results = _roll_routed_losses(state, specs, capture_knights=False)
     else:
         loss_results = {}
+    # CONF-024b (RoP 4.4.5): Lords removed in Storm "by ... Loss of all his
+    # Forces" suffer removal as if Disbanding Beyond Service (incl. Revolt and
+    # Treachery) — but NO Knights' Quarter ("if in Battle" only; Storm capture
+    # happens only via Sack). Sweep BOTH sides after the Loss rolls: any
+    # participant left with no Forces at all is removed. (Sack already removed
+    # the inside losers before this point.)
+    _storm_emptied = [pid for pid in attackers + defenders
+                      if pid in state["lords"]
+                      and state["lords"][pid].get("status") == "mustered"
+                      and sum(state["lords"][pid].get("forces", {}).values()) == 0
+                      and sum(state["lords"][pid].get("routed_units", {}).values()) == 0]
+    for _eid in _storm_emptied:
+        _disband_beyond_service_limit(state, _eid)
+    _trigger_disband_revolt_and_treachery(state, _storm_emptied, rng,
+                                          context=f"storm_empty_{locale_name}")
     # SMOKE-Inferno-080: Doctors restoration now also fires in Storm.
     _apply_doctors_restoration(state, result.get("doctors", []), loss_results)
     # Card ends (4.4.6)
@@ -3599,9 +3684,17 @@ def _h_cmd_sally(state, side, args, rng) -> dict[str, Any]:
     # SMOKE-Inferno-056: Sally uses the Storm-style Array with Battle initiative
     # (Battle&Storm 2.3) — the Besiegers defend behind Siegeworks-as-Walls and
     # the Sallying side gets no Walls/Garrison (was a plain resolve_battle).
+    # CONF-024 (RoP 4.5.3 ARRAY AND REPOSITION): "Each side begins with one
+    # Lord in Front, for the Attacker, the Active Lord; OTHER Lords start in
+    # Reserve" — co-Besieged Friendly Lords join the Sally from Reserve.
+    sallying = [lid] + [oid for oid in loc.get("lords_present", [])
+                        if oid != lid
+                        and state["lords"][oid]["side"] == side
+                        and state["lords"][oid].get("status") == "mustered"
+                        and state["lords"][oid].get("flags", {}).get("in_stronghold")]
     from .battle import resolve_sally
     result = resolve_sally(
-        state, sallying=[lid], besiegers=besiegers,
+        state, sallying=sallying, besiegers=besiegers,
         active_id=lid, locale_name=locale_name,
         scripted_decisions=args.get("scripted_decisions"),
         callback=state.get("battle_callback"),
@@ -3643,20 +3736,26 @@ def _h_cmd_sally(state, side, args, rng) -> dict[str, Any]:
         if _sally_bdc.trace:
             result["post_battle_decisions"] = list(_sally_bdc.trace)
     else:
-        # Sallying Lord loses: RAID — reduce Siege markers to 1
+        # Sallying Lords lose: RAID — reduce Siege markers to 1
         if loc.get("siege"):
             loc["siege"] = [{"side": loc["siege"][0]["side"], "color": loc["siege"][0]["color"], "count": 1}]
-        # Sallying Lord goes back inside (already in_stronghold)
-        lord.setdefault("flags", {})["in_stronghold"] = True
+        # Losing Sallying Lords must Withdraw back inside (4.5.3 END).
+        for sid_ in sallying:
+            if sid_ in state["lords"]:
+                state["lords"][sid_].setdefault("flags", {})["in_stronghold"] = True
     sally_removed = [rl for rl in result["removed_lords"] if rl in state["lords"]]
+    # CONF-022 (RoP 4.4.5): a Lord removed in a Sally (Battle rules, 4.5.3)
+    # receives Knights' Quarter for ALL his Cavalieri and Ritter BEFORE his
+    # remaining Forces return to the pool.
     for removed_lid in sally_removed:
+        _knights_quarter_all(state, removed_lid)
         _disband_beyond_service_limit(state, removed_lid)
     # SMOKE-Inferno-081: 4.4.4 Loss rolls for surviving participants' Routed
     # units. Sally uses Battle procedure (Battle&Storm 2.3), so Knights' Quarter
     # applies (capture_knights=True) and recovery is Standard — neither side
     # "Retreats without Conceding" in a Sally (the Sallying Lord returns inside;
     # the Besiegers hold their ground), so Harsh Recovery does not apply.
-    _roll_routed_losses(state, [(p, False) for p in [lid] + besiegers],
+    _roll_routed_losses(state, [(p, False) for p in sallying + besiegers],
                         capture_knights=True)
     # 4.4.5 Revolt & Treachery for Lords removed in this Sally.
     _trigger_disband_revolt_and_treachery(state, sally_removed, rng, context="sally")
@@ -4079,7 +4178,11 @@ def _h_cmd_sortie(state, side, args, rng) -> dict[str, Any]:
         pendings.append({
             "type": "approach_response",
             "side": enemy_side,
-            "options": ["stand"],  # Bypassing Lords typically can't Avoid/Withdraw
+            # CONF-034 (RoP 4.3.6 SORTIE -> full 4.3.4 Approach): the
+            # Bypassing Enemy MAY Avoid Battle (Unladen, not into an
+            # Unbesieged-Enemy Locale); Withdraw is unavailable only because
+            # the Stronghold here is not theirs (the handler enforces both).
+            "options": ["stand", "avoid"],
             "info": {"lord_id": eid, "approaching_lord": lid,
                      "locale": locale_name, "approached_via": "sortie",
                      "approached_from": None},
@@ -4519,10 +4622,11 @@ def _h_end_reset(state, side, args, rng) -> dict[str, Any]:
         # Plan stacks reset for next Campaign
         state["plan_stacks"] = {"guelph": [], "ghibelline": []}
     else:
-        state["meta"]["phase"] = "victory"
-        state["meta"]["game_over"] = True
-        g, h = state["vp"].get("guelph", 0), state["vp"].get("ghibelline", 0)
-        state["meta"]["winner"] = "guelph" if g > h else ("ghibelline" if h > g else None)
+        # CONF-036: this end-of-game path (Calendar exhausted, or the Levy
+        # marker reaching the End box — Scenario F's normal ending) must score
+        # from the COMPUTED final VP (5.1 markers + scenario modifiers, no
+        # cap), exactly like 4.9.3 Game End — not the running VP tallies.
+        _end_game_now(state)
     return {"state_changes": {"reset_done": True}, "rule_citation": "4.9.6"}
 
 
@@ -4635,6 +4739,17 @@ def _capability_bonus_lordship(state, lord_id: str) -> int:
 
 
 
+def _end_game_now(state) -> None:
+    """CONF-036: end the game immediately, scoring per 4.9.3/5.3 from the
+    computed final VP (marker recount + scenario modifiers, uncapped per
+    CONF-017) rather than the running-VP tallies."""
+    g, h = _compute_final_vp(state)
+    state["meta"]["phase"] = "victory"
+    state["meta"]["game_over"] = True
+    state["meta"]["winner"] = "guelph" if g > h else ("ghibelline" if h > g else None)
+    state["meta"]["final_vp"] = {"guelph": g, "ghibelline": h}
+
+
 def _maybe_exhaustion_roll(state, rng) -> None:
     """Scenario F Exhaustion: from Turn 9 onward, roll 1d6 at start of
     each Levy. On 1-3: place End marker in box 16, or slide existing
@@ -4654,7 +4769,13 @@ def _maybe_exhaustion_roll(state, rng) -> None:
         if cal.get("end_box") is None:
             cal["end_box"] = 16
         else:
-            cal["end_box"] = max(cal["end_box"] - 1, state["meta"]["turn"] + 1)
+            # CONF-036: no clamp — "slide it one box left (lower). End the
+            # game THE MOMENT that the Levy and End markers are in the same
+            # box together." The old max(..., turn+1) clamp made the
+            # immediate-end trigger unreachable (a full extra Turn was played).
+            cal["end_box"] = cal["end_box"] - 1
+        if cal["end_box"] <= state["meta"]["turn"]:
+            _end_game_now(state)
 
 
 # =====================================================================
@@ -4905,9 +5026,22 @@ def _h_cta_commander_arms(state, side, args, rng) -> dict[str, Any]:
             _disband_at_service_limit(state, commander_id, levy_box)
             log["disbanded"] = True
 
+    # CONF-032: the 3.5.2 Muster is "if desired and AS ABLE per 3.4.1" — an
+    # Enemy-aligned Leading City blocks it (Urban Army still lets him come up
+    # inside his Besieged Main Seat). Validate BEFORE any mutation so a pure
+    # 'muster_only' rejection leaves state untouched; for
+    # 'disband_and_remuster' the Disband is its own desired step and the
+    # not-able Muster is simply skipped (logged), per the rule's wording.
+    _elig_3_5_2, _, _why_3_5_2 = sd.muster_seat_status(
+        state, commander, LEADING_CITY[side])
+    if mode == "muster_only" and commander["status"] == "on_calendar" and not _elig_3_5_2:
+        raise IllegalAction("SEAT_NOT_MUSTERABLE", _why_3_5_2, "3.5.2")
+
     if mode in ("disband_and_remuster", "muster_only"):
         # Muster Commander at Leading City from ANY Calendar box
-        if commander["status"] == "on_calendar":
+        if not _elig_3_5_2 and commander["status"] == "on_calendar":
+            log["muster_skipped_not_able"] = _why_3_5_2
+        elif commander["status"] == "on_calendar":
             commander["status"] = "mustered"
             commander["location"] = LEADING_CITY[side]
             _place_cylinder(state, commander_id, None)
@@ -5050,6 +5184,18 @@ def _h_cta_allies(state, side, args, rng) -> dict[str, Any]:
             raise IllegalAction("COMMANDER_NOT_ELIGIBLE", "Auto-Muster excludes Commander.", "3.5.4")
         if tlord["status"] != "on_calendar":
             raise IllegalAction("NOT_ON_CALENDAR", f"{target} not on Calendar.", "3.5.4")
+        # CONF-031: "otherwise per 3.4.1" — the Lord must be READY (cylinder
+        # at or left of the Levy marker); only the Fealty roll and the Levy
+        # action are waived (Playbook: "by the usual rules (3.4.1, including
+        # needing to be Ready on the Calendar) with automatic Fealty success").
+        _levy_box = state["calendar"]["levy_box"]
+        if ((tlord.get("calendar_box") or 0) > _levy_box
+                and not sd.emergency_army_ready(state, tlord)):
+            raise IllegalAction(
+                "TARGET_NOT_READY",
+                f"{target} at box {tlord.get('calendar_box')} is right of Levy box {_levy_box}.",
+                "3.5.4",
+            )
         seat = args.get("target_seat")
         if seat not in tlord.get("seats", []):
             raise IllegalAction("BAD_SEAT", f"{target}'s seats: {tlord.get('seats')}.", "3.5.4")
