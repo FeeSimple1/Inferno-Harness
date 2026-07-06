@@ -93,3 +93,18 @@ Lord's siege-work, not a besieger's Siege action), Costruttori Ruins repair
 (F26/S26). NOTE: War Engineers is the least explicit of the three; flagged here
 for review. A Besieged Lord is still marked Moved/Fought when the BESIEGER takes
 a Siege action at the Locale (609) — independent of these capability actions.
+
+## Relief Sally rear theater (v6.10, CONF-037)
+- Reserve Defenders "Arrayed as if Front Defenders, facing the Sallying
+  Attackers" are treated as COMMITTED to the rear theater: they do not
+  Advance into the main Front while any Sallying Attacker is Unrouted (the
+  rules do not address the interplay; committing them follows the "as if
+  Front Defenders" wording).
+- "Flanking them all of them equally closely": each relief Lord's Hits are
+  totalled and rounded per striker against a striker-chosen target, rather
+  than pooled with main-front Hits before rounding (matters only for x1/2
+  units splitting across theaters).
+- If the Defender has no Reserve, relief Strikes flank the main Front
+  Defenders; the Front Defenders (opposed by the main Attackers) do not
+  strike back at the relief theater — per 4.4.2 STRIKE they hit "the Lord
+  directly opposite them or—if none opposite—an Enemy they are Flanking".

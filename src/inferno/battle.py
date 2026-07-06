@@ -221,7 +221,8 @@ def _initial_array(state, attacker_ids: list[str], defender_ids: list[str],
     return positions, reserve
 
 
-def _reposition(positions, reserve, bdc: BattleDecisionContext) -> None:
+def _reposition(positions, reserve, bdc: BattleDecisionContext,
+                skip_defender_advance: bool = False) -> None:
     """4.4.2 Reposition (Round >= 2).
 
     ADVANCE: Attacker then Defender slides each Unrouted Reserve Lord
@@ -229,10 +230,19 @@ def _reposition(positions, reserve, bdc: BattleDecisionContext) -> None:
 
     CENTER FILL: If Front Center is empty after Advance, the side MUST
     select a Lord from Front Left or Right to slide into Center.
+
+    CONF-037: during a Relief Sally, Reserve Defenders are "Arrayed as if
+    Front Defenders, facing the Sallying Attackers" (4.4.1) — they are
+    committed to the rear theater, so the Defender's Advance is skipped
+    while any Sallying Attacker remains Unrouted (`skip_defender_advance`).
     """
     for side in ("attacker", "defender"):
         # ADVANCE
-        for reserve_lord in list(reserve[side]):
+        if side == "defender" and skip_defender_advance:
+            reserve_iter = []
+        else:
+            reserve_iter = list(reserve[side])
+        for reserve_lord in reserve_iter:
             empty_slots = [s for s in SLOTS if positions[side][s] is None]
             if not empty_slots:
                 break
@@ -974,6 +984,86 @@ def _trebuchets_walls_reduction(state, locale_name: str, defenders: list[str],
     return 0
 
 
+def _resolve_relief_substep(state, step, relief_front, relief_reserve,
+                            positions, reserve, conceded, bdc, rng_caller,
+                            hit_log, removed_lords, routed_per_lord, round_n,
+                            siegeworks_die, locale_name) -> None:
+    """CONF-037 (RoP 4.4.1 RELIEF SALLY) — the rear theater of a Relief-Sally
+    Battle, resolved within the normal 6-step initiative:
+
+    - Attacker steps: Unrouted relief-Front Lords "Attack Reserve Defenders
+      or, if none, Front Defenders as if Flanking them all of them equally
+      closely" (striker picks the target). "Siegeworks benefits apply to
+      Strikes by Sallying Attackers only" — the Besieger rolls its Siegeworks
+      as Walls against these Hits.
+    - Defender steps: Reserve Defenders ("Array any Reserve Defenders as if
+      Front Defenders, facing the Sallying Attackers") Strike the relief
+      Front. The Sallying side gets no Walls (4.5.3).
+    """
+    striking_side = "attacker" if step.startswith("atk") else "defender"
+
+    def _one_strike(sid, options, walls):
+        lord_units = _live_units(state["lords"][sid])
+        h = _strike_hits(lord_units, step)
+        h += _capability_strike_modifier(state, sid, lord_units, step, round_n, "battle")
+        cb_s, cb_n = _crossbow_archery_hits(state, sid, lord_units, step, "battle")
+        if step.endswith("archery") and striking_side == "defender":
+            mult = _archery_hits_multiplier(state, "defender")
+            if mult > 1:
+                h *= mult; cb_s *= mult; cb_n *= mult
+        if conceded == striking_side:
+            h /= 2; cb_s /= 2; cb_n /= 2
+        n_hits = math.ceil(h)
+        if n_hits <= 0 or not options:
+            return
+        cb_total = min(math.ceil(cb_s + cb_n), n_hits)
+        cb_sel = min(math.ceil(cb_s), cb_total)
+        cb_nos = cb_total - cb_sel
+        tgt = options[0]
+        if len(options) > 1:
+            tgt = bdc.decide_optional(
+                "relief_target", striking_side, options=list(options),
+                default=options[0], info={"striker": sid, "step": step})
+            if tgt not in options:
+                tgt = options[0]
+        if walls:
+            n_hits = _apply_walls(int(n_hits), walls, rng_caller,
+                                  f"relief_siegeworks_{locale_name}_{sid}")
+            cb_sel = min(cb_sel, n_hits)
+            cb_nos = min(cb_nos, max(0, n_hits - cb_sel))
+        if n_hits <= 0:
+            return
+        _absorb_hits(state, tgt, int(n_hits), rng_caller, hit_log, routed_per_lord,
+                     crossbow_hits=int(cb_sel), crossbow_noselect_hits=int(cb_nos),
+                     bdc=bdc, allow_striker_select=True)
+        if _all_units_routed(state["lords"][tgt]):
+            removed_lords.add(tgt)
+            if tgt in reserve["defender"]:
+                reserve["defender"].remove(tgt)
+            for sl in SLOTS:
+                if positions["defender"][sl] == tgt:
+                    positions["defender"][sl] = None
+            if tgt in relief_front:
+                relief_front.remove(tgt)
+            hit_log.append({"relief_routed": tgt})
+
+    if striking_side == "attacker":
+        for sid in list(relief_front):
+            rear = [d for d in reserve["defender"]
+                    if not _all_units_routed(state["lords"][d])]
+            if rear:
+                _one_strike(sid, rear, siegeworks_die)
+            else:
+                fronts = [positions["defender"][sl] for sl in SLOTS
+                          if positions["defender"][sl] is not None]
+                _one_strike(sid, fronts, siegeworks_die)
+    else:
+        for did in list(reserve["defender"]):
+            if not relief_front:
+                return
+            _one_strike(did, list(relief_front), None)
+
+
 # =====================================================================
 # Top-level Battle resolution
 # =====================================================================
@@ -981,7 +1071,8 @@ def resolve_battle(state, attacker_ids: list[str], defender_ids: list[str],
                    active_id: str, locale_name: str,
                    approach_way_type: str | None = None,
                    scripted_decisions: list[dict] | None = None,
-                   callback: Callable | None = None) -> dict[str, Any]:
+                   callback: Callable | None = None,
+                   relief_ids: list[str] | None = None) -> dict[str, Any]:
     """Resolve a Battle at `locale_name`. Returns a result dict with the
     full decision trace, per-round Hit log, final positions, winner,
     losing-side fate (Retreat / Withdraw / Removed), and Aftermath flags.
@@ -997,9 +1088,38 @@ def resolve_battle(state, attacker_ids: list[str], defender_ids: list[str],
     pre_forces = {lid: dict(state["lords"][lid].get("forces", {}))
                   for lid in attacker_ids + defender_ids}
 
+    # CONF-037: Relief-Sallying Lords do NOT join the main Array — they form
+    # a rear theater "behind the Defenders", arrayed per Sally (4.5.3): one
+    # Lord at the relief Front, the rest in relief Reserve, capped at the
+    # Stronghold's Size for later Repositions.
+    relief = [r for r in (relief_ids or []) if r in attacker_ids]
+    main_attackers = [a for a in attacker_ids if a not in relief]
     positions, reserve = _initial_array(
-        state, attacker_ids, defender_ids, active_id, bdc,
+        state, main_attackers, defender_ids, active_id, bdc,
     )
+    relief_front: list[str] = []
+    relief_reserve: list[str] = []
+    relief_cap = 1
+    relief_siegeworks: list[int] = []
+    if relief:
+        _rloc = state["locales"].get(locale_name, {})
+        relief_cap = max(1, sd.STRONGHOLDS.get(_rloc.get("type"), {}).get("size", 1))
+        _rf = relief[0]
+        if len(relief) > 1:
+            _rf = bdc.decide_optional(
+                "relief_front", "attacker", options=list(relief),
+                default=relief[0], info={"reason": "sally_array_one_front"})
+            if _rf not in relief:
+                _rf = relief[0]
+        relief_front = [_rf]
+        relief_reserve = [r for r in relief if r != _rf]
+        # "Siegeworks benefits apply to Strikes by Sallying Attackers only":
+        # the Besieging Defender rolls its Siege markers as Walls vs relief
+        # Strikes (less any Sally Trebuchets reduction by the relief Lords).
+        _sc = sum(m.get("count", 1) for m in _rloc.get("siege", []))
+        _sc -= _trebuchets_walls_reduction(state, locale_name, defender_ids,
+                                           relief, "sally")
+        relief_siegeworks = list(range(1, max(0, _sc) + 1))
     # Phase 5: pre-Battle Hold Event modifiers (4.4.1 Events).
     pre_modifiers = _apply_pre_battle_modifiers(state, attacker_ids, defender_ids)
 
@@ -1043,8 +1163,36 @@ def resolve_battle(state, attacker_ids: list[str], defender_ids: list[str],
 
         # Reposition (Round >= 2)
         if round_n >= 2:
-            _reposition(positions, reserve, bdc)
+            _relief_live = bool(relief_front or relief_reserve)
+            _reposition(positions, reserve, bdc,
+                        skip_defender_advance=_relief_live)
             round_log["positions_after_reposition"] = _snapshot_positions(positions)
+            # CONF-037: relief theater Reposition per Sally (4.5.3) — may add
+            # ONE Lord from relief Reserve to the relief Front (up to the
+            # Stronghold Size); if the relief Front is EMPTY, a Reserve Lord
+            # MUST move up.
+            if relief_reserve and len(relief_front) < relief_cap:
+                _add = bdc.decide(
+                    "relief_reserve_add", "attacker", options=["no", "yes"],
+                    info={"front": list(relief_front), "cap": relief_cap})
+                if _add == "yes":
+                    _pick = relief_reserve[0]
+                    if len(relief_reserve) > 1:
+                        _pick = bdc.decide_optional(
+                            "relief_reserve_lord", "attacker",
+                            options=list(relief_reserve),
+                            default=relief_reserve[0], info={})
+                    relief_reserve.remove(_pick)
+                    relief_front.append(_pick)
+            if not relief_front and relief_reserve:
+                _pick = relief_reserve[0]
+                if len(relief_reserve) > 1:
+                    _pick = bdc.decide_optional(
+                        "relief_forced_front", "attacker",
+                        options=list(relief_reserve),
+                        default=relief_reserve[0], info={"reason": "front_empty"})
+                relief_reserve.remove(_pick)
+                relief_front.append(_pick)
 
         # 6-step Strike
         hit_log_round: list = []
@@ -1081,6 +1229,12 @@ def resolve_battle(state, attacker_ids: list[str], defender_ids: list[str],
             _resolve_step(state, step, positions, reserve, conceded,
                           bdc, _rng_roll, hit_log_round, removed_lords, routed_per_lord, round_n,
                           exclude_slots=excl)
+            if relief_front or relief_reserve:
+                _resolve_relief_substep(
+                    state, step, relief_front, relief_reserve, positions,
+                    reserve, conceded, bdc, _rng_roll, hit_log_round,
+                    removed_lords, routed_per_lord, round_n,
+                    relief_siegeworks, locale_name)
         round_log["hit_log"] = hit_log_round
         round_log["positions"] = _snapshot_positions(positions)
         rounds.append(round_log)
@@ -1088,13 +1242,15 @@ def resolve_battle(state, attacker_ids: list[str], defender_ids: list[str],
         # End check (11.1)
         if conceded is not None:
             break  # Concede: Battle ends this Round
-        atk_alive = any(positions["attacker"][s] is not None for s in SLOTS) or reserve["attacker"]
+        atk_alive = (any(positions["attacker"][s] is not None for s in SLOTS)
+                     or reserve["attacker"] or relief_front or relief_reserve)
         def_alive = any(positions["defender"][s] is not None for s in SLOTS) or reserve["defender"]
         if not atk_alive or not def_alive:
             break
 
     # Determine winner / loser
-    atk_alive = any(positions["attacker"][s] is not None for s in SLOTS) or reserve["attacker"]
+    atk_alive = (any(positions["attacker"][s] is not None for s in SLOTS)
+                 or reserve["attacker"] or relief_front or relief_reserve)
     def_alive = any(positions["defender"][s] is not None for s in SLOTS) or reserve["defender"]
     if conceded == "attacker":
         winner, loser = "defender", "attacker"

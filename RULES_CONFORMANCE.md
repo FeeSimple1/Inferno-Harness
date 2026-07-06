@@ -558,15 +558,32 @@ modifiers, uncapped per CONF-017) — Scenario F's normal full-length ending
 always took this path; (c) both now route through `_end_game_now`
 (`_compute_final_vp`).
 
+## v6.10 — CONF-037 (FIX): Relief Sally two-front model
+
+4.4.1 RELIEF SALLY implemented as a rear theater inside `resolve_battle`
+(`relief_ids`): Sallying Attackers array per Sally (one relief-Front Lord,
+rest relief-Reserve, Reposition one per Round after the first up to
+Stronghold Size, forced refill of an empty relief Front); joining is the
+owner's choice per Lord ("Besieged Lords MAY join", decision
+`relief_sally_join`, default join). Reserve Defenders are committed to the
+rear ("Array any Reserve Defenders as if Front Defenders, facing the
+Sallying Attackers") — they Strike the relief Front, take relief Strikes,
+and are frozen out of the main-front Advance while the relief theater is
+live. Relief Strikes hit Reserve Defenders or, if none, Front Defenders as
+Flankers (striker's target choice, `relief_target`); the Besieger's
+Siegeworks roll as Walls against relief Strikes ONLY (less Sally
+Trebuchets). On an Attacker loss the Sallying Lords Withdraw back inside
+(keep Assets, no Service shift) and Siege markers drop to one (both
+pre-existing). Interpretation logged in RULES_DECISIONS.md: rear-committed
+Reserve Defenders do not Advance to the main Front; relief flank Hits are
+rounded per striker rather than pooled with main-front Hits.
+
+Also fixed (surfaced by selfplay D/2 under the new model): `cmd_march` left a
+stale `in_stronghold` flag on a Lord marching OUT of a Stronghold (e.g. 4.3.6
+DEPART), which misclassified his later Approach as a Relief Sally; the flag is
+now cleared on movement and the relief candidate set excludes the Approacher.
+
 ### Known OPEN items (logged, not yet fixed)
-- **CONF-037 (OPEN) — Relief Sally array/targeting.** 4.4.1 RELIEF SALLY:
-  Sallying Attackers array BEHIND the Defenders; "Array any Reserve Defenders
-  as if Front Defenders, facing the Sallying Attackers. Sallying Lords Attack
-  Reserve Defenders or, if none, Front Defenders as if Flanking them all of
-  them equally closely"; Siegeworks benefit strikes BY Sallying Attackers only.
-  The engine folds relief-Sallying Lords into the normal attacker array (no
-  rear theater, no Reserve-first targeting). Needs a two-front battle model —
-  deferred as its own work item.
 - Storm Defender's Select-Target unit choice (within the armored-first
   constraint) is not surfaced as a decision (defaults valuable-first).
 - Concede+Retreat Spoils use 2×Carts (Road) as the "could move without being

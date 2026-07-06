@@ -2616,6 +2616,11 @@ def _h_cmd_march(state, side, args, rng) -> dict[str, Any]:
         dest.setdefault("lords_present", []).append(member_id)
         ml["location"] = dest_name
         ml.setdefault("flags", {})["moved_fought"] = True
+        # A Lord marching OUT of a Stronghold he was inside (e.g. Bypassed,
+        # 4.3.6 DEPART) is no longer inside it. A stale in_stronghold flag
+        # previously misclassified a later Approach by this Lord as a Relief
+        # Sally (surfaced by selfplay D/2 after CONF-037).
+        ml["flags"].pop("in_stronghold", None)
     state["actions_remaining"] -= cost
     # SMOKE-Inferno-088: marching out may free a Besieged/Bypassed Stronghold at
     # the source Locale (4.3.5) -- sweep stale Siege/Bypass markers there.
@@ -2858,7 +2863,8 @@ def _finalize_approach(state, locale_name, approaching_lord, defender_side) -> d
     # the attack for NO added Command actions.
     relief_sallying = [
         oid for oid in loc.get("lords_present", [])
-        if state["lords"][oid]["side"] == attacker_side
+        if oid != approaching_lord
+        and state["lords"][oid]["side"] == attacker_side
         and state["lords"][oid].get("flags", {}).get("in_stronghold")
         and state["lords"][oid]["status"] == "mustered"
     ]
@@ -2878,8 +2884,24 @@ def _finalize_approach(state, locale_name, approaching_lord, defender_side) -> d
             attackers.append(oid)
     if approaching_lord not in attackers:
         attackers.insert(0, approaching_lord)
-    # Add Relief-Sallying Lords (mark them so Battle can apply Sally semantics).
+    # CONF-037 (4.4.1 RELIEF SALLY): Besieged Lords MAY join the attack ("may
+    # join any Attack for no added Command actions") — surfaced as an optional
+    # per-Lord decision (default: join, preserving prior behaviour). Joined
+    # Lords fight in the rear theater (resolve_battle relief_ids), not the
+    # main Array.
+    from .battle import BattleDecisionContext as _BDC
+    _join_bdc = _BDC(scripted=list(_battle_scripted or []),
+                     callback=state.get("battle_callback"))
+    relief_joined = []
     for rs in relief_sallying:
+        _c = _join_bdc.decide_optional(
+            "relief_sally_join", attacker_side, options=["yes", "no"],
+            default="yes", info={"lord_id": rs, "locale": locale_name})
+        if _c == "yes":
+            relief_joined.append(rs)
+    _battle_scripted = (list(_join_bdc.scripted)
+                        if _battle_scripted is not None else None)
+    for rs in relief_joined:
         if rs not in attackers:
             attackers.append(rs)
             state["lords"][rs].setdefault("flags", {})["relief_sallying"] = True
@@ -2889,7 +2911,10 @@ def _finalize_approach(state, locale_name, approaching_lord, defender_side) -> d
         locale_name=locale_name,
         scripted_decisions=_battle_scripted,
         callback=state.get("battle_callback"),
+        relief_ids=relief_joined,
     )
+    if _join_bdc.trace:
+        result.setdefault("decisions", []).extend(_join_bdc.trace)
     # Process post-Battle outcomes per 4.4.3 - 4.4.5.
     _apply_post_battle(state, result, attackers, defenders, battle_locale=locale_name,
                        decisions=_post_battle_scripted,

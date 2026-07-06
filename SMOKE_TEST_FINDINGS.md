@@ -2257,3 +2257,17 @@ two-front battle model, deferred.
 
 Tests: +29 (`tests/test_v69_conformance.py`) → 751 passing. Fuzzers: cardfx,
 saveload (via suite), robustness (ABCDEF×2), selfplay A/C/E/F — all clean.
+
+---
+
+# v6.10 — CONF-037: Relief Sally two-front model
+
+`resolve_battle` gains a rear theater (`relief_ids`): Sallying Attackers array
+per Sally behind the Defenders, strike Reserve Defenders (else Front
+Defenders, as Flankers, striker-chosen) behind the Besieger's
+Siegeworks-as-Walls; Reserve Defenders face them and are frozen out of the
+main-front Advance while the relief theater is live. Joining is per-Lord
+optional (`relief_sally_join`, default join). Found + fixed en route: stale
+`in_stronghold` flag on March-out (misclassified a later Approach as Relief
+Sally; selfplay D/2). Tests: +5 (`tests/test_v610_relief_sally.py`) → 756.
+Fuzzers: cardfx, robustness (ADF×2), selfplay A-F — clean.
