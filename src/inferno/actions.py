@@ -1706,7 +1706,7 @@ def _h_cmd_ravage(state, side, args, rng) -> dict[str, Any]:
             "4.7.2",
         )
     # Mark Ravaged (color = OPPOSITE printed Allegiance).
-    target["ravaged"] = "purple" if target["allegiance"] == "guelph" else "gold"
+    target["ravaged"] = "gold" if target["allegiance"] == "guelph" else "purple"
     # Gains (doubled for Berrovieri/Gualdana; Masnadieri 0-action takes no Loot).
     gains = _apply_ravage_gains(state, lid, target["type"], no_loot=masnadieri)
     # VP: 1/2 to side opposite of printed
@@ -1989,7 +1989,7 @@ def _h_cmd_sail(state, side, args, rng) -> dict[str, Any]:
             and not dest.get("ruins")
             and not dest.get("siege")):
         dest.setdefault("siege", []).append({
-            "side": side, "color": "gold" if side == "guelph" else "purple", "count": 1,
+            "side": side, "color": "purple" if side == "guelph" else "gold", "count": 1,
         })
         besieged_via_sail = True
     state["actions_remaining"] = 0
@@ -2277,7 +2277,7 @@ def _h_cmd_guastatori_pass(state, side, args, rng) -> dict[str, Any]:
                  if state["lords"][oid]["side"] == enemy
                  and not state["lords"][oid].get("flags", {}).get("in_stronghold")]
     if besiegers:
-        loc["bypass"] = [{"side": side, "color": "gold" if side == "guelph" else "purple",
+        loc["bypass"] = [{"side": side, "color": "purple" if side == "guelph" else "gold",
                           "count": 1}]
         for oid in besiegers:
             state["lords"][oid].setdefault("flags", {})["bypassing"] = loc_name
@@ -2342,7 +2342,7 @@ def _h_cmd_la_cavallata(state, side, args, rng) -> dict[str, Any]:
                                 f"{target_name} has Unbesieged Enemy Lord {oid}.", "F18/S18")
     if not _pay_from_locale(state, lid, "Provender", 1):
         raise IllegalAction("NO_PROVENDER", "La Cavallata needs 1 Provender (own or Shared).", "F18/S18")
-    target["ravaged"] = "purple" if target["allegiance"] == "guelph" else "gold"
+    target["ravaged"] = "gold" if target["allegiance"] == "guelph" else "purple"
     gains = _apply_ravage_gains(state, lid, target["type"])
     ravager_side = "guelph" if target["allegiance"] == "ghibelline" else "ghibelline"
     state["vp"][ravager_side] = min(state["vp"].get(ravager_side, 0.0) + 0.5, 17.5)
@@ -2373,7 +2373,7 @@ def _h_cmd_costruttori(state, side, args, rng) -> dict[str, Any]:
     _pay_from_locale(state, lid, "Coin", 1)
     _pay_from_locale(state, lid, "Provender", 3)
     ruins_color = loc["ruins"]
-    ruins_side = "guelph" if ruins_color == "gold" else "ghibelline"
+    ruins_side = "ghibelline" if ruins_color == "gold" else "guelph"
     state["vp"][ruins_side] = max(state["vp"].get(ruins_side, 0.0) - 0.5, 0)
     loc["ruins"] = None
     # SMOKE-Inferno-099: Costruttori (Ruins repair) is a non-movement, non-combat
@@ -2496,7 +2496,7 @@ def _h_cmd_march(state, side, args, rng) -> dict[str, Any]:
             # leaking the flag when a later check rejected the March).
             any_guelph_aggression = any(
                 any(s.get("side") == "guelph" for s in (loc.get("siege") or []))
-                or loc.get("ravaged") == "gold"
+                or loc.get("ravaged") == "purple"
                 for loc in state["locales"].values()
             )
             if not any_guelph_aggression:
@@ -3361,7 +3361,7 @@ def _h_besiege_or_bypass(state, side, args, rng) -> dict[str, Any]:
                     break
         if surprise:
             loc.setdefault("siege", []).append({
-                "side": side, "color": "gold" if side == "guelph" else "purple", "count": 2,
+                "side": side, "color": "purple" if side == "guelph" else "gold", "count": 2,
             })
             state.setdefault("battle_modifiers_pending", []).append({
                 "id": "F3/S3", "side": side, "effect": "storm_walls_minus", "value": 2,
@@ -3378,7 +3378,7 @@ def _h_besiege_or_bypass(state, side, args, rng) -> dict[str, Any]:
             return _finish_card_with({
                 "surprise_besiege": locale_name, "auto_storm": result,
             }, state, side, reason="surprise_besiege_storm", citation="F3/S3 / 4.3.5")
-        loc.setdefault("siege", []).append({"side": side, "color": "gold" if side == "guelph" else "purple", "count": 1})
+        loc.setdefault("siege", []).append({"side": side, "color": "purple" if side == "guelph" else "gold", "count": 1})
         return _finish_card_with({"besieged": locale_name}, state, side,
                                   reason="besiege_ends_card", citation="4.3.5")
     else:  # bypass
@@ -3457,7 +3457,7 @@ def _h_cmd_siege(state, side, args, rng) -> dict[str, Any]:
         if war_engineers or len(own_lords_here) >= sd.STRONGHOLDS[loc["type"]]["size"]:
             add = 2 if guastatori else 1
             new_count = min(siege_count + add, 4)
-            loc["siege"] = [{"side": side, "color": "gold" if side == "guelph" else "purple", "count": new_count}]
+            loc["siege"] = [{"side": side, "color": "purple" if side == "guelph" else "gold", "count": new_count}]
     # All Lords here marked Fought
     for oid in loc.get("lords_present", []):
         state["lords"][oid].setdefault("flags", {})["moved_fought"] = True
@@ -3645,7 +3645,7 @@ def _apply_sack(state, locale_name, side, storm_result, rng):
     loc["siege"] = []
     loc["current_allegiance"] = [m for m in loc.get("current_allegiance", []) if m.get("side") != enemy]
     loc["walls_plus_one"] = None
-    ruins_color = "purple" if loc["allegiance"] == "guelph" else "gold"
+    ruins_color = "gold" if loc["allegiance"] == "guelph" else "purple"
     loc["ruins"] = ruins_color
     ruins_side = "guelph" if loc["allegiance"] == "ghibelline" else "ghibelline"
     state["vp"][ruins_side] = min(state["vp"].get(ruins_side, 0) + 0.5, 17.5)
@@ -4156,7 +4156,7 @@ def _h_cmd_encamp(state, side, args, rng) -> dict[str, Any]:
         raise IllegalAction("INSUFFICIENT_ACTIONS", "Encamp costs 1 action.", "4.3.6")
     loc = state["locales"][bypassing_loc]
     loc["bypass"] = []
-    loc.setdefault("siege", []).append({"side": side, "color": "gold" if side == "guelph" else "purple", "count": 1})
+    loc.setdefault("siege", []).append({"side": side, "color": "purple" if side == "guelph" else "gold", "count": 1})
     # CONF-012: replacing the Bypass with a Siege converts EVERY Bypassing Lord
     # at the Locale into a Besieger (4.3.5/4.3.6: all outside Lords are either
     # all Besieging OR all Bypassing). Clear the `bypassing` flag on all of them,
@@ -4315,16 +4315,10 @@ def _h_end_grow(state, side, args, rng) -> dict[str, Any]:
     if state["meta"]["turn"] not in sd.GROW_BOXES:
         raise IllegalAction("NOT_GROW_TURN", f"Box {state['meta']['turn']} is not a Grow turn.", "4.9.1")
     enemy = "ghibelline" if side == "guelph" else "guelph"
-    # Side selects which OF THE ENEMY'S Ravage markers to REDUCE; we remove
-    # ravaged markers of the enemy color (i.e., marked by side, since marker
-    # color = opposite printed; side's Ravage adds to enemy's tally? No —
-    # Ravage marker color = opposite printed, so Guelph Ravage of Ghib town
-    # places a gold (Guelph) marker. The OWNER of the marker is the one who
-    # benefits from VP. So "Enemy's Ravage markers" = markers benefiting
-    # the enemy.
-    # Phase 3e: simplified — "enemy Ravage markers" = ravaged Locales where
-    # the marker color is enemy's color ("gold" for guelph, "purple" for ghibelline).
-    enemy_color = "gold" if enemy == "guelph" else "purple"
+    # CONF-039: "the Enemy's Ravage markers" = markers whose COLOR scores for
+    # the enemy (4.7.2: color = opposite printed; ½VP to the marker's color
+    # side). Physical colors: Guelph = purple, Ghibelline = gold.
+    enemy_color = "purple" if enemy == "guelph" else "gold"
     enemy_ravage_locales = [
         n for n, l in state["locales"].items()
         if l.get("ravaged") == enemy_color
@@ -4840,9 +4834,11 @@ def _cta_trigger_met(state, side: str) -> tuple[bool, str]:
     # War Event; standard 3.5 triggers apply thereafter (Call to Arms ref D).
     if scenario == "D" and state["meta"].get("turn") == 9:
         return True, "escalation_first_levy"
-    own_vp = state["vp"].get(side, 0)
-    other = "ghibelline" if side == "guelph" else "guelph"
-    other_vp = state["vp"].get(other, 0)
+    # CONF-039b: compare the TRACKED scores (2.2.5 Victory markers include
+    # the live scenario modifiers; see effective_vp).
+    _eg, _eh = effective_vp(state)
+    own_vp = _eg if side == "guelph" else _eh
+    other_vp = _eh if side == "guelph" else _eg
     if other_vp - own_vp >= 4:
         return True, "vp_lag"
     if side in state.get("war_declared_this_levy", []):
@@ -5277,6 +5273,30 @@ _HANDLERS.update({
 
 
 
+def effective_vp(state) -> tuple[float, float]:
+    """CONF-039b: the CURRENT score as tracked by the physical Victory markers
+    (2.2.5), i.e. the running VP with live scenario modifiers applied:
+      - Scenario C 'Alliance Treaty': +3 Ghibelline while S22 Manfredi is in
+        play (the printed start marker sits at 9 = 6 markers + 3).
+      - Scenario E 'Resistance': Guelph VP double EXCEPT from Ravaged (the
+        printed start marker sits at 6 = 2x2 Ruins-VP + 2 Ravage-VP).
+    Used for display and the 3.5 Call-to-Arms 4-VP-lag trigger; end scoring
+    recomputes from markers via _compute_final_vp (which applies the same
+    modifiers)."""
+    g = float(state["vp"].get("guelph", 0.0))
+    h = float(state["vp"].get("ghibelline", 0.0))
+    scenario = state["meta"].get("scenario", "")
+    if scenario == "E":
+        rav_g = 0.5 * sum(1 for l in state["locales"].values()
+                          if l.get("ravaged") == "purple")
+        g = 2.0 * (g - rav_g) + rav_g
+    if scenario == "C":
+        from . import card_effects as ce
+        if ce.capability_in_play(state, "S22", "ghibelline"):
+            h += 3.0
+    return g, h
+
+
 def _compute_final_vp(state) -> tuple[float, float]:
     """Recompute end-game VP from map markers per 5.1, applying:
       - Scenario E 'Resistance': double Guelph VP except Ravaged.
@@ -5301,9 +5321,9 @@ def _compute_final_vp(state) -> tuple[float, float]:
         if loc.get("ruins"):
             # Marker color is the OPPOSITE of printed Allegiance; that color's
             # side scores it.
-            vp["guelph" if loc["ruins"] == "gold" else "ghibelline"] += 0.5
+            vp["ghibelline" if loc["ruins"] == "gold" else "guelph"] += 0.5
         if loc.get("ravaged"):
-            ravaged_vp["guelph" if loc["ravaged"] == "gold" else "ghibelline"] += 0.5
+            ravaged_vp["ghibelline" if loc["ravaged"] == "gold" else "guelph"] += 0.5
     # Captured Carroccio +2 each (5.0).
     for sd_side in ("guelph", "ghibelline"):
         cc = state.get("captured_carroccio_for_side", {}).get(sd_side, 0)

@@ -24,7 +24,7 @@ class TestHoldEventWindowGuard:
         s["decks"]["guelph"]["aow_held"].append("F6")
         fl = s["lords"]["firenze"]
         s["locales"][fl["location"]].setdefault("siege", []).append(
-            {"side": "guelph", "color": "gold", "count": 1})
+            {"side": "guelph", "color": "purple", "count": 1})
         r = dispatch(s, {"action": "play_event", "side": "guelph", "args": {"card_id": "F6"}})
         assert r["state_changes"]["played"] == "F6"
 

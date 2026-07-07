@@ -160,7 +160,7 @@ class TestScenarioVPModifiers:
         s["locales"]["Volterra"]["current_allegiance"] = [
             {"side": "guelph", "value": 1}, {"side": "guelph", "value": 1},
         ]
-        s["locales"]["Casole"]["ravaged"] = "gold"
+        s["locales"]["Casole"]["ravaged"] = "purple"  # Guelph-scoring (CONF-039)
         g, h = _compute_final_vp(s)
         # Pre-doubling: G = 2 (allegiance) + 0.5 (ravaged) = 2.5; H = 0
         # Scenario E doubles G except Ravaged: G = 2*2 + 0.5 = 4.5; H = 0.
@@ -192,7 +192,7 @@ class TestSackFullSpoils:
     def test_sack_transfers_loot_provender_coin_value(self):
         s = load_scenario("A", seed=1)
         # Plant scenario: Guelph (firenze) Storms a Ghibelline-owned Town (Volterra, Value 2)
-        s["locales"]["Volterra"]["siege"] = [{"side": "guelph", "color": "gold", "count": 3}]
+        s["locales"]["Volterra"]["siege"] = [{"side": "guelph", "color": "purple", "count": 3}]
         # Move firenze in as the storming Lord
         s["locales"]["Firenze"]["lords_present"].remove("firenze")
         s["locales"]["Volterra"]["lords_present"].append("firenze")

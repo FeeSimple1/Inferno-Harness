@@ -115,7 +115,7 @@ from inferno.battle import resolve_storm
 
 def _storm_setup(seed=1):
     s = load_scenario("A", seed=seed)
-    s["locales"]["Volterra"]["siege"] = [{"side": "guelph", "color": "gold", "count": 3}]
+    s["locales"]["Volterra"]["siege"] = [{"side": "guelph", "color": "purple", "count": 3}]
     s["locales"]["Firenze"]["lords_present"].remove("firenze")
     s["locales"]["Volterra"]["lords_present"].append("firenze")
     s["lords"]["firenze"]["location"] = "Volterra"
@@ -170,7 +170,7 @@ if _HYP:  # guard: decorators below reference hypothesis names at class-body eva
                            for m in s.get("battle_modifiers_pending", []))
             # Rebuild a fresh siege and storm again — must run with no leftover.
             s["locales"]["Volterra"]["siege"] = [
-                {"side": "guelph", "color": "gold", "count": 2}]
+                {"side": "guelph", "color": "purple", "count": 2}]
             r2 = resolve_storm(s, attackers=["firenze"], defenders=[],
                                active_id="firenze", locale_name="Volterra")
             assert r2["mode"] == "storm"

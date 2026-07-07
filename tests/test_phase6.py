@@ -183,7 +183,7 @@ class TestBalestreGrosse:
 class TestTrebuchets:
     def test_trebuchets_no_effect_below_3_siege(self):
         s = load_scenario("A", seed=1)
-        s["locales"]["Volterra"]["siege"] = [{"side": "guelph", "color": "gold", "count": 2}]
+        s["locales"]["Volterra"]["siege"] = [{"side": "guelph", "color": "purple", "count": 2}]
         firenze = s["lords"]["firenze"]
         _put_in_play(s, "firenze", "F4", scope="this_lord")  # F4 cap = Trebuchets
         r = _trebuchets_walls_reduction(s, "Volterra", [], ["firenze"], "storm")
@@ -191,7 +191,7 @@ class TestTrebuchets:
 
     def test_trebuchets_reduces_walls_at_3_siege(self):
         s = load_scenario("A", seed=1)
-        s["locales"]["Volterra"]["siege"] = [{"side": "guelph", "color": "gold", "count": 3}]
+        s["locales"]["Volterra"]["siege"] = [{"side": "guelph", "color": "purple", "count": 3}]
         firenze = s["lords"]["firenze"]
         _put_in_play(s, "firenze", "F4", scope="this_lord")
         firenze["forces"] = {"Cavalieri": 1}  # Unrouted
@@ -201,7 +201,7 @@ class TestTrebuchets:
     def test_trebuchets_not_when_lord_routed(self):
         """Trebuchets requires the Lord Unrouted."""
         s = load_scenario("A", seed=1)
-        s["locales"]["Volterra"]["siege"] = [{"side": "guelph", "color": "gold", "count": 3}]
+        s["locales"]["Volterra"]["siege"] = [{"side": "guelph", "color": "purple", "count": 3}]
         firenze = s["lords"]["firenze"]
         _put_in_play(s, "firenze", "F4", scope="this_lord")
         firenze["forces"] = {}  # all routed

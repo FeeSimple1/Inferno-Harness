@@ -93,14 +93,14 @@ class TestSiege:
         s = _to_command_with(scenario, seed=seed, lord_id="firenze",
                              lord_location_override=target)
         # Pre-place an existing Guelph siege at the target
-        s["locales"][target]["siege"] = [{"side": "guelph", "color": "gold", "count": 1}]
+        s["locales"][target]["siege"] = [{"side": "guelph", "color": "purple", "count": 1}]
         return s
 
     def test_surrender_roll_can_flip_allegiance(self):
         """4.5.1: dice (1 per Stronghold Value) each ≤ Siege+Ravage = Surrender."""
         s = self._setup_siege(target="Volterra")  # Town (Value 2)
         # Set Siege markers to 4 and Ravaged on so threshold = 5 > any die.
-        s["locales"]["Volterra"]["siege"] = [{"side": "guelph", "color": "gold", "count": 4}]
+        s["locales"]["Volterra"]["siege"] = [{"side": "guelph", "color": "purple", "count": 4}]
         s["locales"]["Volterra"]["ravaged"] = "gold"
         # Now Surrender is essentially guaranteed (every d6 ≤ 5).
         # But wait — d6 can be 6 > 5. Bump to 4 markers (threshold 4 + Ravage 1 = 5).
@@ -130,7 +130,7 @@ class TestStorm:
     def test_resolve_storm_returns_outcome(self):
         s = load_scenario("A", seed=1)
         # Build a Storm scenario manually: Firenze besieging Volterra (Town).
-        s["locales"]["Volterra"]["siege"] = [{"side": "guelph", "color": "gold", "count": 3}]
+        s["locales"]["Volterra"]["siege"] = [{"side": "guelph", "color": "purple", "count": 3}]
         # Move Firenze to Volterra
         s["locales"]["Firenze"]["lords_present"].remove("firenze")
         s["locales"]["Volterra"]["lords_present"].append("firenze")

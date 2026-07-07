@@ -17,6 +17,15 @@ from . import static_data as sd
 # =====================================================================
 # Helpers
 # =====================================================================
+def _effective_vp_render(state):
+    try:
+        from .actions import effective_vp
+        return effective_vp(state)
+    except Exception:
+        vp = state.get("vp", {})
+        return vp.get("guelph", 0), vp.get("ghibelline", 0)
+
+
 def _fmt_forces(forces: dict[str, int]) -> str:
     if not forces:
         return "-"
@@ -59,7 +68,7 @@ def render_summary(state: dict[str, Any]) -> str:
         f"Phase {meta.get('phase', '?')}"
         + (f" / {meta.get('levy_step')}" if meta.get('levy_step') else "")
         + f"  Active: {meta.get('active_player', '?')}  "
-        f"VP G={vp.get('guelph', 0)} H={vp.get('ghibelline', 0)}"
+        f"VP G={_effective_vp_render(state)[0]} H={_effective_vp_render(state)[1]}"
     )
     end_box = calendar.get("end_box")
     levy_box = calendar.get("levy_box")

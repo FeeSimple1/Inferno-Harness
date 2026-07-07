@@ -8,8 +8,10 @@ Encodes the two physical Revolt Tables from
   - TABLE 2 "Revolt Against Ghibellines?" — used when the GHIBELLINES
     lost; the GUELPHS roll.
 
-Dice convention (per the reference): row die = gold (Guelph), column die
-= purple (Ghibelline). A cell is keyed (gold, purple) and is either a
+Dice convention (per the reference aid sheet): row die = gold, column die
+= purple (die colors are physical labels only — note the SIDES' colors are
+Guelph=purple / Ghibelline=gold, RoP 1.1). A cell is keyed (gold, purple)
+and is either a
 named Locale (REBELLION) or the SUBMISSION sentinel.
 
 Per Q-002 (RULES_DECISIONS.md) the 10 crossed-out cells are SUBMISSION

@@ -138,6 +138,146 @@ def assert_aow_card_conservation(s):
         assert total == 26, f"AoW card drift: {side} total = {total} (expected 26)"
 
 
+def assert_lord_side_enum(s):
+    for lid, lord in s["lords"].items():
+        assert lord.get("side") in ("guelph", "ghibelline"), \
+            f"{lid} has invalid side {lord.get('side')!r}"
+
+
+def assert_no_duplicate_lords_present(s):
+    for loc_name, loc in s["locales"].items():
+        lp = loc.get("lords_present", [])
+        assert len(lp) == len(set(lp)), \
+            f"duplicate lord ids in {loc_name}.lords_present: {lp}"
+
+
+def assert_calendar_cylinder_consistency(s):
+    """v6.12 (injection-fuzz round): the Calendar's per-box cylinder lists and
+    each Lord's status/calendar_box are redundant encodings — they must agree.
+    - A Lord appears in AT MOST ONE box's cylinders list.
+    - status == 'on_calendar' => his calendar_box is a box that lists him.
+    - A Mustered/removed Lord appears in NO box's cylinders list."""
+    seen: dict[str, str] = {}
+    for box_str, box in s["calendar"]["boxes"].items():
+        for lid in box.get("cylinders", []):
+            assert lid not in seen, \
+                f"cylinder for {lid} in two Calendar boxes: {seen[lid]} and {box_str}"
+            seen[lid] = box_str
+    # Cylinders pushed off the track (Exiles shifts, card effects) live in the
+    # off_left / off_right lists with calendar_box=None — legal, but a Lord may
+    # hold only ONE cylinder position across boxes + off-lists.
+    for off_key in ("off_left", "off_right"):
+        for lid in s["calendar"].get(off_key, []) or []:
+            assert lid not in seen, \
+                f"cylinder for {lid} both in box {seen[lid]} and {off_key}"
+            seen[lid] = off_key
+    for lid, lord in s["lords"].items():
+        st = lord.get("status")
+        if st == "on_calendar":
+            cb = lord.get("calendar_box")
+            if cb is None:
+                assert seen.get(lid) in ("off_left", "off_right"), \
+                    (f"{lid} on_calendar with no calendar_box and no off-track "
+                     f"cylinder (found: {seen.get(lid)!r})")
+            else:
+                assert seen.get(lid) == str(cb), \
+                    (f"{lid} on_calendar with calendar_box={cb!r} but cylinder "
+                     f"found in {seen.get(lid)!r}")
+        elif st == "mustered":
+            assert lid not in seen, \
+                f"Mustered {lid} still has a cylinder in {seen[lid]}"
+
+
+def assert_service_marker_consistency(s):
+    """Service markers: each Lord in at most one box's services list, and the
+    lists must agree with lord.service_box (for Mustered Lords)."""
+    seen: dict[str, str] = {}
+    for box_str, box in s["calendar"]["boxes"].items():
+        for lid in box.get("services", []):
+            assert lid not in seen, \
+                f"Service marker for {lid} in two boxes: {seen[lid]} and {box_str}"
+            seen[lid] = box_str
+    for lid, lord in s["lords"].items():
+        if lord.get("status") == "mustered":
+            sb = lord.get("service_box")
+            if sb is not None:
+                assert seen.get(lid) == str(sb), \
+                    (f"Mustered {lid} service_box={sb} but Service marker in "
+                     f"box {seen.get(lid)!r}")
+
+
+def assert_locale_marker_sanity(s):
+    """Map-marker structural rules (1.3.1 / 1.4.4 / 4.3.5 / 4.5.2):
+    - Ruins eliminate the Stronghold: no Siege, Bypass, or Allegiance markers
+      may remain there (Sack removes them; Lords never Besiege Ruins).
+    - Outposts are never Besieged/Ruined (only the owning Lord may enter).
+    - Siege markers: 1..4 total, color matches side (purple=Guelph, gold=Ghibelline; RoP 1.1).
+    - Allegiance markers: all one side, OPPOSITE the printed Allegiance
+      (1.4.4 adds markers only to a Stronghold of the opposite printed
+      Allegiance, else removes), at most Stronghold Value markers."""
+    from . import static_data as sd
+    color_of = {"guelph": "purple", "ghibelline": "gold"}
+    for name, loc in s["locales"].items():
+        siege = loc.get("siege") or []
+        if loc.get("ruins"):
+            assert not siege, f"Ruins {name} has Siege markers"
+            assert not (loc.get("bypass") or []), f"Ruins {name} has Bypass markers"
+            assert not (loc.get("current_allegiance") or []), \
+                f"Ruins {name} has Allegiance markers"
+        if loc.get("type") == "outpost":
+            assert not siege, f"Outpost {name} has Siege markers"
+            assert not loc.get("ruins"), f"Outpost {name} is Ruined"
+        total = sum(m.get("count", 1) for m in siege)
+        assert 0 <= total <= 4, f"{name} Siege marker count {total} out of [0,4]"
+        for m in siege:
+            assert m.get("side") in ("guelph", "ghibelline"), \
+                f"{name} Siege marker with bad side {m.get('side')!r}"
+            assert m.get("count", 1) >= 1, f"{name} Siege marker count < 1"
+            if m.get("color"):
+                assert m["color"] == color_of[m["side"]], \
+                    f"{name} Siege color {m['color']!r} != side {m['side']}"
+        markers = loc.get("current_allegiance") or []
+        if markers:
+            sides = {m.get("side") for m in markers}
+            assert len(sides) == 1, f"{name} mixed Allegiance markers: {sides}"
+            mside = next(iter(sides))
+            assert mside in ("guelph", "ghibelline"), \
+                f"{name} Allegiance marker bad side {mside!r}"
+            assert mside != loc.get("allegiance"), \
+                (f"{name} has Allegiance markers of its own printed side "
+                 f"({mside}) — 1.4.4 removes rather than stacks")
+            size = sd.STRONGHOLDS.get(loc.get("type"), {}).get("size", 0)
+            assert len(markers) <= max(size, 0), \
+                f"{name} has {len(markers)} Allegiance markers > Value {size}"
+
+
+def assert_stronghold_inside_capacity(s):
+    """4.3.4 / 4.5.1: at most Stronghold-Size Lords may be INSIDE a Stronghold
+    (Withdrawal, Urban-Army Muster and Bypassed Muster all respect the cap);
+    nobody can be 'inside' at Ruins or an Outpost."""
+    from . import static_data as sd
+    for name, loc in s["locales"].items():
+        inside = [lid for lid in loc.get("lords_present", [])
+                  if s["lords"].get(lid, {}).get("status") == "mustered"
+                  and s["lords"][lid].get("flags", {}).get("in_stronghold")]
+        if not inside:
+            continue
+        assert not loc.get("ruins"), f"{name} is Ruins but {inside} are inside"
+        size = sd.STRONGHOLDS.get(loc.get("type"), {}).get("size", 0)
+        assert len(inside) <= size, \
+            f"{name} (Size {size}) has {len(inside)} Lords inside: {inside}"
+
+
+def assert_meta_sanity(s):
+    meta = s.get("meta", {})
+    ra = meta.get("rng_advance", 0)
+    assert isinstance(ra, int) and ra >= 0, f"rng_advance = {ra!r}"
+    turn = meta.get("turn")
+    assert isinstance(turn, int) and 1 <= turn <= 16, f"meta.turn = {turn!r}"
+    assert meta.get("active_player") in ("guelph", "ghibelline", None), \
+        f"active_player = {meta.get('active_player')!r}"
+
+
 def check_all_invariants(s):
     """Run the full always-on battery. Cheap; call after every applied action."""
     assert_vp_cap(s)
@@ -150,6 +290,13 @@ def check_all_invariants(s):
     assert_assets_non_negative(s)
     assert_captured_knights_shape(s)
     assert_aow_card_conservation(s)
+    assert_lord_side_enum(s)
+    assert_no_duplicate_lords_present(s)
+    assert_calendar_cylinder_consistency(s)
+    assert_service_marker_consistency(s)
+    assert_locale_marker_sanity(s)
+    assert_stronghold_inside_capacity(s)
+    assert_meta_sanity(s)
 
 
 def assert_combat_engaged(result):

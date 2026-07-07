@@ -463,28 +463,42 @@ def _closed_gates(state, side, args):
     """Shared F10/S22 CLOSED GATES — SMOKE-Inferno-082.
 
     Ruins markers are the OPPOSITE colour of a Stronghold's printed Allegiance
-    (rules "Sack"): a GOLD Ruins (1/2 VP Guelph) sits on an originally-
-    Ghibelline Stronghold; a PURPLE Ruins (1/2 VP Ghibelline) on an originally-
-    Guelph one.
+    (rules "Sack"): a GOLD Ruins (1/2 VP Ghibelline) sits on an originally-
+    Guelph Stronghold; a PURPLE Ruins (1/2 VP Guelph) on an originally-
+    Ghibelline one (CONF-039 physical colors: Guelph=purple, Ghibelline=gold).
 
-    PRIMARY: remove an own-colour Ruins (Guelph=gold, Ghibelline=purple) sitting
-    on an originally-ENEMY Stronghold; once de-ruined it is an eligible Enemy
-    Stronghold (1.4.1, no Enemy Lord there or adjacent) that Revolts (1.4.4) to
-    the playing side — Size Allegiance markers placed, the loser slides Exiles.
-    Net: trade the 1/2 VP Ruins for Size VP of Allegiance.
+    CONF-041 (card texts F10/S22): the card's PRIMARY use is DENIAL — "Remove
+    1 gold Ruins" (F10, Guelph) / "1 purple Ruins" (S22, Ghibelline): a Ruins
+    of the ENEMY-scoring colour, sitting on the playing side's own-printed
+    Stronghold; removing it reverts the Locale to printed-Friendly and denies
+    the enemy its 1/2 VP.
 
-    FALLBACK ("or, if none"): remove one enemy-colour Ruins to DENY the enemy
-    its 1/2 VP. Enemy-colour Ruins sit on the playing side's own-home
-    Strongholds, so de-ruining reverts them to printed-Friendly (no markers).
+    FALLBACK ("or, if none, remove 1 [own-colour] Ruins WHERE Stronghold then
+    eligible for Revolt (1.4.1); it Revolts (1.4.4)"): only when NO enemy-
+    scoring Ruins is on the map, remove an OWN-scoring Ruins from an
+    originally-Enemy Stronghold; once de-ruined and eligible it Revolts to the
+    playing side (Size Allegiance markers, loser slides Exiles). Net: trade
+    the own 1/2 VP Ruins for Size VP of Allegiance.
 
-    The prior implementation had the gold/purple VP sides inverted (vs rule 413
-    and scenarios._init_vp_from_markers) and skipped the 1.4.4 Revolt.
+    (The prior implementation had the two modes' PRIORITY swapped — it tried
+    the Revolt-trade first and denial only as fallback, inverting the card
+    text's "or, if none".)
     """
     from . import revolt as _rv
     enemy = "ghibelline" if side == "guelph" else "guelph"
-    own_color = "gold" if side == "guelph" else "purple"      # 1/2 VP for `side`
-    enemy_color = "purple" if side == "guelph" else "gold"    # 1/2 VP for `enemy`
+    own_color = "purple" if side == "guelph" else "gold"      # 1/2 VP for `side`
+    enemy_color = "gold" if side == "guelph" else "purple"    # 1/2 VP for `enemy`
 
+    # PRIMARY: deny — remove an enemy-scoring Ruins.
+    en = [n for n, l in state["locales"].items()
+          if l.get("ruins") == enemy_color and l.get("type") != "outpost"]
+    if en:
+        n = args["locale"] if args.get("locale") in en else en[0]
+        state["locales"][n]["ruins"] = None
+        state["vp"][enemy] = max(state["vp"].get(enemy, 0) - 0.5, 0)
+        return {"applied": True, "mode": "deny", "removed_enemy_ruins_at": n}
+
+    # FALLBACK (only "if none"): trade an own-scoring Ruins for a Revolt.
     own = [n for n, l in state["locales"].items()
            if l.get("ruins") == own_color and l.get("type") != "outpost"]
     pref = [args["locale"]] if args.get("locale") in own else own
@@ -503,15 +517,7 @@ def _closed_gates(state, side, args):
             return {"applied": True, "mode": "revolt", "revolted_at": n,
                     "switch": switch, "exiles_required": exiles}
         loc["ruins"] = prev  # not eligible — restore and try the next
-
-    en = [n for n, l in state["locales"].items()
-          if l.get("ruins") == enemy_color and l.get("type") != "outpost"]
-    if en:
-        n = args["locale"] if args.get("locale") in en else en[0]
-        state["locales"][n]["ruins"] = None
-        state["vp"][enemy] = max(state["vp"].get(enemy, 0) - 0.5, 0)
-        return {"applied": True, "mode": "deny", "removed_enemy_ruins_at": n}
-    return {"applied": False, "reason": "no Ruins to remove"}
+    return {"applied": False, "reason": "no removable Ruins"}
 
 
 @register_event("F10")

@@ -47,3 +47,6 @@ jobs:
 
       - name: Adversarial-input robustness fuzz (dispatch contract)
         run: PYTHONPATH=src python robustness_fuzz.py --seeds 3 --max-steps 6000 --probe-every 8
+
+      - name: Illegal-state injection fuzz (invariant-battery coverage)
+        run: PYTHONPATH=src python state_injection_fuzz.py --seeds 2 --max-steps 400 --probe-every 60

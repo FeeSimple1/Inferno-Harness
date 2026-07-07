@@ -37,7 +37,7 @@ def _besieged_setup(seed=1, siege_count=4, extra_besiegers=()):
         s["lords"][lid].setdefault("flags", {})["in_stronghold"] = False
         if sum(s["lords"][lid].get("forces", {}).values()) == 0:
             s["lords"][lid]["forces"] = {"Cavalieri": 1, "Men-at-Arms": 1}
-    loc["siege"] = [{"side": "ghibelline", "color": "purple", "count": siege_count}]
+    loc["siege"] = [{"side": "ghibelline", "color": "gold", "count": siege_count}]
     return s
 
 
@@ -74,7 +74,7 @@ class TestSallyArray:
         rp = resolve_sally(protected, sallying=[SALLYER], besiegers=[BESIEGER],
                            active_id=SALLYER, locale_name=CASTLE)
         unprot = copy.deepcopy(base)
-        unprot["locales"][CASTLE]["siege"] = [{"side": "ghibelline", "color": "purple", "count": 0}]
+        unprot["locales"][CASTLE]["siege"] = [{"side": "ghibelline", "color": "gold", "count": 0}]
         ru = resolve_sally(unprot, sallying=[SALLYER], besiegers=[BESIEGER],
                            active_id=SALLYER, locale_name=CASTLE)
         besieger_protected = sum(protected["lords"][BESIEGER]["forces"].values())

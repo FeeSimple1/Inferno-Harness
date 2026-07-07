@@ -203,7 +203,7 @@ class TestReliefSally:
         s["locales"]["Siena"]["lords_present"].remove("siena")
         s["locales"]["Firenze"]["lords_present"].append("siena")
         s["locales"]["Firenze"].setdefault("siege", []).append({
-            "side": "guelph", "color": "gold", "count": 1,
+            "side": "guelph", "color": "purple", "count": 1,
         })
         # Now Guelph (firenze) is at Firenze besieging. Set up an Approach
         # by having a different Ghibelline Lord march in.
@@ -260,7 +260,7 @@ class TestScenarioSpecials:
         s["lords"]["colle"]["location"] = "Grosseto"
         s["locales"]["Colle"]["lords_present"].remove("colle")
         s["locales"]["Grosseto"]["lords_present"].append("colle")
-        s["locales"]["Grosseto"]["siege"] = [{"side": "guelph", "color": "gold", "count": 2}]
+        s["locales"]["Grosseto"]["siege"] = [{"side": "guelph", "color": "purple", "count": 2}]
         # Inject Colle command card
         s["plan_stacks"]["guelph"].insert(0, "command_colle")
         dispatch(s, {"action": "command_reveal", "side": "guelph"})

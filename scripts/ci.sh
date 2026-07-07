@@ -14,7 +14,10 @@ for scen in A B C D E F; do
   python3 selfplay_bughunt.py "$scen" --seed 11 --max-steps 8000
 done
 
-echo "== [3/3] Card-effect integration fuzz =="
+echo "== [3/4] Card-effect integration fuzz =="
 python3 cardfx_fuzz.py --seeds 6
+
+echo "== [4/4] Illegal-state injection fuzz (invariant coverage) =="
+python3 state_injection_fuzz.py --seeds 2 --max-steps 400 --probe-every 60
 
 echo "== CI OK =="

@@ -100,10 +100,12 @@ def _init_vp_from_markers(state) -> dict[str, float]:
             sd2 = m.get("side")
             if sd2 in vp:
                 vp[sd2] += m.get("value", 1)
+        # CONF-039 (physical colors, RoP 1.1): purple = Guelph, gold =
+        # Ghibelline. Ruins/Ravaged score ½VP for the marker's color side.
         if loc.get("ruins"):
-            vp["guelph" if loc["ruins"] == "gold" else "ghibelline"] += 0.5
+            vp["ghibelline" if loc["ruins"] == "gold" else "guelph"] += 0.5
         if loc.get("ravaged"):
-            vp["guelph" if loc["ravaged"] == "gold" else "ghibelline"] += 0.5
+            vp["ghibelline" if loc["ravaged"] == "gold" else "guelph"] += 0.5
     for sd2 in vp:
         vp[sd2] = max(0.0, min(vp[sd2], 17.5))
     return vp

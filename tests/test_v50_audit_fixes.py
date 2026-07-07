@@ -56,7 +56,7 @@ class TestA1ReliefSallyRaid:
             },
             "locales": {"Town1": {"type": "town", "allegiance": "ghibelline",
                                   "lords_present": ["RS", "BES"],
-                                  "siege": [{"side": "guelph", "color": "gold", "count": 4}]}},
+                                  "siege": [{"side": "guelph", "color": "purple", "count": 4}]}},
             "meta": {"rng_seed": 1, "rng_advance": 0},
         }
         result = {"loser": "attacker", "conceded": None, "removed_lords": []}

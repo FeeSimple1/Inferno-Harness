@@ -75,7 +75,7 @@ class TestRollRoutedLosses:
 class TestStormStashesDoctors:
     def _storm_setup(self, seed=5):
         s = load_scenario("A", seed=seed)
-        s["locales"]["Volterra"]["siege"] = [{"side": "guelph", "color": "gold", "count": 3}]
+        s["locales"]["Volterra"]["siege"] = [{"side": "guelph", "color": "purple", "count": 3}]
         s["locales"]["Firenze"]["lords_present"].remove("firenze")
         s["locales"]["Volterra"]["lords_present"].append("firenze")
         s["lords"]["firenze"]["location"] = "Volterra"
@@ -104,7 +104,7 @@ class TestSackKnightsQuarter:
         # Knights, and a Guelph besieger present.
         town = next(n for n, l in s["locales"].items() if l.get("type") == "town")
         loc = s["locales"][town]
-        loc["siege"] = [{"side": "guelph", "color": "gold", "count": 2}]
+        loc["siege"] = [{"side": "guelph", "color": "purple", "count": 2}]
         loc["lords_present"] = ["siena", "firenze"]
         s["lords"]["siena"]["location"] = town
         s["lords"]["siena"].setdefault("flags", {})["in_stronghold"] = True

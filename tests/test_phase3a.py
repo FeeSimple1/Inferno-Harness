@@ -281,7 +281,9 @@ class TestCommandPhase:
         assert s["actions_remaining"] == 2  # Arezzo C=2
         r = dispatch(s, {"action": "cmd_ravage", "side": "guelph",
                          "args": {"lord_id": "arezzo", "target_locale": "Vicopisano"}})
-        assert s["locales"]["Vicopisano"]["ravaged"] == "gold"  # opposite of ghibelline=purple
+        # CONF-039 physical colors: printed-Ghibelline (gold circle) Locale
+        # takes the OPPOSITE (purple = Guelph) Ravaged marker (4.7.2).
+        assert s["locales"]["Vicopisano"]["ravaged"] == "purple"
         assert s["actions_remaining"] == 1
         # +1/2 VP to Guelphs
         assert s["vp"]["guelph"] >= 0.5

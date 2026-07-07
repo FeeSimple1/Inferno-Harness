@@ -41,10 +41,10 @@ class TestCapabilityHookMislabel:
         s = load_scenario("A", 1)
         s["lords"]["firenze"].setdefault("capabilities", []).append("F4")  # Trebuchets
         s["lords"]["firenze"]["forces"] = {"Cavalieri": 1}
-        s["locales"]["Volterra"]["siege"] = [{"side": "guelph", "color": "gold", "count": 3}]
+        s["locales"]["Volterra"]["siege"] = [{"side": "guelph", "color": "purple", "count": 3}]
         red = battle._trebuchets_walls_reduction(s, "Volterra", [], ["firenze"], "storm")
         assert red == 1  # 3-4 Siege + Trebuchets -> Walls -1
-        s["locales"]["Volterra"]["siege"] = [{"side": "guelph", "color": "gold", "count": 2}]
+        s["locales"]["Volterra"]["siege"] = [{"side": "guelph", "color": "purple", "count": 2}]
         assert battle._trebuchets_walls_reduction(s, "Volterra", [], ["firenze"], "storm") == 0
 
 

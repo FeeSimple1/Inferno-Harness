@@ -75,8 +75,8 @@ class TestConformanceAnchors:
         s = _at_end_campaign(load_scenario("A", 1))
         castle = next(n for n, l in s["locales"].items() if l["type"] == "castle")
         town = next(n for n, l in s["locales"].items() if l["type"] == "town")
-        s["locales"][castle]["siege"] = [{"side": "guelph", "color": "gold", "count": 4}]
-        s["locales"][town]["siege"] = [{"side": "guelph", "color": "gold", "count": 3}]
+        s["locales"][castle]["siege"] = [{"side": "guelph", "color": "purple", "count": 4}]
+        s["locales"][town]["siege"] = [{"side": "guelph", "color": "purple", "count": 3}]
         dispatch(s, {"action": "end_repair", "side": "guelph", "args": {}})
         # Castle keeps all 4; Town drops to 2.
         assert sum(x["count"] for x in s["locales"][castle]["siege"]) == 4
@@ -92,9 +92,9 @@ class TestConformanceAnchors:
         s["locales"][town]["current_allegiance"] = [{"side": "guelph", "value": 1}]
         ruin = next(n for n, l in s["locales"].items()
                     if l["type"] == "castle" and n != town)
-        s["locales"][ruin]["ruins"] = "gold"          # +0.5 Guelph
+        s["locales"][ruin]["ruins"] = "purple"        # +0.5 Guelph (CONF-039)
         rav = next(n for n, l in s["locales"].items() if l.get("ravaged") is None and n not in (town, ruin))
-        s["locales"][rav]["ravaged"] = "gold"          # +0.5 Guelph, NOT doubled
+        s["locales"][rav]["ravaged"] = "purple"        # +0.5 Guelph, NOT doubled (CONF-039)
         g, h = _compute_final_vp(s)
         # (1 marker + 0.5 ruins) doubled = 3.0, + 0.5 ravaged (not doubled) = 3.5
         assert g == 3.5

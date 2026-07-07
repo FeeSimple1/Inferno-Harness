@@ -233,14 +233,35 @@ class TestClosedGates:
             if n in s["locales"]:
                 s["locales"][n]["lords_present"] = []
 
-    def test_F10_primary_flips_gold_to_guelph_and_surfaces_exiles(self):
+    def test_F10_primary_denies_enemy_half_vp(self):
+        # CONF-041 + CONF-039: F10's PRIMARY is "Remove 1 gold Ruins" — the
+        # Ghibelline-scoring Ruins on a printed-Guelph Stronghold — denying
+        # the enemy its 1/2 VP; no markers placed (reverts to Friendly).
+        s = load_scenario("A", 1)
+        target = next(n for n, l in s["locales"].items()
+                      if l.get("type") == "town" and l.get("allegiance") == "guelph")
+        s["locales"][target]["current_allegiance"] = []
+        s["locales"][target]["ruins"] = "gold"
+        h0 = s["vp"]["ghibelline"]
+        r = ce.apply_event_effect(s, "F10", "guelph", {"locale": target}, _rng())
+        assert r["mode"] == "deny"
+        assert s["locales"][target]["ruins"] is None
+        assert s["vp"]["ghibelline"] == max(h0 - 0.5, 0)  # enemy 1/2 VP denied
+
+    def test_F10_fallback_revolt_trade_and_surfaces_exiles(self):
+        # CONF-041: only "if none" (no gold Ruins on the map) may F10 remove a
+        # PURPLE (own-scoring) Ruins from an originally-Ghibelline Stronghold,
+        # which then Revolts to Guelph (Size Allegiance markers; Exiles).
         from inferno import static_data as sd
         s = load_scenario("A", 1)
+        for l in s["locales"].values():
+            if l.get("ruins") == "gold":
+                l["ruins"] = None
         target = next(n for n, l in s["locales"].items()
                       if l.get("type") == "town" and l.get("allegiance") == "ghibelline")
         self._isolate(s, target)
         s["locales"][target]["current_allegiance"] = []
-        s["locales"][target]["ruins"] = "gold"
+        s["locales"][target]["ruins"] = "purple"
         size = sd.STRONGHOLDS[s["locales"][target]["type"]]["size"]
         g0 = s["vp"]["guelph"]
         r = ce.apply_event_effect(s, "F10", "guelph", {"locale": target}, _rng())
@@ -249,31 +270,32 @@ class TestClosedGates:
         # 1.4.4 Exiles for the losing (Ghibelline) side were surfaced as pending.
         assert any(e.get("side") == "ghibelline" for e in s.get("pending_exiles", []))
 
-    def test_F10_fallback_denies_enemy_half_vp(self):
-        # No gold Ruins -> remove an enemy-colour (purple) Ruins to deny
-        # Ghibelline its 1/2 VP; no markers placed (own-home reverts to Friendly).
+    def test_F10_deny_takes_priority_over_revolt_trade(self):
+        # Both colours on the map: the card text's order is denial FIRST.
         s = load_scenario("A", 1)
-        # Strip any gold Ruins so the primary cannot fire.
-        for l in s["locales"].values():
-            if l.get("ruins") == "gold":
-                l["ruins"] = None
-        target = next(n for n, l in s["locales"].items()
-                      if l.get("type") == "town" and l.get("allegiance") == "guelph")
-        s["locales"][target]["current_allegiance"] = []
-        s["locales"][target]["ruins"] = "purple"
-        h0 = s["vp"]["ghibelline"]
-        r = ce.apply_event_effect(s, "F10", "guelph", {"locale": target}, _rng())
-        assert r["mode"] == "deny"
-        assert s["locales"][target]["ruins"] is None
-        assert s["vp"]["ghibelline"] == h0 - 0.5  # enemy 1/2 VP denied
+        g_target = next(n for n, l in s["locales"].items()
+                        if l.get("type") == "town" and l.get("allegiance") == "guelph")
+        s["locales"][g_target]["current_allegiance"] = []
+        s["locales"][g_target]["ruins"] = "gold"
+        h_target = next(n for n, l in s["locales"].items()
+                        if l.get("type") == "town" and l.get("allegiance") == "ghibelline")
+        self._isolate(s, h_target)
+        s["locales"][h_target]["current_allegiance"] = []
+        s["locales"][h_target]["ruins"] = "purple"
+        r = ce.apply_event_effect(s, "F10", "guelph", {}, _rng())
+        assert r["mode"] == "deny" and r["removed_enemy_ruins_at"] == g_target
+        assert s["locales"][h_target]["ruins"] == "purple"  # untouched
 
-    def test_S22_mirror_flips_purple_to_ghibelline(self):
+    def test_S22_mirror_revolt_trade(self):
         from inferno import static_data as sd
         s = load_scenario("A", 1)
-        target = "Cortona"  # originally Guelph
+        for l in s["locales"].values():
+            if l.get("ruins") == "purple":
+                l["ruins"] = None
+        target = "Cortona"  # originally Guelph -> gold Ruins (Ghib-scoring)
         self._isolate(s, target)
         s["locales"][target]["current_allegiance"] = []
-        s["locales"][target]["ruins"] = "purple"
+        s["locales"][target]["ruins"] = "gold"
         size = sd.STRONGHOLDS[s["locales"][target]["type"]]["size"]
         h0 = s["vp"]["ghibelline"]
         r = ce.apply_event_effect(s, "S22", "ghibelline", {"locale": target}, _rng())

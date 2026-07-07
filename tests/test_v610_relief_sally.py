@@ -39,7 +39,7 @@ def _relief_battle_state(seed=5):
     _place(s, "provenzano", "Firenze")
     _place(s, "arezzo", "Firenze", inside=True)
     s["locales"]["Firenze"]["siege"] = [
-        {"side": "ghibelline", "color": "purple", "count": 2}]
+        {"side": "ghibelline", "color": "gold", "count": 2}]
     # Deterministic-ish forces: keep the main front stable for 2+ rounds.
     s["lords"]["firenze"]["forces"] = {"Men-at-Arms": 4, "Cavalieri": 2}
     s["lords"]["siena"]["forces"] = {"Men-at-Arms": 4, "Cavalieri": 2}
@@ -99,7 +99,7 @@ class TestReliefJoinChoice:
         # "also Besieged" there): eligible to Relief-Sally.
         _place(s, "arezzo", "Figline", inside=True)
         s["locales"]["Figline"]["siege"] = [
-            {"side": "ghibelline", "color": "purple", "count": 2}]
+            {"side": "ghibelline", "color": "gold", "count": 2}]
         dispatch(s, {"action": "cmd_march", "side": "guelph",
                      "args": {"lord_id": "firenze",
                               "destination": "Figline", "way_type": "road"}})
@@ -149,7 +149,7 @@ class TestConf038StormMeleeCap:
         s = load_scenario("A", seed=1)
         _place(s, "firenze", "Volterra")
         s["locales"]["Volterra"]["siege"] = [
-            {"side": "guelph", "color": "gold", "count": 1}]
+            {"side": "guelph", "color": "purple", "count": 1}]
         # 16 Men-at-Arms: even after the Garrison's Round-1 strikes rout a
         # few, the Lord retains far more than 6 — uncapped he would add
         # ~10+ Melee Hits (storm attacker x1); 4.5.2 caps him at six.

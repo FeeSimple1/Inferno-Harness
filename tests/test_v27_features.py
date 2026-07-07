@@ -154,7 +154,7 @@ class TestSiegeCapabilities:
 
     def test_war_engineers_reduce_to_one(self):
         s, lid, cas = self._besiege_setup("F5", inside=True)
-        s["locales"][cas]["siege"] = [{"side": "ghibelline", "color": "purple", "count": 3}]
+        s["locales"][cas]["siege"] = [{"side": "ghibelline", "color": "gold", "count": 3}]
         dispatch(s, {"action": "cmd_war_engineers_reduce", "side": "guelph", "args": {"lord_id": lid}})
         assert sum(x["count"] for x in s["locales"][cas]["siege"]) == 1
 

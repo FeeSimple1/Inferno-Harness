@@ -860,11 +860,25 @@ def _enum_command_phase(state, side) -> list[dict[str, Any]]:
                 e.get("id") in ("F5", "S5") and e.get("side") == side
                 for e in (state.get("active_events", {}).get("this_campaign", []) or []))
             _first_march = not lord.get("flags", {}).get("first_march_used_this_card", False)
+            # CONF-039: Scenario C 'Maremma War' — mirror the handler's
+            # dashed-line gate so a blocked cross-line March is not offered.
+            _maremma_block = False
+            if state["meta"].get("scenario") == "C" and side == "ghibelline":
+                _guelph_aggr = any(
+                    any(m.get("side") == "guelph" for m in (l.get("siege") or []))
+                    or l.get("ravaged") == "purple"
+                    for l in state["locales"].values())
+                _maremma_block = not _guelph_aggr
             for neighbour, way_type in sd.adjacent_to(cur_loc):
                 # Skip Outposts unless this Lord has it as a Seat (1.3.1).
                 dest = state["locales"].get(neighbour, {})
                 if dest.get("type") == "outpost" and neighbour not in lord.get("seats", []):
                     continue
+                if _maremma_block:
+                    _sr = sd.LOCALES.get(cur_loc, {}).get("region")
+                    _dr = sd.LOCALES.get(neighbour, {}).get("region")
+                    if _sr and _dr and _sr != _dr:
+                        continue
                 effective_way = "road" if (_road_works and way_type == "track") else way_type
                 if _road_works:
                     laden = False

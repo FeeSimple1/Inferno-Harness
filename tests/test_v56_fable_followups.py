@@ -109,7 +109,7 @@ def test_retreat_off_sweeps_freed_siege(monkeypatch):
         "locales": {
             "Town1": {"type": "town", "allegiance": "ghibelline",
                       "lords_present": ["BES", "ATK", "IN"],
-                      "siege": [{"side": "guelph", "color": "gold", "count": 2}]},
+                      "siege": [{"side": "guelph", "color": "purple", "count": 2}]},
             "Adj": {"type": "castle", "allegiance": "guelph", "lords_present": []},
         },
         "meta": {"rng_seed": 1, "rng_advance": 0},

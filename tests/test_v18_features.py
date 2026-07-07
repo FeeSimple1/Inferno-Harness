@@ -77,7 +77,7 @@ class TestS7GreekFire:
         s["lords"]["firenze"]["location"] = "Volterra"
         s["locales"]["Firenze"]["lords_present"].remove("firenze")
         s["locales"]["Volterra"]["lords_present"].append("firenze")
-        s["locales"]["Volterra"]["siege"] = [{"side": "guelph", "color": "gold", "count": 3}]
+        s["locales"]["Volterra"]["siege"] = [{"side": "guelph", "color": "purple", "count": 3}]
         s["lords"]["firenze"]["capabilities"] = ["F9"]
         s["lords"]["firenze"].setdefault("forces", {})["Milizia"] = 2
         return s

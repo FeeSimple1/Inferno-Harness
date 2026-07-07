@@ -150,7 +150,7 @@ def test_play_event_dispatches_and_persists(state_file, capsys):
     st = json.loads(state_file.read_text())
     fl = st["lords"]["firenze"]
     st["locales"][fl["location"]].setdefault("siege", []).append(
-        {"side": "guelph", "color": "gold", "count": 1})
+        {"side": "guelph", "color": "purple", "count": 1})
     state_file.write_text(json.dumps(st))
     rc = cli.main(["play-event", str(state_file), "--side", "guelph", "--card", "F3"])
     assert rc == 0

@@ -153,17 +153,17 @@ class TestEndGameVpTally:
     def test_marker_tally_per_5_0(self):
         s = {"meta": {"scenario": ""}, "locales": {
             "X": {"current_allegiance": [{"side": "guelph", "value": 1}]},
-            "Y": {"ruins": "gold"},        # +0.5 Guelph
-            "Z": {"ravaged": "purple"},    # +0.5 Ghibelline
+            "Y": {"ruins": "purple"},      # +0.5 Guelph (CONF-039)
+            "Z": {"ravaged": "gold"},      # +0.5 Ghibelline (CONF-039)
         }}
         g, h = A._compute_final_vp(s)
-        assert g == 1.5   # 1 Allegiance + 0.5 Ruins(gold)
+        assert g == 1.5   # 1 Allegiance + 0.5 Ruins(purple)
         assert h == 0.5   # 0.5 Ravaged(purple)
 
     def test_scenario_E_doubles_guelph_except_ravaged(self):
         s = {"meta": {"scenario": "E"}, "locales": {
             "X": {"current_allegiance": [{"side": "guelph", "value": 1}]},
-            "R": {"ravaged": "gold"},      # Guelph Ravaged 0.5, NOT doubled
+            "R": {"ravaged": "purple"},    # Guelph Ravaged 0.5, NOT doubled (CONF-039)
         }}
         g, h = A._compute_final_vp(s)
         assert g == 2.5   # 1*2 (allegiance) + 0.5 (ravaged, not doubled)

@@ -28,7 +28,7 @@ def _place_svc(state, lid, box):
 
 def _plant_guelph_siege(state, locale="Volterra", n=1):
     state["locales"][locale]["siege"] = [
-        {"side": "guelph", "color": "gold", "count": n}
+        {"side": "guelph", "color": "purple", "count": n}
     ]
 
 
@@ -84,8 +84,8 @@ class TestBetrayalsOrChoice:
 
     def test_default_adds_one_treachery_per_siege_no_revolt_roll(self):
         s = load_scenario("A", 1)
-        s["locales"]["Volterra"]["siege"] = [{"side": "guelph", "color": "gold", "count": 1}]
-        s["locales"]["Colle"]["siege"] = [{"side": "guelph", "color": "gold", "count": 1}]
+        s["locales"]["Volterra"]["siege"] = [{"side": "guelph", "color": "purple", "count": 1}]
+        s["locales"]["Colle"]["siege"] = [{"side": "guelph", "color": "purple", "count": 1}]
         self._seed_set_aside(s, "guelph", 5)
         before = len(s["decks"]["guelph"]["command_deck"])
         r = ce.apply_event_effect(s, "F2", "guelph", {}, _rng())
@@ -100,7 +100,7 @@ class TestBetrayalsOrChoice:
     def test_revolt_count_splits_between_revolt_and_treachery(self):
         s = load_scenario("A", 1)
         for loc in ("Volterra", "Colle"):
-            s["locales"][loc]["siege"] = [{"side": "guelph", "color": "gold", "count": 1}]
+            s["locales"][loc]["siege"] = [{"side": "guelph", "color": "purple", "count": 1}]
         self._seed_set_aside(s, "guelph", 5)
         before = len(s["decks"]["guelph"]["command_deck"])
         r = ce.apply_event_effect(s, "F2", "guelph", {"revolt_count": 1}, _rng())
@@ -113,7 +113,7 @@ class TestBetrayalsOrChoice:
 
     def test_s2_mirrors_f2(self):
         s = load_scenario("A", 1)
-        s["locales"]["Volterra"]["siege"] = [{"side": "ghibelline", "color": "purple", "count": 1}]
+        s["locales"]["Volterra"]["siege"] = [{"side": "ghibelline", "color": "gold", "count": 1}]
         self._seed_set_aside(s, "ghibelline", 3)
         r = ce.apply_event_effect(s, "S2", "ghibelline", {}, _rng())
         assert r["sieges"] == 1

@@ -112,7 +112,7 @@ class TestConf024MultiLordStorm:
                              lord_location_override="Volterra")
         _place(s, "arezzo", "Volterra")
         s["locales"]["Volterra"]["siege"] = [
-            {"side": "guelph", "color": "gold", "count": 3}]
+            {"side": "guelph", "color": "purple", "count": 3}]
         dispatch(s, {"action": "cmd_storm", "side": "guelph",
                      "args": {"lord_id": "firenze"}})
         assert s["lords"]["arezzo"].get("flags", {}).get("moved_fought"), \
@@ -123,7 +123,7 @@ class TestConf024MultiLordStorm:
         s = _to_command_with("A", seed=1, lord_id="firenze",
                              lord_location_override="Volterra")
         s["locales"]["Volterra"]["siege"] = [
-            {"side": "guelph", "color": "gold", "count": 1}]
+            {"side": "guelph", "color": "purple", "count": 1}]
         # One doomed unit: a single Militia routs on any hit and fails Harsh
         # recovery on 2-6; give the Ghibellines Treachery cards for the trigger.
         s["lords"]["firenze"]["forces"] = {"Militia": 1}
@@ -147,7 +147,7 @@ class TestConf025ForcedFrontRefill:
         _place(s, "firenze", "Volterra")
         _place(s, "arezzo", "Volterra")
         s["locales"]["Volterra"]["siege"] = [
-            {"side": "guelph", "color": "gold", "count": 3}]
+            {"side": "guelph", "color": "purple", "count": 3}]
         s["lords"]["firenze"]["forces"] = {}          # routs at once
         s["lords"]["arezzo"]["forces"] = {"Men-at-Arms": 4, "Cavalieri": 2}
         scripted = [
@@ -366,7 +366,7 @@ class TestConf033SurrenderOptional:
                              lord_location_override="Volterra")
         _place(s, "arezzo", "Volterra")   # Town Size 2 needs 2 Besiegers
         s["locales"]["Volterra"]["siege"] = [
-            {"side": "guelph", "color": "gold", "count": 1}]
+            {"side": "guelph", "color": "purple", "count": 1}]
         dispatch(s, {"action": "cmd_siege", "side": "guelph",
                      "args": {"lord_id": "firenze", "roll_surrender": False}})
         loc = s["locales"]["Volterra"]

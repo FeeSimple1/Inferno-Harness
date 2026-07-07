@@ -45,20 +45,21 @@ class TestGrow:
 
     def test_grow_on_grow_turn_reduces_ravages(self):
         s = _to_end_campaign("A", seed=1, turn_override=2)  # Apr-May = Grow
-        # Plant 4 enemy (gold = Guelph-owned) Ravage markers on Ghibelline locales
+        # Plant 4 enemy (purple = Guelph-owned, CONF-039) Ravage markers on
+        # Ghibelline locales
         for loc_name in ("Volterra", "Asinalunga", "Cortona", "Montepulciano"):
             if loc_name in s["locales"]:
-                s["locales"][loc_name]["ravaged"] = "gold"
+                s["locales"][loc_name]["ravaged"] = "purple"
         # Pre-set VP for Guelphs reflecting 4 Ravages
         s["vp"]["guelph"] = 2.0
         # Ghibelline's Grow removes Guelph (enemy) Ravage markers: ceil(4/2) = 2 kept, 2 removed
         # Force Ghibelline to go: dispatch Guelph-grow-skip first
         # Actually flow: Guelph goes first. For Guelph, enemy = ghibelline.
-        # We planted gold = Guelph color, so for Guelph's grow, enemy_color = purple, n=0.
+        # We planted purple = Guelph color, so for Guelph's grow, enemy_color = gold, n=0.
         # Better to test from Ghibelline's perspective.
         # Guelph has no enemy ravages -> no-op
         dispatch(s, {"action": "end_grow", "side": "guelph", "args": {"keep": []}})
-        # Ghibelline now: enemy_color = "gold", n = 4. keep_count = ceil(4/2) = 2.
+        # Ghibelline now: enemy_color = "purple", n = 4. keep_count = ceil(4/2) = 2.
         kept = ["Volterra", "Asinalunga"]
         r = dispatch(s, {"action": "end_grow", "side": "ghibelline", "args": {"keep": kept}})
         assert sorted(r["state_changes"]["grow_kept"]) == sorted(kept)
@@ -94,7 +95,7 @@ class TestRepair:
         s = _to_end_campaign("A", seed=1)
         # Plant a 4-marker Siege at Volterra (Town)
         s["locales"]["Volterra"]["siege"] = [
-            {"side": "guelph", "color": "gold", "count": 4}
+            {"side": "guelph", "color": "purple", "count": 4}
         ]
         # Walk through Grow/Ransom skips
         dispatch(s, {"action": "end_grow_skip", "side": "guelph"})
@@ -113,7 +114,7 @@ class TestRepair:
         s = _to_end_campaign("A", seed=1)
         # Plant a 4-marker Siege at Vicopisano (Castle)
         s["locales"]["Vicopisano"]["siege"] = [
-            {"side": "guelph", "color": "gold", "count": 4}
+            {"side": "guelph", "color": "purple", "count": 4}
         ]
         dispatch(s, {"action": "end_grow_skip", "side": "guelph"})
         dispatch(s, {"action": "end_grow_skip", "side": "ghibelline"})

@@ -20,7 +20,7 @@ def _besieged_storm_state():
     s = _to_command_with("A", seed=1, lord_id="firenze",
                          lord_location_override="Volterra")
     s["locales"]["Volterra"]["siege"] = [
-        {"side": "guelph", "color": "gold", "count": 3}]
+        {"side": "guelph", "color": "purple", "count": 3}]
     return s
 
 
@@ -62,7 +62,7 @@ class TestStormSallyCallbackPlumbing:
         s["locales"]["Siena"]["lords_present"].append("firenze")
         f["location"] = "Siena"
         s["locales"]["Siena"]["siege"] = [
-            {"side": "guelph", "color": "gold", "count": 1}]
+            {"side": "guelph", "color": "purple", "count": 1}]
         s["lords"]["siena"].setdefault("flags", {})["in_stronghold"] = True
 
         sentinel_calls = []

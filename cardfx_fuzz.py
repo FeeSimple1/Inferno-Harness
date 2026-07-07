@@ -100,7 +100,7 @@ def _stage_storm(seed, cap_cid=None, cap_side="guelph"):
     # Guelph Firenze storms Volterra (a Town) held by Ghibelline Siena inside.
     s = _to_command_phase("A", seed=seed, lord_for_active="firenze")
     loc = "Volterra"
-    s["locales"][loc]["siege"] = [{"side": "guelph", "color": "gold", "count": 3}]
+    s["locales"][loc]["siege"] = [{"side": "guelph", "color": "purple", "count": 3}]
     att, dfn = "firenze", "siena"
     for lid in (att, dfn):
         cur = s["lords"][lid].get("location")
@@ -152,7 +152,7 @@ def _stage_sally(seed, rng, cap_cid=None, cap_side="guelph"):
             s["locales"][cur]["lords_present"].remove(lid)
         s["lords"][lid]["location"] = loc
         s["locales"][loc]["lords_present"].append(lid)
-    s["locales"][loc]["siege"] = [{"side": "guelph", "color": "gold", "count": 2}]
+    s["locales"][loc]["siege"] = [{"side": "guelph", "color": "purple", "count": 2}]
     s["lords"]["siena"].setdefault("flags", {})["in_stronghold"] = True
     s["lords"]["firenze"]["forces"] = _rand_forces(rng)
     s["lords"]["siena"]["forces"] = _rand_forces(rng)

@@ -73,7 +73,7 @@ class TestNegativeEnumeratorMuster:
         tlid, seat = "orvieto", "Orvieto"
         s["lords"][tlid]["calendar_box"] = s["calendar"]["levy_box"]  # force Ready
         loc = s["locales"][seat]
-        loc["siege"] = [{"side": "ghibelline", "color": "purple", "count": 1}]
+        loc["siege"] = [{"side": "ghibelline", "color": "gold", "count": 1}]
         # park enemy besieger
         old = s["lords"]["siena"]["location"]
         if old and "siena" in s["locales"][old]["lords_present"]:
@@ -92,7 +92,7 @@ class TestNegativeEnumeratorMuster:
         tlid, seat = "colle", "Colle"
         s["lords"][tlid]["calendar_box"] = s["calendar"]["levy_box"]
         loc = s["locales"][seat]
-        loc["siege"] = [{"side": "ghibelline", "color": "purple", "count": 1}]
+        loc["siege"] = [{"side": "ghibelline", "color": "gold", "count": 1}]
         old = s["lords"]["siena"]["location"]
         if old and "siena" in s["locales"][old]["lords_present"]:
             s["locales"][old]["lords_present"].remove("siena")

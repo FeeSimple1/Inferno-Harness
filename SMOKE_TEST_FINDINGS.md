@@ -2280,3 +2280,33 @@ Fuzzers: cardfx, robustness (ADF×2), selfplay A-F — clean.
 The engine had no cap at all. Now capped post-Capability, pre-Garrison.
 Regression test is counterfactual-verified (fails when the cap is removed).
 Tests → 757. cardfx fuzz clean.
+
+---
+
+# v6.12 — Fourth fuzz technique (illegal-state injection) + CONF-039/040/041
+
+New `state_injection_fuzz.py` (CI-wired): 28 corruption classes injected into
+real mid-game states; the invariant battery must detect each and keep passing
+clean states. Building its battery additions immediately surfaced:
+
+- **CONF-039 (HIGH)** Side-color convention inverted engine-wide vs RoP 1.1
+  (Guelph=PURPLE, Ghibelline=GOLD). Engine-generated markers self-cancelled
+  (writer+reader both inverted), but the scenario JSONs use the printed
+  convention, so setup markers were mis-read: B/C/D/E opened with the WRONG
+  scores (e.g. C 14/2 instead of the printed 10/9) and Scenario C's Maremma
+  dashed-line restriction was void from Turn 1 (setup Ravage mis-read as
+  Guelph aggression). All writers/readers flipped to physical colors;
+  enumerator mirror added for the Maremma gate.
+- **CONF-039b (MED)** Scenario C (+3 Manfredi) and E (Guelph doubling) VP
+  modifiers are LIVE tracked-score components (printed start markers prove
+  it); new `effective_vp` feeds the CtA 4-VP trigger and the renderer.
+- **CONF-040 (LOW)** Scenario E setup carried a literal "yellow" Victory
+  marker token; normalized to gold.
+- **CONF-041 (MED)** F10/S22 Closed Gates: denial of the enemy's ½VP Ruins
+  is the card's PRIMARY use; the Revolt-trade only fires "if none". Engine
+  had the priority inverted.
+
+Invariant battery grew 7 new always-on checks (cylinder/service-marker
+consistency incl. off-track lists, map-marker sanity, inside-capacity, side
+enum, duplicate lords_present, meta sanity); the cylinder check caught the
+S26 shift-off-track path mid-development. Tests → 759+8. All fuzzers clean.

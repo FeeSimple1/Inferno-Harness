@@ -45,9 +45,10 @@ class TestInitialVpFromMarkers:
                     if m.get("side") in base:
                         base[m["side"]] += m.get("value", 1)
                 if loc.get("ruins"):
-                    base["guelph" if loc["ruins"] == "gold" else "ghibelline"] += 0.5
+                    # CONF-039 physical colors: gold = Ghibelline.
+                    base["ghibelline" if loc["ruins"] == "gold" else "guelph"] += 0.5
                 if loc.get("ravaged"):
-                    base["guelph" if loc["ravaged"] == "gold" else "ghibelline"] += 0.5
+                    base["ghibelline" if loc["ravaged"] == "gold" else "guelph"] += 0.5
             base = {k: min(v, 17.5) for k, v in base.items()}
             assert s["vp"] == base, f"{scen}: vp {s['vp']} != base {base}"
 

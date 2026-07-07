@@ -31,7 +31,7 @@ class TestSallyRetreatDestinationChoice:
     def _setup(self, town="Lucca", seed=5):
         s = load_scenario("A", seed=seed)
         loc = s["locales"][town]
-        loc["siege"] = [{"side": "ghibelline", "color": "purple", "count": 2}]
+        loc["siege"] = [{"side": "ghibelline", "color": "gold", "count": 2}]
         _place(s, "firenze", town, inside=True,
                forces={"Ritter": 3, "Cavalieri": 3, "Men-at-Arms": 2})
         _place(s, "siena", town, inside=False,

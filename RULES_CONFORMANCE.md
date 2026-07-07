@@ -602,3 +602,65 @@ RULES_DECISIONS.md). Sally is a Battle (4.4) and remains uncapped. Found by
 force-testing the briefing's "6-Melee-Hits-per-Lord Storm cap" item — the
 prior arc had it listed as covered, but the check shows the rule was absent.
 Regression: counterfactual-verified (test fails with the cap removed).
+
+## v6.12 — Injection-fuzz round: CONF-039/040/041 + invariant-battery expansion
+
+Built the fourth diverse fuzz technique (`state_injection_fuzz.py`): apply a
+catalogue of 28 subtle illegal-state corruptions to real mid-game states and
+require the invariant battery to DETECT every one (and to keep passing on the
+uncorrupted states). Writing the battery's new checks immediately flushed a
+major latent defect class:
+
+### CONF-039 (FIX) — side-color convention inverted engine-wide
+RoP 1.1: "Guelphs (PURPLE) or Ghibellines (yellow-orange, hereafter 'GOLD')".
+The engine used gold=Guelph / purple=Ghibelline throughout. Engine-generated
+markers were internally consistent (writer and reader both inverted, so VP
+math cancelled), BUT the scenario setup JSONs follow the printed/physical
+convention — so every color-READING code path mis-handled setup markers:
+- Initial VP credited B/C/D/E's starting gold Ravaged/Ruins to the GUELPHS
+  (they are Ghibelline-scoring): B started 9/2 instead of the printed 6/5,
+  C 14/2 instead of 10/9, D 10/2 instead of 7/5, E 2/9 instead of 6/7.
+  All six scenarios now open at exactly their printed Victory-marker boxes
+  (regression: tests/test_v612_conf039.py-class checks in the suite).
+- Scenario C "Maremma War": the six setup gold Ravaged markers falsely
+  counted as GUELPH aggression, so the Ghibelline dashed-line restriction
+  was void from Turn 1. The gate (handler + a new enumerator mirror) now
+  reads a Guelph Ravage as PURPLE.
+- Grow ("the Enemy's Ravage markers"), Costruttori Ruins-repair VP, final-VP
+  Ruins/Ravaged buckets: all read the marker's color side correctly now.
+- All marker WRITERS flipped to physical colors (Siege/Bypass = own side's
+  color; Ravage/Ruins = opposite of printed).
+- Revolt tables are unaffected (row=gold / column=purple die is a physical
+  aid-sheet labelling, side-neutral); the digest's "(Guelph)"/"(Ghibelline)"
+  glosses on those dice are wrong and were not followed.
+
+### CONF-039b (FIX) — live scenario VP modifiers missing from the tracked score
+The printed start markers prove Scenario C's "+3 Ghibelline while S22
+Manfredi is in play" and Scenario E's "double Guelph VP except Ravaged" are
+LIVE score components (C opens gold@9 = 6 markers + 3; E opens purple@6 =
+2×2 Ruins-VP + 2 Ravage-VP), not merely end-game adjustments. New
+`effective_vp` applies them to the tracked score; used by the 3.5
+Call-to-Arms 4-VP-lag trigger and the renderer (end scoring already applied
+them via `_compute_final_vp`).
+
+### CONF-040 (FIX) — Scenario E setup data: `"yellow"` Victory marker
+`E_lasciate_ogne_speranza.json` carried the rulebook's literal "yellow"
+token for the box-7 Victory marker; normalized to "gold".
+
+### CONF-041 (FIX) — F10/S22 Closed Gates priority inverted
+Card text: "Remove 1 gold Ruins [F10; purple for S22] OR, IF NONE, remove 1
+[own-colour] Ruins where Stronghold then eligible for Revolt; it Revolts."
+PRIMARY is the DENIAL of the enemy's ½VP Ruins; the Revolt-trade fires only
+when no enemy-scoring Ruins is on the map. The engine tried the Revolt-trade
+first. Priority + regression tests fixed (new deny-takes-priority test).
+
+### Invariant battery additions (with injection-fuzz coverage proof)
+New always-on checks: calendar-cylinder consistency (incl. off_left/off_right
+cylinders — the S26 shift-off-track path validated), Service-marker
+consistency, map-marker sanity (no Siege/Bypass/Allegiance at Ruins; Outposts
+never Besieged/Ruined; Siege 1..4 with side-matching color; Allegiance
+markers one side, opposite printed, ≤ Value), Stronghold inside-capacity
+(≤ Size, none at Ruins), lord-side enum, duplicate lords_present, meta
+sanity (rng_advance ≥ 0, turn 1..16). `state_injection_fuzz.py` is wired
+into CI and the suite (tests/test_v612_injection.py); all 28 corruption
+classes are detected across scenarios/seeds, and clean states keep passing.

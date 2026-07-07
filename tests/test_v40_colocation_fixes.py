@@ -27,7 +27,7 @@ class TestMusterEligibility:
     def test_predicate_nonpodesta_blocked_at_besieged_seat(self):
         s = load_scenario("B", seed=1)
         seat = "Orvieto"
-        s["locales"][seat]["siege"] = [{"side": "ghibelline", "color": "purple", "count": 1}]
+        s["locales"][seat]["siege"] = [{"side": "ghibelline", "color": "gold", "count": 1}]
         _place(s, "siena", seat)  # enemy besieger present
         tl = s["lords"]["orvieto"]
         assert tl.get("podesta") is False
@@ -37,7 +37,7 @@ class TestMusterEligibility:
     def test_predicate_podesta_main_seat_besieged_placed_inside(self):
         s = load_scenario("B", seed=1)
         seat = "Colle"  # colle Podesta Main Seat
-        s["locales"][seat]["siege"] = [{"side": "ghibelline", "color": "purple", "count": 1}]
+        s["locales"][seat]["siege"] = [{"side": "ghibelline", "color": "gold", "count": 1}]
         _place(s, "siena", seat)
         tl = s["lords"]["colle"]
         assert tl.get("podesta") and tl["seats"][0] == seat
@@ -47,7 +47,7 @@ class TestMusterEligibility:
     def test_predicate_podesta_nonmain_besieged_blocked(self):
         s = load_scenario("B", seed=1)
         seat = "San Gimignano"  # colle's NON-main seat
-        s["locales"][seat]["siege"] = [{"side": "ghibelline", "color": "purple", "count": 1}]
+        s["locales"][seat]["siege"] = [{"side": "ghibelline", "color": "gold", "count": 1}]
         _place(s, "siena", seat)
         ok, inside, _ = sd.muster_seat_status(s, s["lords"]["colle"], seat)
         assert not ok  # Urban Army applies only at Main Seat
@@ -60,7 +60,7 @@ class TestMarkerLifecycle:
         town = next(n for n, l in s["locales"].items()
                     if l.get("type") in ("town", "city") and l.get("allegiance") == "guelph")
         loc = s["locales"][town]
-        loc["siege"] = [{"side": "ghibelline", "color": "purple", "count": 1}]
+        loc["siege"] = [{"side": "ghibelline", "color": "gold", "count": 1}]
         _place(s, "siena", town, inside=False)          # besieger outside
         _place(s, "firenze", town, inside=True)         # besieged defender inside
         dest, way = next((b, w) for (a, b, w) in
@@ -144,7 +144,7 @@ class TestCommanderArmsPlacement:
         s = load_scenario("B", seed=1)
         cmd = COMMANDER_LORD[side]; city = LEADING_CITY[side]
         s["lords"][cmd]["status"] = "on_calendar"
-        s["locales"][city]["siege"] = [{"side": "ghibelline", "color": "purple", "count": 1}]
+        s["locales"][city]["siege"] = [{"side": "ghibelline", "color": "gold", "count": 1}]
         _place(s, "siena", city, inside=False)   # enemy besieger outside
         s["meta"]["cta_substep"] = "commander_arms"
         return s, cmd, city
@@ -186,7 +186,7 @@ class TestSallyBesiegerRetreat:
     def _setup(self, town="Lucca", seed=5):
         s = load_scenario("A", seed=seed)
         loc = s["locales"][town]
-        loc["siege"] = [{"side": "ghibelline", "color": "purple", "count": 2}]
+        loc["siege"] = [{"side": "ghibelline", "color": "gold", "count": 2}]
         _place(s, "firenze", town, inside=True,
                forces={"Ritter": 3, "Cavalieri": 3, "Men-at-Arms": 2})   # sallying (wins)
         _place(s, "siena", town, inside=False,

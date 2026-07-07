@@ -12,7 +12,7 @@ def _setup(scenario, seed, stype, siege, forces):
     s = load_scenario(scenario, seed=seed)
     town = next(n for n, l in s["locales"].items() if l.get("type") == stype)
     loc = s["locales"][town]
-    loc["siege"] = [{"side": "ghibelline", "color": "purple", "count": siege}]
+    loc["siege"] = [{"side": "ghibelline", "color": "gold", "count": siege}]
     lid = "siena"
     old = s["lords"][lid]["location"]
     if old and lid in s["locales"].get(old, {}).get("lords_present", []):
