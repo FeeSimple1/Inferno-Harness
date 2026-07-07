@@ -2310,3 +2310,14 @@ Invariant battery grew 7 new always-on checks (cylinder/service-marker
 consistency incl. off-track lists, map-marker sanity, inside-capacity, side
 enum, duplicate lords_present, meta sanity); the cylinder check caught the
 S26 shift-off-track path mid-development. Tests → 759+8. All fuzzers clean.
+
+---
+
+# v6.13 — Enumeration re-check + stale-flag class + Storm Select surfacing
+
+59/59 handlers menu-reachable (cmd_depart = alias of March-from-Bypass, now
+with correct flag hygiene). New bypassing-flag invariant + robustness fuzz
+caught two stale-flag paths: March-out kept `bypassing`; At-Service-Limit
+Disband kept ALL transient flags (phantom-Bypassing on re-Muster). Storm
+Select-Target choice surfaced (armored-first constrained). Tests 766 passing;
+selfplay/cardfx/robustness/injection fuzzers clean.

@@ -239,6 +239,15 @@ def c_overstuffed_stronghold(s):
                 return f"2 Lords inside Size-1 {lord['location']}"
     return None
 
+def c_stale_bypassing_flag(s):
+    for lid in _mustered(s):
+        lord = s["lords"][lid]
+        other = next((n for n in s["locales"] if n != lord["location"]), None)
+        if other:
+            lord.setdefault("flags", {})["bypassing"] = other
+            return f"{lid} flagged bypassing a Locale he is not at"
+    return None
+
 def c_rng_negative(s):
     s["meta"]["rng_advance"] = -3
     return "rng_advance = -3"
@@ -263,6 +272,7 @@ CORRUPTIONS = [
     c_siege_on_ruins, c_siege_count_overflow, c_siege_color_mismatch,
     c_allegiance_own_printed, c_allegiance_overstack,
     c_inside_at_ruins, c_overstuffed_stronghold,
+    c_stale_bypassing_flag,
     c_rng_negative, c_bad_side, c_bad_turn,
 ]
 

@@ -664,3 +664,24 @@ markers one side, opposite printed, ≤ Value), Stronghold inside-capacity
 sanity (rng_advance ≥ 0, turn 1..16). `state_injection_fuzz.py` is wired
 into CI and the suite (tests/test_v612_injection.py); all 28 corruption
 classes are detected across scenarios/seeds, and clean states keep passing.
+
+## v6.13 — Under-enumeration re-check + Storm Select surfacing + stale-flag class
+
+- **Handler reachability**: 59/59 handlers menu-reachable. `cmd_depart` is a
+  redundant alias — 4.3.6 DEPART is fully expressible as an ordinary
+  `cmd_march` by a Bypassing Lord, which now also sheds the `bypassing` flag
+  and sweeps the freed marker (verified end-to-end).
+- **Storm Defender Select-Target surfaced** (open item from v6.9): the
+  striking side's Select-Target unit choice now flows through the decision
+  channel in Storm too, constrained Armored-before-Unarmored vs the Storm
+  Attacker ("regardless of who is choosing what", 4.5.2) — enforced inside
+  `_absorb_hits` for every choosing channel.
+- **Stale-flag defect class closed** (found by the new
+  `assert_bypassing_flag_consistency` invariant + robustness fuzz): (a) a
+  Bypassing Lord who Marched away kept `flags.bypassing` (exempting him from
+  the co-location invariant forever); (b) an At-Service-Limit Disband
+  (`_disband_at_service_limit`) preserved ALL transient flags, so a
+  re-Mustered Lord could return phantom-Bypassing/phantom-inside. March now
+  clears both movement flags; At-Service-Limit Disband clears the flag dict
+  (Beyond-Service already did). Injection corruption
+  `c_stale_bypassing_flag` pins battery coverage.

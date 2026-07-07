@@ -14,7 +14,7 @@ exposes a structured interface (`new`, `state`, `legal-moves`, `do`,
 This is a private project. See [`BRIEF.md`](BRIEF.md) for the
 authoring spec.
 
-## Status — v6.12
+## Status — v6.13
 
 CI: hosted GitHub Actions (`.github/workflows/ci.yml`) runs the full suite +
 six-scenario self-play smoke on every push/PR. `bash scripts/ci.sh` (or

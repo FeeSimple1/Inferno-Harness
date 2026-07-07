@@ -521,6 +521,14 @@ def _absorb_hits(state, lord_id: str, n_hits: int, rng_caller,
                 present = [u for u in order if forces.get(u, 0) > 0]
             if not present:
                 return False
+        # 4.5.2 STORM ATTACK: "Hits against a side Attacking in Storm must
+        # select Armored before Unarmored units, REGARDLESS of who is choosing
+        # what" — while any Armored unit remains, only Armored are choosable.
+        if armored_first:
+            armored = [u for u in present
+                       if len(sd.UNITS.get(u, {}).get("protection", [])) >= 2]
+            if armored:
+                present = armored
         # Whoever the rules grant the choice may pick which present unit absorbs
         # (Battle&Storm 10.2). Default = order[0]; opt-in via bdc. choose_by:
         #   "owner"   -> defender/owner picks a non-select Hit's unit.
@@ -1865,9 +1873,13 @@ def _resolve_storm_step(state, step, positions, reserve, conceded,
             cb_sel_n -= u_sel
             cb_nosel_n = max(0, min(cb_nosel_n - max(0, used - u_sel), n_hits - cb_sel_n))
         if n_hits > 0 and target_id is not None:
+            # Surface the striking side's Select-Target unit choice for its
+            # selecting Crossbow Hits (4.4.2 / 4.5.2). Vs the Storm ATTACKER
+            # the choice is constrained Armored-before-Unarmored ("regardless
+            # of who is choosing what") — enforced inside _absorb_hits.
             _absorb_hits(state, target_id, int(n_hits), rng_roll, hit_log, routed_per_lord,
                          crossbow_hits=int(cb_sel_n), crossbow_noselect_hits=int(cb_nosel_n),
-                         bdc=bdc,
+                         bdc=bdc, allow_striker_select=True,
                          armored_first=(target_side == "attacker"))
             if _all_units_routed(state["lords"][target_id]):
                 removed_lords.add(target_id)

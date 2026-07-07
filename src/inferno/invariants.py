@@ -268,6 +268,21 @@ def assert_stronghold_inside_capacity(s):
             f"{name} (Size {size}) has {len(inside)} Lords inside: {inside}"
 
 
+def assert_bypassing_flag_consistency(s):
+    """A Lord flagged `bypassing = L` must actually be a Mustered Lord AT L,
+    and L must bear a Bypass marker. A stale flag (e.g. left behind by a
+    March-out) silently exempts its Lord from the co-location invariant."""
+    for lid, lord in s["lords"].items():
+        bl = (lord.get("flags") or {}).get("bypassing")
+        if not bl:
+            continue
+        assert lord.get("status") == "mustered" and lord.get("location") == bl, \
+            (f"{lid} flagged bypassing={bl!r} but status="
+             f"{lord.get('status')!r} location={lord.get('location')!r}")
+        loc = s["locales"].get(bl) or {}
+        assert loc.get("bypass"), f"{lid} bypassing {bl} but no Bypass marker there"
+
+
 def assert_meta_sanity(s):
     meta = s.get("meta", {})
     ra = meta.get("rng_advance", 0)
@@ -296,6 +311,7 @@ def check_all_invariants(s):
     assert_service_marker_consistency(s)
     assert_locale_marker_sanity(s)
     assert_stronghold_inside_capacity(s)
+    assert_bypassing_flag_consistency(s)
     assert_meta_sanity(s)
 
 

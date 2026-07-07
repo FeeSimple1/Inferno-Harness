@@ -744,6 +744,10 @@ def _disband_at_service_limit(state, lid: str, levy_box: int) -> None:
     lord["assets"] = {}
     lord["vassals"] = []
     lord["location"] = None
+    # Clear transient flags (bypassing/in_stronghold/moved_fought ...) — an
+    # At-Service-Limit Disband previously left them, so a re-Mustered Lord
+    # could return phantom-Bypassing (exempt from the co-location invariant).
+    lord["flags"] = {}
     # Cylinder placed S boxes right of current Turn.
     sr = lord.get("ratings", {}).get("S", 0)
     new_box = min(levy_box + sr, 16)
@@ -2621,6 +2625,10 @@ def _h_cmd_march(state, side, args, rng) -> dict[str, Any]:
         # previously misclassified a later Approach by this Lord as a Relief
         # Sally (surfaced by selfplay D/2 after CONF-037).
         ml["flags"].pop("in_stronghold", None)
+        # Likewise a BYPASSING Lord who Departs (4.3.6) sheds the flag; if he
+        # was the last Bypasser the marker sweep below lifts the marker. A
+        # stale flag here would exempt him from the co-location invariant.
+        _was_bypassing = ml["flags"].pop("bypassing", None)
     state["actions_remaining"] -= cost
     # SMOKE-Inferno-088: marching out may free a Besieged/Bypassed Stronghold at
     # the source Locale (4.3.5) -- sweep stale Siege/Bypass markers there.
