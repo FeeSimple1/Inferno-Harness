@@ -102,7 +102,7 @@ def _candidate_in_context(state, side, cid, args):
         if state["meta"].get("phase") != "levy":
             return False
         if state["meta"].get("levy_step") != "3.4" and not (
-                state["meta"].get("levy_step") == "3.5" and state["meta"].get("cta_substep") == "allies"):
+                state["meta"].get("levy_step") == "3.5" and state["meta"].get("cta_substep") in ("allies", "allies_muster")):
             return False
         if args.get("target") and state["lords"][args["target"]].get("status") != "mustered":
             return False

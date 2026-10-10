@@ -229,3 +229,26 @@ Muster action limits include printed Lordship, applicable Capability bonuses,
 and Event grants. Segment-only Held Event grants expire after that segment;
 This-Levy grants remain for Call to Arms and expire before Campaign. The menu
 uses the same allowance calculation as the action handler.
+
+## Long-scenario Call to Arms and Game End corrections
+
+`cta_allies` with `mode="extra_muster"` now parks on `meta.cta_substep="allies_muster"`
+and records `meta.cta_extra_muster_lord`. The active side retains the turn. Use
+`levy_muster_lord`, `levy_muster_vassal`, `levy_muster_transport`, and
+`levy_muster_capability` for that Lord only. End with `levy_muster_done` (or
+`cta_step_skip`), then the next side's Gather begins. The selected Lord must be
+eligible per 3.4; the Commander is eligible for extra Muster, but not auto-Muster.
+
+`cta_comune_setup` initializes starting assets only for a fresh Comune. On an
+existing mat it adds only requested, previously unmustered Special Vassals;
+requesting already-mustered names does not duplicate their forces. Empty/default
+arguments on an existing mat leave its troops/assets intact. The legal menu
+exposes possible new Special Vassal combinations. A captured Carroccio stays
+captured even after recall and remustering.
+
+`cta_gather_march` moves the Commander with his compulsory Comune and does not
+permit an independent Comune move. No Moved/Feed charge is added. Call to Arms
+cannot be redeclared or bypassed with `levy_cta_skip` while its substeps are active.
+
+At turn 16, `end_game_check` ends the game without requiring Repair/Waste/Reset.
+Once terminal, the menu is empty and action submissions raise `GAME_OVER`.

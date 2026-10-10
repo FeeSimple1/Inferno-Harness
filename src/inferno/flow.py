@@ -69,6 +69,7 @@ def advance_to_next_side_or_step(state: dict[str, Any]) -> None:
                 lord.get("flags", {}).pop("lordship_used", None)
                 lord.get("flags", {}).pop("just_mustered_this_segment", None)
     else:
+        state.pop("war_declared_this_levy", None)
         # This-Levy Lordship grants must not recur at every later Muster.
         for lord in state["lords"].values():
             lord.get("flags", {}).pop("lordship_bonus_pending", None)
@@ -92,6 +93,7 @@ def advance_campaign_step(state: dict[str, Any]) -> None:
     else:
         # End of Campaign: Phase 3a stops here. Phase 3c+ implements 4.9 in full.
         # For now, advance Calendar and re-enter Levy for the next turn.
+        state.pop("war_declared_this_levy", None)
         cal = state["calendar"]
         cur_box = cal["levy_box"]
         # Remove "levy" marker from current box

@@ -38,6 +38,10 @@ def build_briefing(state: dict[str, Any], side: str,
                + (f"/{meta.get('levy_step')}" if meta.get('levy_step') else "")
                + (f"/{meta.get('campaign_step')}" if meta.get('campaign_step') else "")
                + f"  Active: {meta.get('active_player')}")
+    if meta.get("cta_active"):
+        out.append(f"Call to Arms: {meta.get('cta_substep')}"
+                   + (f" — extra Muster for {meta['cta_extra_muster_lord']}"
+                      if meta.get("cta_extra_muster_lord") else ""))
     out.append(f"VP  Guelph={filtered['vp'].get('guelph', 0)}  "
                f"Ghibelline={filtered['vp'].get('ghibelline', 0)}")
     cal = filtered["calendar"]
