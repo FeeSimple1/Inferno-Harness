@@ -452,8 +452,9 @@ TREACHERY_CARDS = {
     "treachery_lucca": {"lord_id": "lucca", "kind": "treachery"},
 }
 
-# Command cards — one per non-Comune Lord, command rating on the
-# Lord mat in static_data.
+# Command IDs identify card types, not individual physical copies. Each
+# non-Comune Lord has three action cards (4.1.1); rating is on the Lord mat.
+COMMAND_COPIES_PER_LORD = 3
 COMMAND_CARDS = {
     "command_pisa": {"lord_id": "pisa", "kind": "command"},
     "command_astimberg": {"lord_id": "astimberg", "kind": "command"},

@@ -310,8 +310,9 @@ def _init_decks(scenario_data: dict[str, Any]) -> dict[str, DeckState]:
     AoW draw step pulls from this list (we shuffle on use, not on load,
     so the seed determines draw order).
 
-    Command deck: 6 Command card IDs (one per non-Comune Lord on that
-    side). The 6 Treachery cards start in treachery_set_aside and enter
+    Command deck: 6 Command card TYPE IDs (one per non-Comune Lord on that
+    side), each representing three physical copies per 4.1.1. The 6
+    Treachery cards start in treachery_set_aside and enter
     the Command deck only via Revolt triggers (1.4.3).
 
     Held events: the scenario may pre-deal Held Events (e.g., F3

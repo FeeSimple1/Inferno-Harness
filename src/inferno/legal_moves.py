@@ -26,6 +26,7 @@ from __future__ import annotations
 from typing import Any
 
 from . import static_data as sd
+from . import card_data as cd
 from .flow import current_campaign_step, current_side, current_step
 
 
@@ -596,9 +597,11 @@ def _enum_plan(state, side) -> list[dict[str, Any]]:
             "description": "Add Pass card to Plan.",
             "rule_citation": "4.1.1",
         })
-        # Offer each Command card in deck not already in plan
-        for cid in state["decks"][side]["command_deck"]:
-            if stack.count(cid) == 0:
+        # Command IDs represent three physical copies; Treachery IDs one.
+        # De-duplicate IDs defensively so the menu contains each choice once.
+        for cid in dict.fromkeys(state["decks"][side]["command_deck"]):
+            limit = cd.COMMAND_COPIES_PER_LORD if cid.startswith("command_") else 1
+            if stack.count(cid) < limit:
                 kind = "Treachery" if cid.startswith("treachery_") else "Command"
                 moves.append({
                     "action": "plan_add_card", "side": side,
