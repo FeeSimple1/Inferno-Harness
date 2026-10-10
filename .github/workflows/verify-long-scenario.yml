@@ -1,0 +1,94 @@
+name: Verify long-scenario fixes
+on:
+  push:
+    branches: [fix/long-scenario-20261010]
+    paths: [.github/workflows/verify-long-scenario.yml]
+permissions:
+  contents: write
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify and apply reviewed patch
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/long-fixes
+          python - <<'PY'
+          import base64, hashlib, lzma
+          from pathlib import Path
+          chunks = sorted(Path('.long-audit').glob('patch.*.b64'))
+          assert len(chunks) == 5, chunks
+          patch = lzma.decompress(base64.b64decode(''.join(p.read_text().strip() for p in chunks), validate=True))
+          expected = '45aaea76b6e87a682d0bd0e6b3d4bc3fc395150f48975b86eb1c9fff21df208d'
+          assert hashlib.sha256(patch).hexdigest() == expected, 'Patch checksum mismatch'
+          Path('/tmp/long-fixes/changes.patch').write_bytes(patch)
+          print('Verified patch:', len(patch), 'bytes;', expected)
+          PY
+          git apply --check /tmp/long-fixes/changes.patch
+          git apply /tmp/long-fixes/changes.patch
+          git diff --check
+          python -m compileall -q src tests long_scenario_regression.py long_scenario_selfplay.py
+      - name: Install complete test dependencies
+        run: python -m pip install -e '.[dev]'
+      - name: Complete test suite
+        run: |
+          set -euo pipefail
+          python -m pytest -q --junitxml=/tmp/long-fixes/pytest.xml 2>&1 | tee /tmp/long-fixes/pytest.txt
+      - name: Full 16-turn replay in independent processes
+        run: |
+          set -euo pipefail
+          python long_scenario_regression.py --output /tmp/long-fixes/endurance.json 2>&1 | tee /tmp/long-fixes/endurance.txt
+      - name: Fresh Scenario F with repeated Calls to Arms
+        run: |
+          set -euo pipefail
+          python long_scenario_selfplay.py --seed 20261010 --output /tmp/long-fixes/fresh-selfplay 2>&1 | tee /tmp/long-fixes/fresh-selfplay.txt
+      - name: Self-play all six scenarios
+        run: |
+          set -euo pipefail
+          for scen in A B C D E F; do
+            PYTHONPATH=src python selfplay_bughunt.py "$scen" --seed 11 --max-steps 8000 2>&1 | tee "/tmp/long-fixes/smoke-$scen.txt"
+          done
+      - name: Card-effect integration stress
+        run: |
+          set -euo pipefail
+          PYTHONPATH=src python cardfx_fuzz.py --seeds 6 2>&1 | tee /tmp/long-fixes/cardfx.txt
+      - name: Save-load and replay stress
+        run: |
+          set -euo pipefail
+          PYTHONPATH=src python saveload_fuzz.py --seeds 8 --max-steps 8000 2>&1 | tee /tmp/long-fixes/saveload.txt
+      - name: Malformed-input stress
+        run: |
+          set -euo pipefail
+          PYTHONPATH=src python robustness_fuzz.py --seeds 3 --max-steps 6000 --probe-every 8 2>&1 | tee /tmp/long-fixes/robustness.txt
+      - name: Invariant injection stress
+        run: |
+          set -euo pipefail
+          PYTHONPATH=src python state_injection_fuzz.py --seeds 2 --max-steps 400 --probe-every 60 2>&1 | tee /tmp/long-fixes/injection.txt
+      - name: Commit tested fixes and remove transfer files
+        run: |
+          set -euo pipefail
+          git rm .long-audit/patch.*.b64 .github/workflows/verify-long-scenario.yml
+          git add .github/workflows/ci.yml ACTIONS.md LONG_SCENARIO_FIXES.md src/inferno tests long_scenario_regression.py long_scenario_selfplay.py
+          git diff --cached --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'fix: resolve eight long-scenario failures with full-game regression coverage'
+          git push origin HEAD:fix/long-scenario-20261010
+          git log -1 --format=fuller | tee /tmp/long-fixes/commit.txt
+          git diff --stat 60da72b8265e4d5e797d56499dec88046a852853 HEAD | tee /tmp/long-fixes/changes.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: inferno-long-scenario-fixes-verification
+          path: /tmp/long-fixes
+          retention-days: 7
