@@ -29,36 +29,24 @@ class ActionResult:
     rejected: list[tuple[dict[str, Any], str]] = field(default_factory=list)
 
 
-# Phase-appropriate safe fallback actions. Each entry returns an action
-# dict that's always legal in the corresponding phase/step combination.
-SAFE_FALLBACKS = {
-    ("levy", "3.1"): lambda side: {"action": "levy_aow_draw", "side": side},
-    ("levy", "3.2"): lambda side: {"action": "levy_pay_done", "side": side},
-    ("levy", "3.3"): lambda side: {"action": "levy_disband_done", "side": side},
-    ("levy", "3.4"): lambda side: {"action": "levy_muster_done", "side": side},
-    ("levy", "3.5"): lambda side: {"action": "levy_cta_skip", "side": side},
-    ("campaign", "capability_discard"): lambda side: {"action": "campaign_discard_done", "side": side},
-    ("campaign", "plan"): lambda side: {"action": "plan_add_card", "side": side,
-                                        "args": {"card_id": "PASS"}},
-    ("campaign", "command_phase"): lambda side: {"action": "command_reveal", "side": side},
-    ("campaign", "end_campaign"): lambda side: {"action": "end_grow_skip", "side": side},
-}
-
-
 def safe_fallback_for(state: dict[str, Any]) -> dict[str, Any] | None:
-    """Pick a safe phase-appropriate fallback action for the current side."""
-    phase = state["meta"].get("phase")
-    side = state["meta"].get("active_player")
-    if phase == "levy":
-        key = ("levy", state["meta"].get("levy_step"))
-    elif phase == "campaign":
-        key = ("campaign", state["meta"].get("campaign_step"))
-    else:
+    """Pick from the actual menu, including the owner of a pending decision."""
+    moves = [m for m in enumerate_legal(state) if not m.get("action", "").startswith("<")]
+    if not moves:
         return None
-    fn = SAFE_FALLBACKS.get(key)
-    if fn is None:
-        return None
-    return fn(side)
+    # Decline optional actions / finish a filled plan before adding anything.
+    preferred = ("cmd_fpd_pay_done", "plan_done", "cmd_end_card", "levy_pay_done",
+                 "levy_disband", "levy_disband_done", "levy_muster_done",
+                 "campaign_discard_done", "levy_cta_skip", "end_grow_skip")
+    for name in preferred:
+        for move in moves:
+            if move["action"] == name:
+                return {k: move[k] for k in ("action", "side", "args") if k in move}
+    for move in moves:
+        if move["action"] == "plan_add_card" and move.get("args", {}).get("card_id") == "PASS":
+            return {k: move[k] for k in ("action", "side", "args") if k in move}
+    move = moves[0]
+    return {k: move[k] for k in ("action", "side", "args") if k in move}
 
 
 def play_with_callback(

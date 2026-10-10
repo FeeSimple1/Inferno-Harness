@@ -105,7 +105,10 @@ class TestFullCtA:
 class TestGroupMarch:
     def test_group_march_moves_all_members(self):
         s = _to_command_phase("D", seed=1)
-        # In D: Arezzo + Orvieto both at Arezzo
+        # In D: Arezzo + Orvieto both at Arezzo. A non-Commander needs
+        # a Lieutenant/Lower-Lord pairing to lead the other Lord (4.1.3).
+        s["lords"]["arezzo"]["flags"]["has_lower_lord"] = "orvieto"
+        s["lords"]["orvieto"]["flags"]["lower_lord_of"] = "arezzo"
         s["plan_stacks"]["guelph"].insert(0, "command_arezzo")
         dispatch(s, {"action": "command_reveal", "side": "guelph"})
         # Arezzo + Orvieto march together to Bibbiena (road, adjacent to Arezzo)

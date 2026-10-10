@@ -328,26 +328,25 @@ def _slide_marker(state, lid, list_key, new_box, field) -> None:
 
 
 def apply_exiles(state: dict, side: str, slides: list[dict[str, Any]]) -> dict[str, Any]:
-    """Apply the losing side's chosen Exiles slides (1.4.4): cylinders one
-    box LEFT, Service markers one box RIGHT, each slide = one box. `slides`
-    is a list of {"lord_id","kind"} chosen by that side (count must equal
-    the markers placed/removed, but we apply what is supplied)."""
+    """One box per choice, including shifts OFF the Calendar (1.4.4)."""
+    from .card_effects import _shift_cylinder_left, _shift_service_right
     applied = []
     for sl in slides:
-        lid = sl.get("lord_id")
-        kind = sl.get("kind")
-        lord = state["lords"].get(lid)
-        if not lord or lord.get("side") != side:
-            continue
-        # SMOKE-Inferno-070: move the marker AND keep the calendar's
-        # cylinders/services lists consistent (this previously changed only the
-        # *_box field, leaving a stale entry in the old box).
-        if kind == "cylinder" and lord.get("calendar_box") is not None:
-            _slide_marker(state, lid, "cylinders", max(1, lord["calendar_box"] - 1), "calendar_box")
-            applied.append({"lord_id": lid, "kind": "cylinder", "to": lord["calendar_box"]})
-        elif kind == "service" and lord.get("service_box") is not None:
-            _slide_marker(state, lid, "services", min(16, lord["service_box"] + 1), "service_box")
-            applied.append({"lord_id": lid, "kind": "service", "to": lord["service_box"]})
+        if not isinstance(sl, dict):
+            raise ValueError("Each Exiles choice must be an object.")
+        lid, kind = sl.get("lord_id"), sl.get("kind")
+        if not isinstance(lid, str) or not any(
+                c["lord_id"] == lid and c["kind"] == kind
+                for c in legal_exiles_targets(state, side)):
+            raise ValueError(f"Invalid Exiles marker: {lid!r} / {kind!r}.")
+        if kind == "cylinder":
+            new = _shift_cylinder_left(state, lid)
+            edge = "off_left"
+        else:
+            new = _shift_service_right(state, lid)
+            edge = "off_right_service"
+        applied.append({"lord_id": lid, "kind": kind, "to": new,
+                        **({"off_calendar": edge} if new is None else {})})
     return {"applied_exiles": applied}
 
 

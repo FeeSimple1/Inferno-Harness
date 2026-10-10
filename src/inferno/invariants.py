@@ -123,10 +123,14 @@ def aow_card_total(s, side):
                 c[cid] += 1
     # A4: a This-Lord Capability awaiting its placement choice is still in play.
     for pnd in (s.get("pending", []) or []):
-        if pnd.get("type") == "capability_placement" and pnd.get("side") == side:
+        if pnd.get("type") in ("capability_placement", "event_resolution") and pnd.get("side") == side:
             cid = pnd.get("card_id")
             if isinstance(cid, str):
                 c[cid] += 1
+    queue = s.get("aow_resolution", {})
+    if queue.get("side") == side:
+        for entry in queue.get("remaining", []):
+            c[entry["card_id"]] += 1
     pfx = "F" if side == "guelph" else "S"
     return sum(n for x, n in c.items()
                if isinstance(x, str) and x[:1] == pfx and x[1:].isdigit())

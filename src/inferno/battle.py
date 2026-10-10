@@ -394,6 +394,7 @@ def _resolve_step(state, step: str, positions, reserve, conceded: str | None,
 
     # For each potential target slot, compute total Hits aimed at the Lord there
     # from (a) directly-opposed striker, (b) Flanking strikers.
+    per_target_sources: dict[str, list[str]] = {s: [] for s in SLOTS}
     per_target_hits: dict[str, float] = {s: 0.0 for s in SLOTS}
     per_target_cb_sel: dict[str, float] = {s: 0.0 for s in SLOTS}
     per_target_cb_nosel: dict[str, float] = {s: 0.0 for s in SLOTS}
@@ -415,6 +416,8 @@ def _resolve_step(state, step: str, positions, reserve, conceded: str | None,
         # Flanking? If yes, target is the flank target; else direct opposite.
         opposite_slot = slot
         if positions[target_side][slot] is not None:
+            if h > 0:
+                per_target_sources[opposite_slot].append(slot)
             per_target_hits[opposite_slot] = per_target_hits.get(opposite_slot, 0) + h
             per_target_cb_sel[opposite_slot] = per_target_cb_sel.get(opposite_slot, 0) + cb_s
             per_target_cb_nosel[opposite_slot] = per_target_cb_nosel.get(opposite_slot, 0) + cb_n
@@ -422,6 +425,8 @@ def _resolve_step(state, step: str, positions, reserve, conceded: str | None,
             # Find flank entry
             for my_slot, target_slot in flanks[striking_side]:
                 if my_slot == slot:
+                    if h > 0:
+                        per_target_sources[target_slot].append(slot)
                     per_target_hits[target_slot] = per_target_hits.get(target_slot, 0) + h
                     per_target_cb_sel[target_slot] = per_target_cb_sel.get(target_slot, 0) + cb_s
                     per_target_cb_nosel[target_slot] = per_target_cb_nosel.get(target_slot, 0) + cb_n
@@ -449,9 +454,6 @@ def _resolve_step(state, step: str, positions, reserve, conceded: str | None,
     for slot, n_hits in per_target_hits.items():
         if n_hits <= 0:
             continue
-        target_id = positions[target_side][slot]
-        if target_id is None:
-            continue
         cb_total = min(math.ceil(per_target_cb_sel.get(slot, 0)
                                  + per_target_cb_nosel.get(slot, 0)), n_hits)
         cb_sel_n = min(math.ceil(per_target_cb_sel.get(slot, 0)), cb_total)
@@ -465,22 +467,45 @@ def _resolve_step(state, step: str, positions, reserve, conceded: str | None,
             if n_hits <= 0:
                 continue
         sel_n = (int(n_hits) - int(cb_sel_n) - int(cb_nosel_n)) if select_target else 0
-        _absorb_hits(state, target_id, int(n_hits), rng_caller, hit_log, routed_per_lord,
-                     crossbow_hits=int(cb_sel_n), crossbow_noselect_hits=int(cb_nosel_n),
-                     select_hits=int(sel_n), bdc=bdc,
-                     allow_striker_select=True)
-        # Check if target lord routs entirely
-        if _all_units_routed(state["lords"][target_id]):
-            removed_lords.add(target_id)
-            positions[target_side][slot] = None
+        remaining = {"n_hits": int(n_hits), "crossbow_hits": int(cb_sel_n),
+                     "crossbow_noselect_hits": int(cb_nosel_n), "select_hits": int(sel_n)}
+        target_slot = slot
+        while remaining["n_hits"]:
+            if positions[target_side][target_slot] is None:
+                # 4.4.2: a Rout creates a NEW Flanking situation. Retarget
+                # already-generated Hits, preserving their Crossbow/Select
+                # properties; do not generate or round Strikes a second time.
+                new_flanks = dict(_flanking_relationships(positions, bdc)[striking_side])
+                choices = []
+                for source in per_target_sources[slot]:
+                    candidate = source if positions[target_side][source] else new_flanks.get(source)
+                    if candidate is not None and candidate not in choices:
+                        choices.append(candidate)
+                if not choices:
+                    break
+                target_slot = choices[0]
+                if len(choices) > 1 and bdc is not None:
+                    target_slot = bdc.decide_optional(
+                        "flanker_target", striking_side, options=choices,
+                        default=choices[0], info={"remaining_hits": remaining["n_hits"]})
+            target_id = positions[target_side][target_slot]
+            remaining = _absorb_hits(
+                state, target_id, rng_caller=rng_caller, hit_log=hit_log,
+                routed_per_lord=routed_per_lord, bdc=bdc,
+                allow_striker_select=True, **remaining)
+            if _all_units_routed(state["lords"][target_id]):
+                removed_lords.add(target_id)
+                positions[target_side][target_slot] = None
+            else:
+                break
 
 
 def _absorb_hits(state, lord_id: str, n_hits: int, rng_caller,
                  hit_log: list, routed_per_lord: dict,
                  crossbow_hits: int = 0, armor_penalty: int = 2,
                  select_hits: int = 0, crossbow_noselect_hits: int = 0, bdc=None,
-                 armored_first: bool = False, allow_striker_select: bool = False) -> None:
-    """Apply n_hits to lord_id's units.
+                 armored_first: bool = False, allow_striker_select: bool = False) -> dict[str, int]:
+    """Apply Hits and return any unabsorbed Hits, retaining their categories.
 
     SMOKE-Inferno-074: `crossbow_hits` of the incoming Hits are CROSSBOW hits
     (Armigieri/Balestrieri, Men-at-Arms/Balestre Grosse, garrison foot). Per the
@@ -551,7 +576,12 @@ def _absorb_hits(state, lord_id: str, n_hits: int, rng_caller,
             hit_log.append({"lord_id": lord_id, "unit": "Villici", "removed": True})
             return True
         u = sd.UNITS[unit]
-        prot = u.get("protection", [])
+        prot = list(u.get("protection", []))
+        if (unit == "Armigieri" and routed.get("Armigieri", 0) < 3
+                and _lord_has_capability(state, lord_id, "Palvesari")):
+            # F13-F15: +2 Armor to this Lord's Armigieri. Apply BEFORE
+            # any Crossbow penalty; never mutate the inherent Forces table.
+            prot = list(range(1, min(6, len(prot) + 2) + 1))
         # Crossbow -2 Armor has a MIN of 1 (Battle&Storm 10.3): a unit always
         # rolls vs at least Armor 1, so never auto-removed by the -2 alone.
         eff = prot[:max(1, len(prot) - penalty)] if penalty else prot
@@ -582,18 +612,22 @@ def _absorb_hits(state, lord_id: str, n_hits: int, rng_caller,
     # else the owner's choice (default cheap-first).
     normal_order = ARMORED_FIRST if armored_first else NORMAL_ORDER
     owner_choice = None if armored_first else "owner"
-    for _ in range(cb):
-        if not _absorb_one(CROSSBOW_ORDER, armor_penalty, choose_by=striker_choice):
-            break
-    for _ in range(sel):
-        if not _absorb_one(CROSSBOW_ORDER, 0, choose_by=striker_choice):
-            break
-    for _ in range(cb_nosel):
-        if not _absorb_one(normal_order, armor_penalty, choose_by=owner_choice):
-            break
-    for _ in range(n_hits - cb - sel - cb_nosel):
-        if not _absorb_one(normal_order, 0, choose_by=owner_choice):
-            break
+    remaining = {"crossbow_hits": cb, "select_hits": sel,
+                 "crossbow_noselect_hits": cb_nosel,
+                 "normal_hits": n_hits - cb - sel - cb_nosel}
+    for key, order, penalty, chooser in (
+        ("crossbow_hits", CROSSBOW_ORDER, armor_penalty, striker_choice),
+        ("select_hits", CROSSBOW_ORDER, 0, striker_choice),
+        ("crossbow_noselect_hits", normal_order, armor_penalty, owner_choice),
+        ("normal_hits", normal_order, 0, owner_choice),
+    ):
+        for _ in range(remaining[key]):
+            if not _absorb_one(order, penalty, choose_by=chooser):
+                break
+            remaining[key] -= 1
+    remaining["n_hits"] = sum(remaining.values())
+    remaining.pop("normal_hits")
+    return remaining
 
 
 def _all_units_routed(lord: dict) -> bool:
@@ -1492,7 +1526,9 @@ def resolve_storm(state, attackers: list[str], defenders: list[str],
             )
             if choice == "yes":
                 conceded = "attacker"
-                round_log["concede"] = "attacker"
+                # 4.5.2: unlike Battle pursuit, Storm stops IMMEDIATELY.
+                # No Reposition, Strikes, or additional completed Round.
+                break
 
         # Storm Reposition (Round >= 2): each side MAY add ONE Lord from
         # Reserve to Front, capped at Stronghold Size (Castle=1).

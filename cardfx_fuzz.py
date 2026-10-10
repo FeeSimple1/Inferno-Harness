@@ -73,6 +73,10 @@ def _deploy_capability(state, cid, side, lord_id):
     for pool in ("aow_deck", "aow_held", "aow_discard"):
         while cid in d.get(pool, []):
             d[pool].remove(cid)
+    # Scenario A also draws an Event on its first Levy. An unbiased draw can
+    # put this same card in a duration zone; move it, do not duplicate it.
+    for kind, events in state.get("active_events", {}).items():
+        state["active_events"][kind] = [e for e in events if e.get("id") != cid]
     # also clear any stray copies so we add exactly one
     for l in state["lords"].values():
         while cid in (l.get("capabilities") or []):

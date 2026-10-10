@@ -311,7 +311,7 @@ class TestMuster:
         before = len(s["decks"]["guelph"]["aow_deck"])
         dispatch(s, {
             "action": "levy_muster_capability", "side": "guelph",
-            "args": {"lord_id": "firenze", "scope": "side_wide"},
+            "args": {"lord_id": "firenze"},
         })
         assert len(s["decks"]["guelph"]["aow_deck"]) == before - 1
 
@@ -390,7 +390,10 @@ class TestFullLevyWalkthrough:
         # AoW draw rolls 2 indices
         last = s["history"][-1]
         assert last["action"] == "levy_aow_draw"
-        assert len(last["rolls"]) == 2
+        # A full-deck index takes multiple d6 digits (plus any rejections).
+        assert len(last["rolls"]) >= 4
+        assert all(1 <= r["value"] <= 6 for r in last["rolls"])
+        assert s["meta"]["rng_advance"] == len(last["rolls"])
         for r in last["rolls"]:
             assert "context" in r
             assert "value" in r

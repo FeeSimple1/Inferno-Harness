@@ -69,7 +69,11 @@ def make_claude_callback(model: str):
     client = anthropic.Anthropic()  # reads ANTHROPIC_API_KEY
 
     def callback(state, legal_moves):
-        side = state["meta"]["active_player"]
+        # Pending Pay/Exiles/Approach decisions may belong to the opponent.
+        # The first legal move identifies the mandatory decision owner; do not
+        # mix the attacker's optional reactions into that player's prompt.
+        side = legal_moves[0]["side"] if legal_moves else state["meta"]["active_player"]
+        legal_moves = [m for m in legal_moves if m["side"] == side]
         briefing = build_briefing(state, side, hidden_mats=state["meta"].get("hidden_mats", False))
         user = (
             f"{briefing}\n\nLegal moves (choose exactly one, return its JSON):\n"

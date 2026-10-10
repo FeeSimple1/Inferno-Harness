@@ -72,7 +72,8 @@ def _enum_pending_revolts(state):
     if pend_ex:
         head = pend_ex[0]
         side = head["side"]
-        cands = head.get("candidates", [])
+        from .revolt import legal_exiles_targets
+        cands = legal_exiles_targets(state, side) if head.get("count", 0) > 0 else []
         moves = [{
             "action": "cmd_resolve_exiles", "side": side,
             "args": {"slides": [{"lord_id": c["lord_id"], "kind": c["kind"]}]},
@@ -92,7 +93,7 @@ def _enum_pending_revolts(state):
 def _enum_pending_fpd(state):
     """SMOKE-Inferno-057: when the FPD Pay sub-step (4.8.2) is parked, surface
     ONLY its moves (deadlock guard) for the side whose segment is active: end
-    the segment, plus the self-Coin Pays the handler will accept. `pay_done` is
+    the segment, plus legal Coin/Loot Pays from self or a co-located Lord. `pay_done` is
     listed first so a greedy consumer cleanly declines and proceeds to Disband.
     Returns None when no FPD Pay is pending."""
     pend = state.get("pending_fpd")
@@ -108,7 +109,7 @@ def _enum_pending_fpd(state):
     for pay in _actions._fpd_legal_pays(state, side):
         moves.append({
             "action": "cmd_fpd_pay", "side": side, "args": pay,
-            "description": f"FPD Pay: {pay['from_lord_id']} shifts Service +1 box (Coin).",
+            "description": f"FPD Pay: {pay['from_lord_id']} pays {pay['asset']} to shift {pay['target_lord_id']}'s Service +1.",
             "rule_citation": "4.8.2",
         })
     return moves
@@ -200,6 +201,15 @@ def _enum_levy(state) -> list[dict[str, Any]]:
 
 
 def _enum_aow(state, side) -> list[dict[str, Any]]:
+    from .card_effects import immediate_event_options
+    event = next((p for p in state.get("pending", []) if p.get("type") == "event_resolution"
+                  and p.get("side") == side), None)
+    if event:
+        options = immediate_event_options(state, event["card_id"], side)
+        return [{"action": "levy_resolve_event", "side": side,
+                 "args": {"card_id": event["card_id"], "effect_args": choice},
+                 "description": f"Resolve {event['card_id']} ({event.get('name')}).",
+                 "rule_citation": "3.1.3"} for choice in (options or [{}])]
     # A4: a drawn This-Lord Capability awaiting placement is surfaced as a choice
     # (one move per eligible Mustered Lord, plus Discard) before the draw advances.
     pendings = [p for p in (state.get("pending") or [])
@@ -366,18 +376,24 @@ def _enum_muster(state, side) -> list[dict[str, Any]]:
                 "description": f"{lid} levies 1 Ship (Pisa only).",
                 "rule_citation": "3.4.3 / 4.7.3",
             })
-        if state["decks"][side]["aow_deck"]:
-            moves.append({
-                "action": "levy_muster_capability", "side": side,
-                "args": {"lord_id": lid, "scope": "side_wide"},
-                "description": f"{lid} levies 1 Capability for the side.",
-                "rule_citation": "3.4.4",
-            })
-            if len(lord.get("capabilities", [])) < 2:
+        from . import actions as _a
+        for cid in state["decks"][side]["aow_deck"]:
+            scope = "this_lord" if _a._capability_is_this_lord(cid) else "side_wide"
+            restriction = _a._CAP_PLACEMENT_ELIGIBLE.get(cid)
+            if scope == "side_wide" and restriction is not None and lid not in restriction:
+                continue
+            targets = [lid]
+            if scope == "this_lord" and lord.get("commander"):
+                targets += [t for t, v in own_mustered.items() if v.get("comune_of") == lid]
+            for target_id in targets:
+                if scope == "this_lord" and target_id not in _a._capability_eligible_mustered(state, cid, side):
+                    continue
+                cap_args = {"lord_id": lid, "card_id": cid, "scope": scope}
+                if target_id != lid:
+                    cap_args["target_lord_id"] = target_id
                 moves.append({
-                    "action": "levy_muster_capability", "side": side,
-                    "args": {"lord_id": lid, "scope": "this_lord"},
-                    "description": f"{lid} levies 1 'This Lord' Capability (max 2).",
+                    "action": "levy_muster_capability", "side": side, "args": cap_args,
+                    "description": f"{lid} levies {cid} ({scope})" + (f" for {target_id}." if scope == "this_lord" else "."),
                     "rule_citation": "3.4.4",
                 })
     moves.append({
@@ -766,18 +782,30 @@ def _enum_command_phase(state, side) -> list[dict[str, Any]]:
                 "description": f"{lid} Ravages {target_name} ({target['type']}; costs {cost} actions).",
                 "rule_citation": "4.7.2",
             })
-    # SMOKE-Inferno-006: Supply pre-check — at own Seat (Phase 3a simplified).
-    try:
-        if (lord.get("location") in lord.get("seats", []) and
-                loc and not loc.get("ruins") and not loc.get("siege") and
-                actions_remaining >= 1):  # SMOKE-Inferno-060: supplier may not be Besieged
+    # SMOKE-Inferno-006: Supply from every reachable own Seat, including remote sources using
+    # Shared Carts. Use the handler's non-mutating preview to avoid drift.
+    from . import actions as _a
+    sources = list(lord.get("seats", []))
+    if lord.get("name") == "Pisa Podestà":
+        sources.extend(n for n, v in state["locales"].items() if v.get("port"))
+    seen_supply = set()
+    for source in dict.fromkeys(sources):
+        for amount in range(1, 5):
+            supply_args = {"lord_id": lid, "source": source, "provender": amount}
+            try:
+                preview = _a._supply_preview(state, side, supply_args)
+            except _a.IllegalAction:
+                continue
+            actual = preview["supply_added"]
+            if (source, actual) in seen_supply:
+                continue
+            seen_supply.add((source, actual))
+            supply_args["provender"] = actual
             moves.append({
-                "action": "cmd_supply", "side": side, "args": {"lord_id": lid},
-                "description": f"{lid} Supplies at own Seat {lord['location']}.",
+                "action": "cmd_supply", "side": side, "args": supply_args,
+                "description": f"{lid} Supplies {actual} Provender from {source} ({preview['way_count']} Ways).",
                 "rule_citation": "4.6",
             })
-    except (KeyError, AttributeError):
-        pass
     # SMOKE-Inferno-007: Sail pre-check — Pisa, Port, non-Winter, dest is friendly Port.
     if lord["name"] == "Pisa Podestà":
         try:
@@ -852,7 +880,9 @@ def _enum_command_phase(state, side) -> list[dict[str, Any]]:
                 _grp.append(_partner)
         _carts = sum(state["lords"][g]["assets"].get("Cart", 0) for g in _grp)
         _prov = sum(state["lords"][g]["assets"].get("Provender", 0) for g in _grp)
-        if cur_loc and _prov <= 2 * _carts:
+        _trapped = any(state["lords"][g].get("flags", {}).get("in_stronghold")
+                       for g in _grp) and bool(loc and loc.get("siege"))
+        if cur_loc and not _trapped and _prov <= 2 * _carts:
             # SMOKE-Inferno-067: mirror the handler's group-aware + Road-Works
             # Laden/cost logic exactly (carts/prov/loot summed across the group).
             _loot = sum(state["lords"][g]["assets"].get("Loot", 0) for g in _grp)
@@ -1091,6 +1121,10 @@ def _enum_command_phase(state, side) -> list[dict[str, Any]]:
         "description": f"{lid} ends this card's actions; trigger Feed/Pay/Disband.",
         "rule_citation": "4.2.6 / 4.8",
     })
+    if state.get("card_actions_started"):
+        entire_card = {"cmd_tax", "cmd_sail", "cmd_siege", "cmd_guastatori_pass",
+                       "cmd_war_engineers_reduce", "cmd_la_cavallata", "cmd_costruttori"}
+        moves = [m for m in moves if m["action"] not in entire_card]
     return moves
 
 
