@@ -1,0 +1,88 @@
+name: Verify self-play follow-up fixes
+on:
+  push:
+    branches: [fix/selfplay-followups-20261009]
+    paths: [.github/workflows/verify-selfplay-followups.yml]
+permissions:
+  contents: write
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify and apply reviewed patches
+        run: |
+          mkdir -p /tmp/selfplay-results
+          python - <<'PY'
+          import base64, hashlib, lzma
+          from pathlib import Path
+          root = Path('.selfplay-transfer')
+          chunks = sorted(root.glob('patch.*.b64'))
+          assert len(chunks) == 3
+          patches = [
+              ('base', lzma.decompress(base64.b64decode(''.join(p.read_text().strip() for p in chunks), validate=True)), 'e310f2f3911b7593b447cbe414025ade253bbc334f0ccd8dcc26fbb1a85dd8c5'),
+              ('adjustments', lzma.decompress(base64.b64decode((root / 'adjustments.b64').read_text().strip(), validate=True)), '27bae3f880b06083d082c248505b3ddc7b1add18992bd99e6d87539e8cc40e76'),
+              ('audit-marker', (root / 'audit-marker.patch').read_bytes(), '9f08b7ea5382e6ff373d37d5b2efdfddbda249859401db848eb34efe9f413895'),
+          ]
+          for name, data, expected in patches:
+              actual = hashlib.sha256(data).hexdigest()
+              assert actual == expected, (name, actual, expected)
+              Path('/tmp/' + name + '.patch').write_bytes(data)
+              print(name, len(data), actual)
+          PY
+          for patch in base adjustments audit-marker; do
+            git apply --check "/tmp/$patch.patch"
+            git apply "/tmp/$patch.patch"
+          done
+          git diff --check
+      - name: Install complete test dependencies
+        run: python -m pip install -e '.[dev]'
+      - name: Run complete test suite
+        run: |
+          set -o pipefail
+          python -m compileall -q src examples tests
+          python -m pytest -q --junitxml=/tmp/selfplay-results/pytest.xml 2>&1 | tee /tmp/selfplay-results/pytest.txt
+      - name: Self-play all six scenarios
+        run: |
+          set -euo pipefail
+          for scenario in A B C D E F; do
+            PYTHONPATH=src python selfplay_bughunt.py "$scenario" --seed 11 --max-steps 8000 2>&1 | tee "/tmp/selfplay-results/smoke-$scenario.txt"
+          done
+      - name: Card-effect integration stress
+        run: |
+          set -o pipefail
+          PYTHONPATH=src python cardfx_fuzz.py --seeds 6 2>&1 | tee /tmp/selfplay-results/cardfx.txt
+      - name: Save-load and replay stress
+        run: |
+          set -o pipefail
+          PYTHONPATH=src python saveload_fuzz.py --seeds 8 --max-steps 8000 2>&1 | tee /tmp/selfplay-results/saveload.txt
+      - name: Malformed-input stress
+        run: |
+          set -o pipefail
+          PYTHONPATH=src python robustness_fuzz.py --seeds 3 --max-steps 6000 --probe-every 8 2>&1 | tee /tmp/selfplay-results/robustness.txt
+      - name: Invariant injection stress
+        run: |
+          set -o pipefail
+          PYTHONPATH=src python state_injection_fuzz.py --seeds 2 --max-steps 400 --probe-every 60 2>&1 | tee /tmp/selfplay-results/injection.txt
+      - name: Commit tested fixes and remove transfer files
+        run: |
+          git rm -r .selfplay-transfer .github/workflows/verify-selfplay-followups.yml
+          git add ACTIONS.md SELFPLAY_FIXES.md playtests/2026-10-09-scenario-a.md src/inferno tests
+          git diff --cached --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'fix: resolve Surprise and player-interface defects from self-play'
+          git push origin HEAD:fix/selfplay-followups-20261009
+          git log -1 --format=fuller | tee /tmp/selfplay-results/commit.txt
+          git diff --stat d3e8355c997469f52a000aa4b0ddd1446427e70c HEAD | tee /tmp/selfplay-results/changes.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: selfplay-followup-verification
+          path: /tmp/selfplay-results
+          retention-days: 7
