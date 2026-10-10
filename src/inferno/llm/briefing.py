@@ -89,14 +89,14 @@ def build_briefing(state: dict[str, Any], side: str,
     for name, loc in filtered.get("locales", {}).items():
         bits = []
         if loc.get("current_allegiance"):
-            bits.append("+".join(f"{m['value']}{m['side'][0].upper()}"
+            bits.append("+".join(f"{m['value']} {m['side'].title()}"
                                   for m in loc["current_allegiance"]))
         if loc.get("ravaged"):
             bits.append(f"Rav({loc['ravaged']})")
         if loc.get("ruins"):
             bits.append(f"Ruin({loc['ruins']})")
         if loc.get("siege"):
-            bits.append("Siege:" + "+".join(f"{s.get('count',1)}{s['side'][0].upper()}"
+            bits.append("Siege:" + "+".join(f"{s.get('count',1)} {s['side'].title()}"
                                               for s in loc["siege"]))
         if loc.get("bypass"):
             bits.append("Bypass")

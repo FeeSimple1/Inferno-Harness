@@ -1365,8 +1365,8 @@ def _h_plan_add_card(state, side, args, rng) -> dict[str, Any]:
         stack.append(cid)
         return {"state_changes": {"appended": cid, "stack_size": len(stack)}, "rule_citation": "4.1.1"}
     if cid.startswith("command_"):
-        if cid not in state["decks"][side]["command_deck"] or stack.count(cid) > 0:
-            raise IllegalAction("CARD_NOT_AVAILABLE", f"{cid!r} not available in {side}'s Command deck or already in plan.", "4.1.1")
+        if cid not in state["decks"][side]["command_deck"] or stack.count(cid) >= cd.COMMAND_COPIES_PER_LORD:
+            raise IllegalAction("CARD_NOT_AVAILABLE", f"{cid!r} not available in {side}'s Command deck or all three copies are already in plan.", "4.1.1")
         stack.append(cid)
         return {"state_changes": {"appended": cid, "stack_size": len(stack)}, "rule_citation": "4.1.1"}
     if cid.startswith("treachery_"):
