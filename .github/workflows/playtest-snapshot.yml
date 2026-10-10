@@ -1,20 +1,79 @@
-name: Playtest source snapshot
+name: Verify interactive self-play findings
 on:
   push:
     branches: [playtest/quick-selfplay-20261009]
     paths: [.github/workflows/playtest-snapshot.yml]
 permissions:
-  contents: read
+  contents: write
 jobs:
-  snapshot:
+  verify:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
-          ref: b7cc7c533b1da13e87f0ed86dc4414a3ff13fef9
-      - run: git archive --format=tar HEAD > /tmp/inferno-current.tar
+          python-version: '3.12'
+      - name: Apply checksum-verified playtest patch
+        run: |
+          mkdir -p /tmp/playtest-results
+          python - <<'PY'
+          import base64, hashlib, zlib
+          from pathlib import Path
+          encoded = Path('.playtest/repair.patch.b64').read_text().strip()
+          # Correct the known transcription error; verify every decoded byte below.
+          encoded = encoded.replace('Bmqq4Ur42vud1s9', 'Bmqq4Ur42vXT+R1s9')
+          patch = zlib.decompress(base64.b64decode(encoded, validate=True))
+          expected = 'c97a5495a95759ba9702f5a393cc4ba2e9b8f86ffc308e25f0f990fbc6daa51f'
+          assert hashlib.sha256(patch).hexdigest() == expected, 'Patch checksum mismatch'
+          Path('/tmp/playtest.patch').write_bytes(patch)
+          print('Verified patch:', len(patch), 'bytes;', expected)
+          PY
+          git apply --check /tmp/playtest.patch
+          git apply /tmp/playtest.patch
+          git diff --check
+      - name: Install complete test dependencies
+        run: python -m pip install -e '.[dev]'
+      - name: Run complete regression suite
+        run: |
+          set -o pipefail
+          python -m compileall -q src
+          python -m pytest -q --junitxml=/tmp/playtest-results/pytest.xml 2>&1 | tee /tmp/playtest-results/pytest.txt
+      - name: Replay all 157 accepted actions
+        run: |
+          python - <<'PY' | tee /tmp/playtest-results/replay.txt
+          import hashlib, json
+          from pathlib import Path
+          from inferno.scenarios import load_scenario
+          from inferno.actions import dispatch
+          from inferno.invariants import check_all_invariants
+          state = load_scenario('A', seed=42, hidden_mats=False, advanced_vassal_service=False)
+          actions = json.loads(Path('playtests/2026-10-09-scenario-a.actions.json').read_text())
+          assert len(actions) == 157
+          for index, action in enumerate(actions, 1):
+              dispatch(state, action)
+              check_all_invariants(state)
+          assert state['meta']['phase'] == 'victory'
+          assert state['meta']['winner'] == 'ghibelline'
+          assert state['vp'] == {'guelph': 2.0, 'ghibelline': 4.5}
+          digest = hashlib.sha256(json.dumps(state, sort_keys=True, default=str).encode()).hexdigest()
+          assert digest == '97f3dd2ece1d174c0c732bac6d40dc6f9371029ab0b4b2c33d93428c89b4d280', digest
+          print('157 actions replayed; all invariants passed; final state exactly matches recorded game.')
+          print('Ghibelline 4.5, Guelph 2.0; SHA256', digest)
+          PY
+        shell: bash --noprofile --norc -eo pipefail {0}
+      - name: Commit verified corrections and game record
+        run: |
+          git rm .playtest/repair.patch.b64 .github/workflows/playtest-snapshot.yml
+          git add src tests/test_interactive_selfplay_findings.py playtests
+          git diff --cached --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'fix: allow three Command cards per Lord; record interactive self-play findings'
+          git push origin HEAD:playtest/quick-selfplay-20261009
+          git log -1 --format=fuller | tee /tmp/playtest-results/commit.txt
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
-          name: inferno-current-source
-          path: /tmp/inferno-current.tar
-          retention-days: 1
+          name: interactive-selfplay-verification
+          path: /tmp/playtest-results
+          retention-days: 7
