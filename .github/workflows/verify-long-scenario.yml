@@ -24,18 +24,20 @@ jobs:
           set -euo pipefail
           mkdir -p /tmp/long-fixes
           python - <<'PY'
-          import base64, hashlib, lzma
+          import base64, hashlib, lzma, subprocess
           from pathlib import Path
           chunks = sorted(Path('.long-audit').glob('patch.*.b64'))
           assert len(chunks) == 5, chunks
           patch = lzma.decompress(base64.b64decode(''.join(p.read_text().strip() for p in chunks), validate=True))
           expected = '45aaea76b6e87a682d0bd0e6b3d4bc3fc395150f48975b86eb1c9fff21df208d'
           assert hashlib.sha256(patch).hexdigest() == expected, 'Patch checksum mismatch'
+          # The authorized connector has already installed this exact CI blob.
+          assert subprocess.check_output(['git','hash-object','.github/workflows/ci.yml'], text=True).strip() == '515eb1a84b0c23b478bde9cd7bbbf7554944fe29'
           Path('/tmp/long-fixes/changes.patch').write_bytes(patch)
           print('Verified patch:', len(patch), 'bytes;', expected)
           PY
-          git apply --check /tmp/long-fixes/changes.patch
-          git apply /tmp/long-fixes/changes.patch
+          git apply --exclude=.github/workflows/ci.yml --check /tmp/long-fixes/changes.patch
+          git apply --exclude=.github/workflows/ci.yml /tmp/long-fixes/changes.patch
           git diff --check
           python -m compileall -q src tests long_scenario_regression.py long_scenario_selfplay.py
       - name: Install complete test dependencies
@@ -78,8 +80,9 @@ jobs:
         run: |
           set -euo pipefail
           git rm .long-audit/patch.*.b64 .github/workflows/verify-long-scenario.yml
-          git add .github/workflows/ci.yml ACTIONS.md LONG_SCENARIO_FIXES.md src/inferno tests long_scenario_regression.py long_scenario_selfplay.py
+          git add ACTIONS.md LONG_SCENARIO_FIXES.md src/inferno tests long_scenario_regression.py long_scenario_selfplay.py
           git diff --cached --check
+          test "$(git write-tree)" = ec585951f5b508295ba495c07dd0e3ea311a5e71
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git commit -m 'fix: resolve eight long-scenario failures with full-game regression coverage'
