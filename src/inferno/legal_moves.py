@@ -150,6 +150,15 @@ def _enum_approach_reactions(state) -> list[dict[str, Any]]:
     return out
 
 
+def _enum_held_events(state, side):
+    from .held_events import held_event_options
+    moves = held_event_options(state, side)
+    for move in moves:
+        if move["args"]["card_id"] in ("F3", "S3"):
+            move["accepts_decisions"] = {"scripted_decisions": list(_STORM_DECISIONS)}
+    return moves
+
+
 def enumerate_legal(state: dict[str, Any]) -> list[dict[str, Any]]:
     # Pending decisions take precedence over phase enumeration (per BRIEF
     # "Non-Combat Pending Decisions"). If an approach_response is pending
@@ -157,7 +166,13 @@ def enumerate_legal(state: dict[str, Any]) -> list[dict[str, Any]]:
     pendings = state.get("pending") or []
     for p in pendings:
         if p.get("type") == "approach_response" and p.get("side") == state["meta"].get("active_player"):
-            return _enum_approach_response(state, p) + _enum_approach_reactions(state)
+            base = _enum_approach_response(state, p) + _enum_approach_reactions(state)
+            extra = _enum_held_events(state, current_side(state))
+            atk = state["meta"].get("approach_attacker_side")
+            if atk:
+                extra += _enum_held_events(state, atk)
+            keys = {(m["action"], m.get("side"), str(m.get("args", {}))) for m in base}
+            return base + [m for m in extra if (m["action"], m.get("side"), str(m.get("args", {}))) not in keys]
     # Revolt-table decisions (1.4.2) and Exiles (1.4.4) MUST be resolved before
     # anything else — they pause the triggering action. Surface only those.
     rev = _enum_pending_revolts(state)
@@ -167,11 +182,23 @@ def enumerate_legal(state: dict[str, Any]) -> list[dict[str, Any]]:
     fpd = _enum_pending_fpd(state)
     if fpd is not None:
         return fpd
+    arrival = state.get("pending_besiege")
+    if arrival:
+        side = arrival["side"]
+        moves = [{"action": "besiege_or_bypass", "side": side,
+                  "args": {"lord_id": arrival["lord_id"], "choice": choice},
+                  "description": f"{choice.title()} at {arrival['locale']} (part of March; no extra action).",
+                  "rule_citation": "4.3.5"} for choice in ("besiege", "bypass")]
+        return moves + _enum_held_events(state, side)
     phase = state["meta"].get("phase")
     if phase == "levy":
-        return _enum_levy(state)
+        moves = _enum_levy(state)
+        # A drawn card's required decisions must resolve before optional Holds.
+        if current_step(state) == "3.1":
+            return moves
+        return moves + _enum_held_events(state, current_side(state))
     if phase == "campaign":
-        return _enum_campaign(state)
+        return _enum_campaign(state) + _enum_held_events(state, current_side(state))
     if phase == "victory":
         return []
     return [{
@@ -332,10 +359,9 @@ def _enum_muster(state, side) -> list[dict[str, Any]]:
         if lord.get("flags", {}).get("just_mustered_this_segment"):
             continue
         # Lordship gate (3.4): skip Lords who have used all their Lordship.
-        rating = lord.get("ratings", {}).get("L", 0)
+        from .actions import _lordship_limit
         used = lord.get("flags", {}).get("lordship_used", 0)
-        bonus = lord.get("flags", {}).get("lordship_bonus_pending", 0)
-        if used >= rating + bonus:
+        if used >= _lordship_limit(state, lid):
             continue
         for tlid, tlord in own_on_calendar.items():
             # CONF-030 (3.4.1 EMERGENCY ARMY): a Podestà with Enemy Lords at
@@ -868,69 +894,41 @@ def _enum_command_phase(state, side) -> list[dict[str, Any]]:
                         })
         except (KeyError, AttributeError):
             pass
-    # SMOKE-Inferno-010: cmd_march pre-checks — adjacency, action cost, Laden.
-    # SMOKE-Inferno-060: a Lord with Provender > 2*Carts MAY NOT MOVE (4.3.2);
-    # do not offer any March for it (the handler raises EXCESS_PROVENDER).
-    try:
-        cur_loc = lord.get("location")
-        # Auto-paired Lieutenant + Lower Lord move together (4.1.3); the handler
-        # sums Provender/Carts across that group for the 4.3.2 may-not-move check.
-        _grp = [lid]
-        for _fk in ("has_lower_lord", "lower_lord_of"):
-            _partner = lord.get("flags", {}).get(_fk)
-            if _partner and _partner in state["lords"] and \
-                    state["lords"][_partner].get("location") == cur_loc and _partner not in _grp:
-                _grp.append(_partner)
-        _carts = sum(state["lords"][g]["assets"].get("Cart", 0) for g in _grp)
-        _prov = sum(state["lords"][g]["assets"].get("Provender", 0) for g in _grp)
-        _trapped = any(state["lords"][g].get("flags", {}).get("in_stronghold")
-                       for g in _grp) and bool(loc and loc.get("siege"))
-        if cur_loc and not _trapped and _prov <= 2 * _carts:
-            # SMOKE-Inferno-067: mirror the handler's group-aware + Road-Works
-            # Laden/cost logic exactly (carts/prov/loot summed across the group).
-            _loot = sum(state["lords"][g]["assets"].get("Loot", 0) for g in _grp)
-            _road_works = any(
-                e.get("id") in ("F5", "S5") and e.get("side") == side
-                for e in (state.get("active_events", {}).get("this_campaign", []) or []))
-            _first_march = not lord.get("flags", {}).get("first_march_used_this_card", False)
-            # CONF-039: Scenario C 'Maremma War' — mirror the handler's
-            # dashed-line gate so a blocked cross-line March is not offered.
-            _maremma_block = False
-            if state["meta"].get("scenario") == "C" and side == "ghibelline":
-                _guelph_aggr = any(
-                    any(m.get("side") == "guelph" for m in (l.get("siege") or []))
-                    or l.get("ravaged") == "purple"
-                    for l in state["locales"].values())
-                _maremma_block = not _guelph_aggr
-            for neighbour, way_type in sd.adjacent_to(cur_loc):
-                # Skip Outposts unless this Lord has it as a Seat (1.3.1).
+    # SMOKE-Inferno-010 / SMOKE-Inferno-067: use the SAME group-aware cost,
+    # Road Works, Laden, Maremma, and trapped-Lord checks as the handler.
+    # Enumerate every legal Commander subset; Lieutenant pairs / Comune are
+    # automatically closed by the preview and de-duplicated by effective group.
+    from itertools import combinations
+    cur_loc = lord.get("location")
+    followers = sorted(oid for oid, ol in state["lords"].items()
+                       if oid != lid and ol.get("side") == side
+                       and ol.get("status") == "mustered" and ol.get("location") == cur_loc
+                       and not ol.get("comune_of")) if lord.get("commander") else []
+    seen_march = set()
+    for count in range(len(followers) + 1):
+        for chosen in combinations(followers, count):
+            for neighbour, way_type in sd.adjacent_to(cur_loc) if cur_loc else []:
                 dest = state["locales"].get(neighbour, {})
                 if dest.get("type") == "outpost" and neighbour not in lord.get("seats", []):
                     continue
-                if _maremma_block:
-                    _sr = sd.LOCALES.get(cur_loc, {}).get("region")
-                    _dr = sd.LOCALES.get(neighbour, {}).get("region")
-                    if _sr and _dr and _sr != _dr:
-                        continue
-                effective_way = "road" if (_road_works and way_type == "track") else way_type
-                if _road_works:
-                    laden = False
-                elif _loot > 0:
-                    laden = True
-                elif way_type == "track":
-                    laden = _prov > _carts
-                else:
-                    laden = (_prov > _carts) and (_loot > 0)
-                cost = 2 if laden else (0 if (_first_march and effective_way == "road") else 1)
-                if cost <= actions_remaining:
-                    moves.append({
-                        "action": "cmd_march", "side": side,
-                        "args": {"lord_id": lid, "destination": neighbour, "way_type": way_type},
-                        "description": f"{lid} Marches to {neighbour} via {way_type} ({cost} actions).",
-                        "rule_citation": "4.3",
-                    })
-    except (KeyError, AttributeError, TypeError):
-        pass
+                march_args = {"lord_id": lid, "destination": neighbour, "way_type": way_type}
+                if chosen:
+                    march_args["with_lords"] = list(chosen)
+                try:
+                    preview = _a._march_preview(state, side, march_args)
+                except _a.IllegalAction:
+                    continue
+                key = (neighbour, way_type, tuple(sorted(preview["group"])))
+                if key in seen_march:
+                    continue
+                seen_march.add(key)
+                companions = [g for g in preview["group"] if g != lid]
+                label = f" with {', '.join(companions)}" if companions else ""
+                moves.append({
+                    "action": "cmd_march", "side": side, "args": march_args,
+                    "description": f"{lid}{label} Marches to {neighbour} via {way_type} ({preview['cost']} actions).",
+                    "rule_citation": "4.3 / 4.1.3",
+                })
 
     # SMOKE-Inferno-013: Besiege/Bypass mandatory at Enemy Stronghold (4.3.5).
     try:

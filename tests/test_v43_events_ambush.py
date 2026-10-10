@@ -70,4 +70,6 @@ class TestAmbushApproachWindow:
         s["locales"]["Figline"]["lords_present"].append("siena")
         dispatch(s, {"action": "cmd_march", "side": "guelph",
                      "args": {"lord_id": "firenze", "destination": "Figline", "way_type": "road"}})
-        assert not any(m["action"] in ("play_event", "cmd_play_ambush") for m in enumerate_legal(s))
+        assert not any(m["action"] == "cmd_play_ambush" or (
+            m["action"] == "play_event" and m["args"].get("card_id") == "F1")
+            for m in enumerate_legal(s))

@@ -1415,7 +1415,8 @@ def _garrison_for(stronghold_type: str, state=None, defender_side=None) -> dict[
 def resolve_storm(state, attackers: list[str], defenders: list[str],
                   active_id: str, locale_name: str,
                   scripted_decisions: list[dict] | None = None,
-                  callback: Callable | None = None) -> dict[str, Any]:
+                  callback: Callable | None = None,
+                  *, round_limit: int | None = None) -> dict[str, Any]:
     """4.5.2 Storm. Attacker outside Besieged Stronghold attacks; Defender
     uses Walls 1-4 (+Walls+1), Garrison units, Attacker uses Siegeworks
     (= Siege markers) as own Walls.
@@ -1425,7 +1426,7 @@ def resolve_storm(state, attackers: list[str], defenders: list[str],
       - 4-step initiative: Def Archery, Atk Archery, Def All-Melee,
         Atk All-Melee (per 4.5.2 STRONGHOLD EFFECTS).
       - Walls/Siegeworks rolled before assigning Hits to units.
-      - Storm runs at most # Siege markers rounds.
+      - Storm runs at most # Siege markers rounds, except Surprise (3).
       - Only Attacker may Concede (Round >= 2).
       - On Defender loss: SACK outcome flag (Ruins + Spoils + revolts
         — applied by the action handler, not here).
@@ -1437,6 +1438,9 @@ def resolve_storm(state, attackers: list[str], defenders: list[str],
     locale = state["locales"][locale_name]
     stronghold_type = locale.get("type")
     siege_count = sum(s.get("count", 1) for s in locale.get("siege", []))
+    max_rounds = max(1, siege_count) if round_limit is None else round_limit
+    if not isinstance(max_rounds, int) or isinstance(max_rounds, bool) or not 1 <= max_rounds <= 4:
+        raise ValueError("Storm round limit must be an integer from 1 to 4.")
     siegeworks_die = list(range(1, siege_count + 1))  # 1..N nullifies a hit
     walls_die = list(sd.STRONGHOLDS.get(stronghold_type, {}).get("walls_die", []))
     # Capability: storm_walls_minus reduces effective Walls for the Attacker
@@ -1482,7 +1486,9 @@ def resolve_storm(state, attackers: list[str], defenders: list[str],
     positions = _empty_positions()
     atk_center = active_id
     _comune_id = next((a for a in attackers
-                       if state["lords"].get(a, {}).get("comune_of") == active_id), None)
+                       if state["lords"].get(a, {}).get("comune_of")
+                       and state["lords"][a]["comune_of"] in (
+                           active_id, state["lords"].get(active_id, {}).get("name"))), None)
     if _comune_id is not None:
         atk_center = bdc.decide_optional(
             "array_center", "attacker",
@@ -1512,7 +1518,6 @@ def resolve_storm(state, attackers: list[str], defenders: list[str],
     rounds: list[dict] = []
     removed_lords: set = set()
     routed_per_lord: dict = {}
-    max_rounds = max(1, siege_count)  # Storm lasts at most # Siege markers rounds
 
     for round_n in range(1, max_rounds + 1):
         round_log: dict[str, Any] = {"round": round_n}
@@ -1648,6 +1653,7 @@ def resolve_storm(state, attackers: list[str], defenders: list[str],
         "routed_per_lord": routed_per_lord,
         "garrison_final": dict(state["storm_garrison"].get(locale_name, {})),
         "siege_count": siege_count,
+        "round_limit": max_rounds,
         "decisions": bdc.trace,
         "rolls": [{"context": r.context, "value": r.value} for r in rng.drain_log()],
         # SMOKE-Inferno-098 tripwire data (see inferno.invariants.assert_combat_engaged).

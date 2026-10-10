@@ -177,3 +177,55 @@ Deck indices now use unbiased, logged base-six rejection sampling across the
 whole deck. Old seed numbers will therefore produce different games from
 v6.13.0; replays recorded under the old draw algorithm are not promised to
 reproduce under this version. New runs remain deterministic.
+
+## Self-play follow-up: arrival and Held Event choices
+
+### March arrival and Surprise
+
+`cmd_march` records `pending_besiege` when arriving at an unencircled Enemy
+Stronghold. It contains the decision owner, active Lord, destination, marching
+group, and whether the destination had no Lords before arrival. Resolve the
+free `besiege_or_bypass` choice even if March spent the last action; the menu
+retains it before Feed/Pay/Disband.
+
+When F3/S3 Surprise is legal, `play_event` itself chooses Besiege, places two
+Siege markers, and resolves the mandatory Storm immediately. Do not submit a
+second `besiege_or_bypass` after playing Surprise. Example:
+
+```json
+{
+  "action": "play_event",
+  "side": "guelph",
+  "args": {
+    "card_id": "F3",
+    "scripted_decisions": [
+      {"type": "concede", "side": "attacker", "choice": "yes"}
+    ]
+  }
+}
+```
+
+This example fights the compulsory first round, then concedes at the next
+eligible decision. Without that concession, Surprise allows up to three rounds
+if Forces remain. The action accepts the same Storm decision types as
+`cmd_storm`; the menu advertises them in `accepts_decisions`. Failed decisions
+reject the entire play atomically.
+
+### Group March and Held Event menus
+
+Group March options use `with_lords` for the chosen Commander companions;
+Lieutenant partners and a Commander's own Comune move together automatically.
+The description lists the effective group and its action cost. Shared Carts,
+Laden status, Road Works, and trapped-Lord restrictions are validated identically
+by the menu and the executor.
+
+Held Event options use `play_event.args.effect_args` for card-specific choices.
+For Greek Fire this includes `enemy_lord_id`, `unit_to_remove`, and (when there
+is a Capability to discard) `capability_to_discard`. F11/F23 Treachery choices
+include `treachery_card`; F23 also includes the two-Coin `coin_sources` split.
+The briefing lists the owner's Held Event hand independently of recent history.
+
+Muster action limits include printed Lordship, applicable Capability bonuses,
+and Event grants. Segment-only Held Event grants expire after that segment;
+This-Levy grants remain for Call to Arms and expire before Campaign. The menu
+uses the same allowance calculation as the action handler.

@@ -45,6 +45,21 @@ def build_briefing(state: dict[str, Any], side: str,
                f"End@{cal.get('end_box') or 'variable'}")
     out.append("")
 
+    # Held Events are actionable private information, not history. Put the
+    # owner's complete hand before long board/history sections so the normal
+    # briefing budget never silently drops it. Use ONLY the filtered own deck.
+    from ..card_data import AOW_CARDS_BY_ID
+    held = filtered.get("decks", {}).get(side, {}).get("aow_held", [])
+    out.append("-- Your Held Events --")
+    if held:
+        for cid in held:
+            card = AOW_CARDS_BY_ID.get(cid, {})
+            out.append(f"  {cid}: {card.get('event_name', 'Unknown Event')}")
+        out.append("  Play using play_event; legal plays include target/mode choices in the action menu.")
+    else:
+        out.append("  (none)")
+    out.append("")
+
     # Own Mustered Lords with Forces/Assets
     out.append(f"-- {side.upper()} Mustered Lords --")
     own_count = 0
