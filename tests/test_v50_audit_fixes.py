@@ -46,6 +46,7 @@ class TestA2ViaFrancigena:
 class TestA1ReliefSallyRaid:
     def test_combined_attacker_loss_reduces_siege_to_one(self):
         # Build a state: a relief-sallying (besieged) attacker that LOSES.
+        # The Guelph Stronghold is besieged by Ghibellines, not its own side.
         s = {
             "lords": {
                 "RS": {"side": "guelph", "status": "mustered", "location": "Town1",
@@ -54,9 +55,9 @@ class TestA1ReliefSallyRaid:
                 "BES": {"side": "ghibelline", "status": "mustered", "location": "Town1",
                         "forces": {"Ritter": 1}, "routed_units": {}, "assets": {}, "vassals": []},
             },
-            "locales": {"Town1": {"type": "town", "allegiance": "ghibelline",
+            "locales": {"Town1": {"type": "town", "allegiance": "guelph",
                                   "lords_present": ["RS", "BES"],
-                                  "siege": [{"side": "guelph", "color": "purple", "count": 4}]}},
+                                  "siege": [{"side": "ghibelline", "color": "gold", "count": 4}]}},
             "meta": {"rng_seed": 1, "rng_advance": 0},
         }
         result = {"loser": "attacker", "conceded": None, "removed_lords": []}

@@ -229,3 +229,69 @@ Muster action limits include printed Lordship, applicable Capability bonuses,
 and Event grants. Segment-only Held Event grants expire after that segment;
 This-Levy grants remain for Call to Arms and expire before Campaign. The menu
 uses the same allowance calculation as the action handler.
+
+## Call to Arms: usable Allies Muster and safe Comune lifecycle
+
+`cta_allies` with `mode: "extra_muster"` starts a one-Lord Muster segment; it
+no longer silently ends that player's Call to Arms. `target_lord_id` must name
+a Mustered Lord eligible to Muster at his current location under 3.4. The
+Commander is eligible; his Comune cannot conduct an independent segment.
+
+While this segment is open, the same player submits ordinary
+`levy_muster_lord`, `levy_muster_vassal`, `levy_muster_transport`, or
+`levy_muster_capability` actions, using the selected Lord as the mustering Lord.
+Normal costs, Lordship allowance, and recipient restrictions apply. The selected
+Lord's allowance is fresh for this extra segment. `levy_muster_done` ends it,
+including when the player chooses not to spend the entire allowance. A second
+Allies selection or Call to Arms declaration cannot bypass the open segment.
+The legal menu supplies the corresponding choices, and saving/loading preserves
+the pending segment.
+
+`cta_gather_march` automatically moves the Commander's mustered Comune with
+him. It does not require the caller to name that compulsory companion, and the
+Comune cannot be moved independently by that action.
+
+`cta_comune_setup` distinguishes a fresh mat from an already Mustered Comune.
+Its `muster_special_vassals` argument is a list of distinct Special Vassal names;
+already Mustered names do not add their Forces again. Newly chosen eligible
+vassals add only their own Forces. Omitting the list fills any missing minimum
+requirements without restoring casualties or spent Assets. A captured Carroccio
+cannot be reintroduced. The menu enumerates valid reinforcement selections.
+
+Commander disbanding clears his Comune too; the Comune can subsequently be set
+up once at the Leading City. See `LONG_SCENARIO_FIXES.md` for the related saved
+position regressions, corrected Sack scoring, terminal Game End behavior, and
+canonical serialization of Call to Arms permissions.
+
+## Seed-20261012 playtest corrections
+
+`cta_gather_march` consumes a saved per-Lord Gather allowance, not Campaign
+`actions_remaining`. Its result includes `cost` and `gather_actions_remaining`.
+The first legal Road March discount can apply once per Lord's Gather. A further
+leg that exceeds the allowance rejects as `GATHER_EXHAUSTED`; a save/reload or
+another Lord's intervening move does not reset the allowance.
+
+Holding F23 Treasurers alone is not a Call to Arms trigger. At the legal Call
+to Arms opportunity, play it with `effect_args.mode = "declare_cta"` and a
+legal two-Coin payment (optional explicit `coin_sources` mapping); then use
+`levy_cta_declare`. The legal menu supplies complete payment alternatives and
+preserves the final Guelph offer after the Ghibellines decline. Treachery mode
+is separate and does not enable a Call to Arms.
+
+For actions submitted through `dispatch`, top-level `rolls` is the authoritative
+chronological list of actual dice calls for the whole action. Nested combat
+summaries describe their own substeps and must not be concatenated with it to
+count rolls. Every log entry occurs once in the top-level journal, even when
+aftermath or Revolt uses a separate resolver. `rng_advance` counts actual calls,
+independently of whether a local log has been drained.
+
+Field-battle aftermath exposes `routed_lords` for Lords routed out of the Array
+and `removed_lords` for actual permanent removals. `post_battle_fates`,
+`loss_results`, `spoils`, and `service_shifts` describe the ordered aftermath.
+All-routed Lords still have Retreat/Withdraw and recovery opportunities.
+
+Mapping order is not a decision channel. Identical mechanical states produce
+the same defaults and legal menus despite JSON key ordering. Ordered arrays
+(Plans, decks, queues, etc.) are not sorted. Waste's implicit asset order is
+Coin, Cart, Provender, Loot, Ship; explicit legal asset selections override it.
+See `SEED_20261012_FIXES.md` for the exact regression positions and tests.

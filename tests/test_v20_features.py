@@ -144,10 +144,11 @@ class TestCombatRemovalRevolt:
         assert res["treachery_added"] == []
 
     def test_wired_into_all_three_combat_paths(self):
-        # The shared trigger is invoked by Battle (_apply_post_battle), Storm
-        # (_apply_sack), and Sally (_h_cmd_sally) — defined once, reused.
-        for fn in (A._apply_post_battle, A._apply_sack, A._h_cmd_sally):
+        # Battle and Storm invoke the shared trigger. Sally now delegates its
+        # entire aftermath to Battle, rather than duplicating the trigger.
+        for fn in (A._apply_post_battle, A._apply_sack):
             assert "_trigger_disband_revolt_and_treachery" in inspect.getsource(fn)
+        assert "_apply_post_battle" in inspect.getsource(A._h_cmd_sally)
 
     def test_marker_present(self):
         assert "SMOKE-Inferno-050" in inspect.getsource(A._trigger_disband_revolt_and_treachery)

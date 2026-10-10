@@ -7,6 +7,24 @@ The harness rolls ALL dice. The LLM never rolls.
 from __future__ import annotations
 
 import random
+from contextlib import contextmanager
+from contextvars import ContextVar
+
+
+# One audit collector per dispatch. Nested resolvers may own separate RNGs;
+# record actual calls, never reconstruct rolls by merging result summaries.
+_ACTION_ROLLS: ContextVar[list | None] = ContextVar("inferno_action_rolls", default=None)
+
+
+@contextmanager
+def collect_action_rolls():
+    rolls = []
+    token = _ACTION_ROLLS.set(rolls)
+    try:
+        yield rolls
+    finally:
+        _ACTION_ROLLS.reset(token)
+
 from dataclasses import dataclass
 
 
@@ -40,6 +58,7 @@ class HarnessRNG:
         for _ in range(advance):
             self._rng.randint(1, 6)
         self._log: list[DieRoll] = []
+        self._consumed = 0
 
     @property
     def seed(self) -> int:
@@ -49,12 +68,16 @@ class HarnessRNG:
     def advance_count(self) -> int:
         """How many rolls have been consumed since construction
         (including the advance-on-construct rolls)."""
-        return self._advance_start + len(self._log)
+        return self._advance_start + self._consumed
 
     def roll(self, context: str) -> DieRoll:
         value = self._rng.randint(1, 6)
         roll = DieRoll(context=context, value=value)
         self._log.append(roll)
+        self._consumed += 1
+        audit = _ACTION_ROLLS.get()
+        if audit is not None:
+            audit.append({"context": context, "value": value})
         return roll
 
     def randbelow(self, size: int, context: str) -> int:

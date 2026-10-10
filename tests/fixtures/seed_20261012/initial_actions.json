@@ -1,0 +1,103 @@
+[
+  {
+    "action": "levy_aow_draw",
+    "args": {
+      "auto_place": false
+    },
+    "side": "guelph"
+  },
+  {
+    "action": "levy_aow_draw",
+    "args": {
+      "auto_place": false
+    },
+    "side": "ghibelline"
+  },
+  {
+    "action": "levy_place_capability",
+    "args": {
+      "card_id": "S13",
+      "lord_id": "siena"
+    },
+    "side": "ghibelline"
+  },
+  {
+    "action": "levy_place_capability",
+    "args": {
+      "card_id": "S10",
+      "lord_id": "siena"
+    },
+    "side": "ghibelline"
+  },
+  {
+    "action": "levy_pay_done",
+    "side": "guelph"
+  },
+  {
+    "action": "levy_pay_done",
+    "side": "ghibelline"
+  },
+  {
+    "action": "levy_disband_done",
+    "side": "guelph"
+  },
+  {
+    "action": "levy_disband_done",
+    "side": "ghibelline"
+  },
+  {
+    "action": "levy_muster_capability",
+    "args": {
+      "card_id": "F5",
+      "lord_id": "arezzo",
+      "scope": "this_lord"
+    },
+    "side": "guelph"
+  },
+  {
+    "action": "levy_muster_transport",
+    "args": {
+      "kind": "Cart",
+      "lord_id": "arezzo"
+    },
+    "side": "guelph"
+  },
+  {
+    "action": "levy_muster_transport",
+    "args": {
+      "kind": "Cart",
+      "lord_id": "firenze"
+    },
+    "side": "guelph"
+  },
+  {
+    "action": "levy_muster_transport",
+    "args": {
+      "kind": "Cart",
+      "lord_id": "firenze"
+    },
+    "side": "guelph"
+  },
+  {
+    "action": "levy_muster_capability",
+    "args": {
+      "card_id": "F2",
+      "lord_id": "firenze",
+      "scope": "this_lord"
+    },
+    "side": "guelph"
+  },
+  {
+    "action": "levy_muster_done",
+    "side": "guelph"
+  },
+  {
+    "action": "levy_muster_lord",
+    "args": {
+      "muster_lord_id": "siena",
+      "target_lord_id": "provenzano",
+      "target_seat": "Siena"
+    },
+    "side": "ghibelline"
+  }
+]

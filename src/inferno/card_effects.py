@@ -1012,6 +1012,14 @@ def F23_event(state, side, args, rng):
     if wanted is not None and wanted not in state["decks"]["guelph"]["treachery_set_aside"]:
         return {"applied": False, "reason": "Selected Treachery is not set aside."}
     coin_sources = args.get("coin_sources", {})  # {lord_id: count}
+    if not isinstance(coin_sources, dict) or any(
+            not isinstance(n, int) or isinstance(n, bool) or n <= 0
+            or lid not in state["lords"] or state["lords"][lid].get("side") != "guelph"
+            or state["lords"][lid].get("status") != "mustered"
+            for lid, n in coin_sources.items()):
+        return {"applied": False, "reason": "Coin sources must name Mustered Guelph Lords and positive integer payments."}
+    if args.get("mode", "declare_cta") not in ("declare_cta", "treachery"):
+        return {"applied": False, "reason": "Unknown Treasurers mode."}
     total = sum(coin_sources.values())
     if total != 2 and not coin_sources:
         # Auto-pick: find 2 Coin from any Mustered Guelph Lords.
@@ -1045,7 +1053,7 @@ def F23_event(state, side, args, rng):
     # declare_cta: flag Guelph CtA eligibility for this Levy.
     declared = set(state.get("war_declared_this_levy", []))
     declared.add("guelph")
-    state["war_declared_this_levy"] = list(declared)
+    state["war_declared_this_levy"] = sorted(declared)
     return {"applied": True, "mode": "declare_cta", "paid": coin_sources}
 
 
@@ -1079,7 +1087,7 @@ def F25_event(state, side, args, rng):
     log = {"war_event": "guelph", "shifted": None}
     if _stronghold_marked(state, "castle", home_side="ghibelline", marker_side="guelph"):
         log["shifted"] = {"colle": _favorable_shift(state, "colle", 3)}
-    state["war_declared_this_levy"] = list(set(state.get("war_declared_this_levy", [])) | {"guelph"})
+    state["war_declared_this_levy"] = sorted(set(state.get("war_declared_this_levy", [])) | {"guelph"})
     return {"applied": True, **log}
 
 
@@ -1093,7 +1101,7 @@ def F26_event(state, side, args, rng):
     if _stronghold_marked(state, "town", home_side="ghibelline", marker_side="guelph"):
         log["shifted"] = {lid: _favorable_shift(state, lid, 1)
                           for lid in ("firenze", "arezzo", "orvieto")}
-    state["war_declared_this_levy"] = list(set(state.get("war_declared_this_levy", [])) | {"guelph"})
+    state["war_declared_this_levy"] = sorted(set(state.get("war_declared_this_levy", [])) | {"guelph"})
     return {"applied": True, **log}
 
 
@@ -1699,7 +1707,7 @@ def S25_event(state, side, args, rng):
                        if l.get("side") == "ghibelline"
                        and (l.get("calendar_box") is not None or l.get("service_box") is not None)][:3]
         log["shifted"] = {lid: _favorable_shift(state, lid, 1) for lid in targets[:3]}
-    state["war_declared_this_levy"] = list(set(state.get("war_declared_this_levy", [])) | {"ghibelline"})
+    state["war_declared_this_levy"] = sorted(set(state.get("war_declared_this_levy", [])) | {"ghibelline"})
     return {"applied": True, **log}
 
 
@@ -1713,7 +1721,7 @@ def S26_event(state, side, args, rng):
     if _stronghold_marked(state, "town", home_side="ghibelline", marker_side="guelph"):
         log["shifted"] = {lid: _favorable_shift(state, lid, 1)
                           for lid in ("provenzano", "siena")}
-    state["war_declared_this_levy"] = list(set(state.get("war_declared_this_levy", [])) | {"ghibelline"})
+    state["war_declared_this_levy"] = sorted(set(state.get("war_declared_this_levy", [])) | {"ghibelline"})
     return {"applied": True, **log}
 
 

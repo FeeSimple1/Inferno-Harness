@@ -107,8 +107,8 @@ def _candidate_in_context(state, side, cid, args):
         if args.get("target") and state["lords"][args["target"]].get("status") != "mustered":
             return False
     if cid == "F23" and args.get("mode") == "declare_cta":
-        if (state["meta"].get("phase") != "levy" or state["meta"].get("levy_step") != "3.5"
-                or side in state.get("war_declared_this_levy", [])):
+        from .actions import _cta_treasurers_playable
+        if not _cta_treasurers_playable(state):
             return False
     auto_modes = {"F15": "auto_succeed", "F18": "auto_treachery_at_grosseto",
                   "F19": "auto_treachery_at_volterra", "S18": "treachery_free"}

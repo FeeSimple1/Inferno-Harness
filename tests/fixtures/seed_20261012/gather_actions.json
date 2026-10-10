@@ -1,0 +1,61 @@
+[
+  {
+    "action": "levy_cta_declare",
+    "args": {},
+    "side": "ghibelline"
+  },
+  {
+    "action": "cta_gather_march",
+    "args": {
+      "destination": "Castiglione",
+      "lord_id": "arezzo",
+      "way_type": "road"
+    },
+    "side": "guelph"
+  },
+  {
+    "action": "cta_gather_march",
+    "args": {
+      "destination": "Arezzo",
+      "lord_id": "arezzo",
+      "way_type": "road"
+    },
+    "side": "guelph"
+  },
+  {
+    "action": "cta_gather_march",
+    "args": {
+      "destination": "Montevarchi",
+      "lord_id": "arezzo",
+      "way_type": "road"
+    },
+    "side": "guelph"
+  },
+  {
+    "action": "cta_gather_march",
+    "args": {
+      "destination": "San Giovanni",
+      "lord_id": "arezzo",
+      "way_type": "road"
+    },
+    "side": "guelph"
+  },
+  {
+    "action": "cta_gather_march",
+    "args": {
+      "destination": "Figline",
+      "lord_id": "arezzo",
+      "way_type": "road"
+    },
+    "side": "guelph"
+  },
+  {
+    "action": "cta_gather_march",
+    "args": {
+      "destination": "Firenze",
+      "lord_id": "arezzo",
+      "way_type": "road"
+    },
+    "side": "guelph"
+  }
+]

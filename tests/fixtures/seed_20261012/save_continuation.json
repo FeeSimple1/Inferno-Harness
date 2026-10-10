@@ -1,0 +1,640 @@
+[
+  {
+    "action": "levy_aow_draw",
+    "args": {
+      "auto_place": false
+    },
+    "side": "guelph"
+  },
+  {
+    "action": "levy_resolve_event",
+    "args": {
+      "card_id": "F22",
+      "effect_args": {
+        "mode": "shift",
+        "target_lord_id": "provenzano"
+      }
+    },
+    "side": "guelph"
+  },
+  {
+    "action": "levy_aow_draw",
+    "args": {
+      "auto_place": false
+    },
+    "side": "ghibelline"
+  },
+  {
+    "action": "levy_pay_done",
+    "side": "guelph"
+  },
+  {
+    "action": "levy_pay",
+    "args": {
+      "amount": 1,
+      "asset": "Coin",
+      "from_lord_id": "provenzano",
+      "target_lord_id": "provenzano"
+    },
+    "side": "ghibelline"
+  },
+  {
+    "action": "levy_pay",
+    "args": {
+      "amount": 1,
+      "asset": "Coin",
+      "from_lord_id": "provenzano",
+      "target_lord_id": "provenzano"
+    },
+    "side": "ghibelline"
+  },
+  {
+    "action": "levy_pay_done",
+    "side": "ghibelline"
+  },
+  {
+    "action": "levy_disband",
+    "side": "guelph"
+  },
+  {
+    "action": "levy_disband_done",
+    "side": "guelph"
+  },
+  {
+    "action": "levy_disband_done",
+    "side": "ghibelline"
+  },
+  {
+    "action": "levy_muster_capability",
+    "args": {
+      "card_id": "F5",
+      "lord_id": "colle",
+      "scope": "this_lord"
+    },
+    "side": "guelph"
+  },
+  {
+    "action": "levy_muster_transport",
+    "args": {
+      "kind": "Cart",
+      "lord_id": "colle"
+    },
+    "side": "guelph"
+  },
+  {
+    "action": "levy_muster_transport",
+    "args": {
+      "kind": "Cart",
+      "lord_id": "firenze"
+    },
+    "side": "guelph"
+  },
+  {
+    "action": "levy_muster_capability",
+    "args": {
+      "card_id": "F18",
+      "lord_id": "firenze",
+      "scope": "this_lord",
+      "target_lord_id": "firenze_comune"
+    },
+    "side": "guelph"
+  },
+  {
+    "action": "levy_muster_vassal",
+    "args": {
+      "lord_id": "firenze",
+      "vassal": "Prato Comune"
+    },
+    "side": "guelph"
+  },
+  {
+    "action": "levy_muster_done",
+    "side": "guelph"
+  },
+  {
+    "action": "levy_muster_lord",
+    "args": {
+      "muster_lord_id": "provenzano",
+      "target_lord_id": "santa_fiora",
+      "target_seat": "Santa Fiora"
+    },
+    "side": "ghibelline"
+  },
+  {
+    "action": "levy_muster_transport",
+    "args": {
+      "kind": "Cart",
+      "lord_id": "provenzano"
+    },
+    "side": "ghibelline"
+  },
+  {
+    "action": "levy_muster_vassal",
+    "args": {
+      "lord_id": "siena",
+      "vassal": "Cacciaconti"
+    },
+    "side": "ghibelline"
+  },
+  {
+    "action": "levy_muster_capability",
+    "args": {
+      "card_id": "S10",
+      "lord_id": "siena",
+      "scope": "this_lord"
+    },
+    "side": "ghibelline"
+  },
+  {
+    "action": "levy_muster_capability",
+    "args": {
+      "card_id": "S8",
+      "lord_id": "siena",
+      "scope": "this_lord"
+    },
+    "side": "ghibelline"
+  },
+  {
+    "action": "levy_muster_transport",
+    "args": {
+      "kind": "Cart",
+      "lord_id": "provenzano"
+    },
+    "side": "ghibelline"
+  },
+  {
+    "action": "levy_muster_done",
+    "side": "ghibelline"
+  },
+  {
+    "action": "levy_cta_skip",
+    "args": {},
+    "side": "guelph"
+  },
+  {
+    "action": "levy_cta_skip",
+    "args": {},
+    "side": "ghibelline"
+  },
+  {
+    "action": "campaign_discard_done",
+    "side": "guelph"
+  },
+  {
+    "action": "campaign_discard_done",
+    "side": "ghibelline"
+  },
+  {
+    "action": "plan_add_card",
+    "args": {
+      "card_id": "command_firenze"
+    },
+    "side": "guelph"
+  },
+  {
+    "action": "plan_add_card",
+    "args": {
+      "card_id": "command_colle"
+    },
+    "side": "guelph"
+  },
+  {
+    "action": "plan_add_card",
+    "args": {
+      "card_id": "command_firenze"
+    },
+    "side": "guelph"
+  },
+  {
+    "action": "plan_add_card",
+    "args": {
+      "card_id": "command_firenze"
+    },
+    "side": "guelph"
+  },
+  {
+    "action": "plan_add_card",
+    "args": {
+      "card_id": "command_colle"
+    },
+    "side": "guelph"
+  },
+  {
+    "action": "plan_add_card",
+    "args": {
+      "card_id": "command_colle"
+    },
+    "side": "guelph"
+  },
+  {
+    "action": "plan_done",
+    "side": "guelph"
+  },
+  {
+    "action": "plan_add_card",
+    "args": {
+      "card_id": "command_provenzano"
+    },
+    "side": "ghibelline"
+  },
+  {
+    "action": "plan_add_card",
+    "args": {
+      "card_id": "command_siena"
+    },
+    "side": "ghibelline"
+  },
+  {
+    "action": "plan_add_card",
+    "args": {
+      "card_id": "command_santa_fiora"
+    },
+    "side": "ghibelline"
+  },
+  {
+    "action": "plan_add_card",
+    "args": {
+      "card_id": "command_provenzano"
+    },
+    "side": "ghibelline"
+  },
+  {
+    "action": "plan_add_card",
+    "args": {
+      "card_id": "command_provenzano"
+    },
+    "side": "ghibelline"
+  },
+  {
+    "action": "plan_add_card",
+    "args": {
+      "card_id": "command_siena"
+    },
+    "side": "ghibelline"
+  },
+  {
+    "action": "plan_done",
+    "side": "ghibelline"
+  },
+  {
+    "action": "command_reveal",
+    "side": "guelph"
+  },
+  {
+    "action": "cmd_siege",
+    "args": {
+      "lord_id": "firenze"
+    },
+    "side": "guelph"
+  },
+  {
+    "action": "cmd_resolve_revolt",
+    "args": {
+      "choice": "Rocca Sillana"
+    },
+    "side": "guelph"
+  },
+  {
+    "action": "cmd_resolve_exiles",
+    "args": {
+      "slides": [
+        {
+          "kind": "service",
+          "lord_id": "provenzano"
+        }
+      ]
+    },
+    "side": "ghibelline"
+  },
+  {
+    "action": "cmd_fpd_pay_done",
+    "args": {},
+    "side": "guelph"
+  },
+  {
+    "action": "cmd_fpd_pay_done",
+    "args": {},
+    "side": "ghibelline"
+  },
+  {
+    "action": "command_reveal",
+    "side": "ghibelline"
+  },
+  {
+    "action": "cmd_supply",
+    "args": {
+      "lord_id": "provenzano",
+      "provender": 4,
+      "source": "Siena"
+    },
+    "side": "ghibelline"
+  },
+  {
+    "action": "cmd_supply",
+    "args": {
+      "lord_id": "provenzano",
+      "provender": 4,
+      "source": "Siena"
+    },
+    "side": "ghibelline"
+  },
+  {
+    "action": "cmd_fpd_pay_done",
+    "args": {},
+    "side": "guelph"
+  },
+  {
+    "action": "cmd_fpd_pay_done",
+    "args": {},
+    "side": "ghibelline"
+  },
+  {
+    "action": "command_reveal",
+    "side": "guelph"
+  },
+  {
+    "action": "cmd_tax",
+    "args": {
+      "lord_id": "colle"
+    },
+    "side": "guelph"
+  },
+  {
+    "action": "cmd_fpd_pay_done",
+    "args": {},
+    "side": "guelph"
+  },
+  {
+    "action": "cmd_fpd_pay_done",
+    "args": {},
+    "side": "ghibelline"
+  },
+  {
+    "action": "command_reveal",
+    "side": "ghibelline"
+  },
+  {
+    "action": "cmd_siege",
+    "args": {
+      "lord_id": "siena"
+    },
+    "side": "ghibelline"
+  },
+  {
+    "action": "cmd_fpd_pay_done",
+    "args": {},
+    "side": "guelph"
+  },
+  {
+    "action": "cmd_fpd_pay_done",
+    "args": {},
+    "side": "ghibelline"
+  },
+  {
+    "action": "command_reveal",
+    "side": "guelph"
+  },
+  {
+    "action": "cmd_supply",
+    "args": {
+      "lord_id": "firenze",
+      "provender": 4,
+      "source": "Poggio Bonizio"
+    },
+    "side": "guelph"
+  },
+  {
+    "action": "cmd_supply",
+    "args": {
+      "lord_id": "firenze",
+      "provender": 4,
+      "source": "Poggio Bonizio"
+    },
+    "side": "guelph"
+  },
+  {
+    "action": "cmd_fpd_pay_done",
+    "args": {},
+    "side": "guelph"
+  },
+  {
+    "action": "cmd_fpd_pay_done",
+    "args": {},
+    "side": "ghibelline"
+  },
+  {
+    "action": "command_reveal",
+    "side": "ghibelline"
+  },
+  {
+    "action": "cmd_supply",
+    "args": {
+      "lord_id": "santa_fiora",
+      "provender": 4,
+      "source": "Santa Fiora"
+    },
+    "side": "ghibelline"
+  },
+  {
+    "action": "cmd_end_card",
+    "args": {
+      "lord_id": "santa_fiora"
+    },
+    "side": "ghibelline"
+  },
+  {
+    "action": "cmd_fpd_pay_done",
+    "args": {},
+    "side": "guelph"
+  },
+  {
+    "action": "cmd_fpd_pay_done",
+    "args": {},
+    "side": "ghibelline"
+  },
+  {
+    "action": "command_reveal",
+    "side": "guelph"
+  },
+  {
+    "action": "cmd_tax",
+    "args": {
+      "lord_id": "firenze"
+    },
+    "side": "guelph"
+  },
+  {
+    "action": "cmd_fpd_pay_done",
+    "args": {},
+    "side": "guelph"
+  },
+  {
+    "action": "cmd_fpd_pay_done",
+    "args": {},
+    "side": "ghibelline"
+  },
+  {
+    "action": "command_reveal",
+    "side": "ghibelline"
+  },
+  {
+    "action": "cmd_siege",
+    "args": {
+      "lord_id": "provenzano"
+    },
+    "side": "ghibelline"
+  },
+  {
+    "action": "cmd_fpd_pay_done",
+    "args": {},
+    "side": "guelph"
+  },
+  {
+    "action": "cmd_fpd_pay_done",
+    "args": {},
+    "side": "ghibelline"
+  },
+  {
+    "action": "command_reveal",
+    "side": "guelph"
+  },
+  {
+    "action": "cmd_tax",
+    "args": {
+      "lord_id": "colle"
+    },
+    "side": "guelph"
+  },
+  {
+    "action": "cmd_fpd_pay_done",
+    "args": {},
+    "side": "guelph"
+  },
+  {
+    "action": "cmd_fpd_pay_done",
+    "args": {},
+    "side": "ghibelline"
+  },
+  {
+    "action": "command_reveal",
+    "side": "ghibelline"
+  },
+  {
+    "action": "cmd_supply",
+    "args": {
+      "lord_id": "provenzano",
+      "provender": 4,
+      "source": "Siena"
+    },
+    "side": "ghibelline"
+  },
+  {
+    "action": "cmd_supply",
+    "args": {
+      "lord_id": "provenzano",
+      "provender": 4,
+      "source": "Siena"
+    },
+    "side": "ghibelline"
+  },
+  {
+    "action": "cmd_fpd_pay_done",
+    "args": {},
+    "side": "guelph"
+  },
+  {
+    "action": "cmd_fpd_pay_done",
+    "args": {},
+    "side": "ghibelline"
+  },
+  {
+    "action": "command_reveal",
+    "side": "guelph"
+  },
+  {
+    "action": "cmd_march",
+    "args": {
+      "destination": "Casole",
+      "lord_id": "colle",
+      "way_type": "track"
+    },
+    "side": "guelph"
+  },
+  {
+    "action": "besiege_or_bypass",
+    "args": {
+      "choice": "besiege",
+      "lord_id": "colle"
+    },
+    "side": "guelph"
+  },
+  {
+    "action": "cmd_fpd_pay_done",
+    "args": {},
+    "side": "guelph"
+  },
+  {
+    "action": "cmd_fpd_pay_done",
+    "args": {},
+    "side": "ghibelline"
+  },
+  {
+    "action": "command_reveal",
+    "side": "ghibelline"
+  },
+  {
+    "action": "cmd_siege",
+    "args": {
+      "lord_id": "siena"
+    },
+    "side": "ghibelline"
+  },
+  {
+    "action": "cmd_fpd_pay_done",
+    "args": {},
+    "side": "guelph"
+  },
+  {
+    "action": "cmd_fpd_pay_done",
+    "args": {},
+    "side": "ghibelline"
+  },
+  {
+    "action": "command_reveal",
+    "side": "guelph"
+  },
+  {
+    "action": "end_grow_skip",
+    "side": "guelph"
+  },
+  {
+    "action": "end_grow_skip",
+    "side": "ghibelline"
+  },
+  {
+    "action": "end_ransom",
+    "args": {
+      "pay": true
+    },
+    "side": "guelph"
+  },
+  {
+    "action": "end_ransom",
+    "args": {
+      "pay": true
+    },
+    "side": "ghibelline"
+  },
+  {
+    "action": "end_game_check",
+    "side": "guelph"
+  },
+  {
+    "action": "end_repair",
+    "side": "guelph"
+  },
+  {
+    "action": "end_waste",
+    "side": "guelph"
+  }
+]

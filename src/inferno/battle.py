@@ -24,6 +24,7 @@ Per BRIEF "Engine / Operator Split":
 from __future__ import annotations
 
 import math
+import copy
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
@@ -57,7 +58,8 @@ class BattleDecisionContext:
                info: dict[str, Any] | None = None) -> Any:
         if not options:
             raise ValueError(f"No options for decision {decision_type!r}")
-        info = info or {}
+        info = copy.deepcopy(info or {})
+        options = copy.deepcopy(options)
         choice: Any
         if self.scripted:
             d = self.scripted.pop(0)
@@ -83,7 +85,7 @@ class BattleDecisionContext:
         elif self.callback is not None:
             choice = self.callback({
                 "type": decision_type, "side": side,
-                "options": list(options), "info": info,
+                "options": copy.deepcopy(options), "info": copy.deepcopy(info),
             })
             if choice not in options:
                 raise ScriptedDecisionError(
@@ -93,7 +95,7 @@ class BattleDecisionContext:
             choice = options[0]  # leftmost fallback
         self.trace.append({
             "type": decision_type, "side": side,
-            "choice": choice, "options": list(options), "info": info,
+            "choice": copy.deepcopy(choice), "options": copy.deepcopy(options), "info": copy.deepcopy(info),
         })
         return choice
 
@@ -106,7 +108,8 @@ class BattleDecisionContext:
         falls back to `default`; with neither, `default` is used. This keeps
         existing scripted tests and self-play byte-identical while exposing the
         decision (CROSS_PROJECT_LESSONS 8.4)."""
-        info = info or {}
+        info = copy.deepcopy(info or {})
+        options = copy.deepcopy(options)
         choice = default
         if self.scripted and isinstance(self.scripted[0], dict) and \
                 self.scripted[0].get("type") == decision_type and \
@@ -119,7 +122,7 @@ class BattleDecisionContext:
             try:
                 c = self.callback({
                     "type": decision_type, "side": side,
-                    "options": list(options), "info": info, "optional": True,
+                    "options": copy.deepcopy(options), "info": copy.deepcopy(info), "optional": True,
                 })
             except Exception:
                 c = None
@@ -127,8 +130,8 @@ class BattleDecisionContext:
                 choice = c
         if choice != default:
             self.trace.append({
-                "type": decision_type, "side": side, "choice": choice,
-                "options": list(options), "info": info, "optional": True,
+                "type": decision_type, "side": side, "choice": copy.deepcopy(choice),
+                "options": copy.deepcopy(options), "info": copy.deepcopy(info), "optional": True,
             })
         return choice
 
@@ -829,7 +832,7 @@ def _check_rout_recovery(state, lord_id: str, rng_roll) -> dict | None:
     lord = state["lords"][lord_id]
     recovered = {}
     routed = dict(lord.get("routed_units", {}))
-    for unit, count in routed.items():
+    for unit, count in sorted(routed.items()):
         if unit == "Villici":
             continue
         u = sd.UNITS.get(unit, {})
@@ -2015,7 +2018,7 @@ def loss_roll_for_routed(state, lord_id: str, harsh_recovery: bool, rng_caller,
     recovered: dict[str, int] = {}
     lost: dict[str, int] = {}
     captured: dict[str, int] = {}
-    for unit, count in routed.items():
+    for unit, count in sorted(routed.items()):
         if unit == "Villici":
             continue
         u = sd.UNITS.get(unit, {})
@@ -2115,7 +2118,7 @@ def transfer_spoils(state, loser_id: str, winners: list[str],
         loser["assets"]["Provender"] = prov - excess_prov
     else:
         # Removed OR retreated-without-concede: transfer ALL except Ships.
-        for asset, count in list(loser["assets"].items()):
+        for asset, count in sorted(loser["assets"].items()):
             if asset == "Ship":
                 continue
             if count > 0:
@@ -2139,7 +2142,7 @@ def transfer_spoils(state, loser_id: str, winners: list[str],
     # Distribute to winners: round-robin starting with first
     if transferred:
         winner_idx = 0
-        for asset, total in transferred.items():
+        for asset, total in sorted(transferred.items()):
             for _ in range(total):
                 w = state["lords"][winners[winner_idx % len(winners)]]
                 w["assets"][asset] = w["assets"].get(asset, 0) + 1

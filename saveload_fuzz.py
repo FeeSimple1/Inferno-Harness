@@ -7,13 +7,11 @@ divergence means some state isn't captured by the serializable form, or dispatch
 enumeration is nondeterministic given equal state — a save/load correctness bug
 invisible to ordinary play.
 
-Method: run two states in lockstep from the same scenario+seed under a
-deterministic policy. Each step:
-  - assert the (already round-tripped) `reloaded` state deep-equals `control`;
-  - assert the enumerator returns the IDENTICAL move list for both;
-  - apply the same chosen action to both;
-  - JSON round-trip `reloaded`;
-  - assert deep-equality again.
+Method: establish a mid-game checkpoint, then run an uninterrupted state and
+an independently reloaded state in lockstep with identical actions. Compare every
+action result, repeat the real CLI's sorted-key JSON save/reload every 17 actions,
+compare complete legal menus at those boundaries, and check final state equality
+and structural invariants. This explicitly covers dictionary-order changes.
 Exit non-zero if any anomaly surfaces.
 """
 import argparse, json, sys, random, collections, traceback
@@ -29,7 +27,7 @@ def anomaly(kind, info):
     print(f"  !! ANOMALY [{kind}] {json.dumps(info, default=str)[:240]}")
 
 def rt(state):
-    return json.loads(json.dumps(state))
+    return json.loads(json.dumps(state, sort_keys=True))
 
 def _moves(state):
     moves = enumerate_legal(state)
@@ -39,12 +37,7 @@ def _act(m):
     return {k: m[k] for k in ("action", "side", "args") if k in m}
 
 def run(scenario, seed, max_steps):
-    """Play to a random mid-game checkpoint, JSON round-trip the state there,
-    then continue BOTH the round-tripped `reloaded` and the un-touched `control`
-    to the end under one deterministic policy (chosen from control, applied to
-    both). Reload-then-continue must equal never-reload: no dispatch crash on the
-    reloaded copy, identical final state, invariants intact. Cheap: one round-trip
-    + one final deep-compare per game."""
+    """Compare uninterrupted play with repeated real-format sorted JSON saves."""
     control = load_scenario(scenario, seed=seed, hidden_mats=True)
     pol = random.Random(seed * 1009 + 7)
     checkpoint = 10 + (seed * 7) % 40
@@ -61,11 +54,23 @@ def run(scenario, seed, max_steps):
         _, mc = _moves(control)
         if not mc:
             break
+        if reloaded is not None and step % 17 == 0:
+            _, mr = _moves(reloaded)
+            if mc != mr:
+                anomaly("reload_menu_diverged", {"scenario": scenario, "seed": seed,
+                        "step": step, "diff": _first_diff(mc, mr)})
+                return
         action = _act(pol.choice(mc))
         try:
-            dispatch(control, action)
+            rc = dispatch(control, action)
             if reloaded is not None:
-                dispatch(reloaded, action)   # same action must stay legal on reload
+                rr = dispatch(reloaded, action)  # identical input across real CLI saves
+                if rc != rr:
+                    anomaly("reload_result_diverged", {"scenario": scenario, "seed": seed,
+                            "step": step, "diff": _first_diff(rc, rr)})
+                    return
+                if step % 17 == 0:
+                    reloaded = rt(reloaded)
         except Exception as e:
             anomaly("dispatch_crash", {"scenario": scenario, "seed": seed, "step": step,
                     "action": action, "error": f"{type(e).__name__}: {e}",

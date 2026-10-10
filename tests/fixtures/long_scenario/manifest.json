@@ -1,0 +1,38 @@
+{
+  "before_105_cta_allies.json": {
+    "original_sha256": "8e28d5485027bcf1ed5a70ac32035c4ddbfd176c7955f2ced0affde86bc52783",
+    "fixture_sha256": "2ea8cc826749c343a4fed9076e23fa869e9e114ac5bee1514bc17a85cb1306f0",
+    "transformation": "history replaced by []; mechanical state and RNG unchanged"
+  },
+  "before_242_sack_score.json": {
+    "original_sha256": "2d30a31f4010ad7bcd3616b18cc0ad0383e7043c70d4c9b62b6bab295f6a416a",
+    "fixture_sha256": "a2a1c529ed2ef64f76268e6e2448d9fd1bac6b88d987f5bbbf3bae0ca68f683d",
+    "transformation": "history replaced by []; mechanical state and RNG unchanged"
+  },
+  "turn4_cta_gather.json": {
+    "original_sha256": "85c64e6694c6c6d79f201839a83f1491c7f3d86aa4745b86ed9f856ce1c1792a",
+    "fixture_sha256": "39c72b3e1404660bd3e165f0db80b16b4e26db419569b3115da11b9f02d9cd41",
+    "transformation": "history replaced by []; mechanical state and RNG unchanged"
+  },
+  "turn4_existing_comune.json": {
+    "original_sha256": "3f52ee3fafab73fddf7409ae5a443478cdee908d037be019d51198c553f33008",
+    "fixture_sha256": "d593d7c7c39ee9f3f832cd56940149e76864f37a463c80ae4e46eaab48f7f6ae",
+    "transformation": "history replaced by []; mechanical state and RNG unchanged"
+  },
+  "before_641_commander_recall.json": {
+    "original_sha256": "264ce1cd8135823a9d59179fafba75cfd8638d9410336839e5c8346d9408f56b",
+    "fixture_sha256": "8f1d1b771b3e18fa6ed8b67caf632858eb804a1bde21b8f6eef6624aaeb61634",
+    "transformation": "history replaced by []; mechanical state and RNG unchanged"
+  },
+  "secondary_before_1684_game_end.json": {
+    "original_sha256": "951a5a3cb9ce5476a1b123f4a7e1c0a66aad5c7a22f319536b66beace6b79c47",
+    "fixture_sha256": "dc875e9faa4d5cbe897211dba3f96eca16fbd1cb673f9f96066a711d6367f845",
+    "transformation": "history replaced by []; mechanical state and RNG unchanged"
+  },
+  "secondary_before_459_battle_removal.json": {
+    "source": "Scenario F secondary-game actions 1..458 replayed on exact main tree 60da72b",
+    "source_state_sha256": "7beac4be6024a7a3a241a6ecef018562de583832a015d115e6276554565adfc7",
+    "fixture_sha256": "dab17e01ea2cab61e14d8045b059a9fefdcf46e4a88e74c33ecc166dce64af6e",
+    "transformation": "history replaced by []; mechanical state and RNG unchanged"
+  }
+}

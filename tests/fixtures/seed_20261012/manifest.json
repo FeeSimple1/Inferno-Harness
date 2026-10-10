@@ -1,0 +1,32 @@
+{
+  "source_commit": "b9346646c824517c0a4c1880f30f9f87dfac1e47",
+  "scenario": "F",
+  "seed": 20261012,
+  "files": {
+    "before_gather.json": {
+      "source": "positions/before-103.json",
+      "sha256": "bef8bd08c421e2bab865815b3d595814808f33accb341072835b525c5ff1a5e2",
+      "omitted": "history only; mapping order retained"
+    },
+    "before_battle.json": {
+      "source": "positions/before-623.json",
+      "sha256": "8af6b420736871718299832374ce004cf3260da75c7b58751c2a62660329b55b",
+      "omitted": "history only; mapping order retained"
+    },
+    "before_treasurers.json": {
+      "source": "positions/before-771.json",
+      "sha256": "11b16546855b4888f50f8adc61f0b6a4fd42a8949b12ce7511a68cdd376a745a",
+      "omitted": "history only; mapping order retained"
+    },
+    "before_aftermath.json": {
+      "source": "battle_before_aftermath.json",
+      "sha256": "30ee80f421bc42cce36ec98711f12b735e90760059675c17632eecd92e95fb43",
+      "omitted": "history only; mapping order retained"
+    },
+    "before_save.json": {
+      "source": "positions/before-save-after-339.json",
+      "sha256": "3f93352d5d95ab4ced5a475c2de124125628cc185913a008dbb9d85f70c41039",
+      "omitted": "history only; mapping order retained"
+    }
+  }
+}

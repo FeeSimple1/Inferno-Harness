@@ -164,11 +164,14 @@ def dispatch(state: dict[str, Any], action: dict[str, Any]) -> dict[str, Any]:
     # not deepcopy the growing transcript for every action (quadratic cost).
     from .battle import ScriptedDecisionError
     _history = state.get("history")
-    _snapshot = copy.deepcopy({k: v for k, v in state.items() if k != "history"})
-    if _history is not None:
-        _snapshot["history"] = _history
+    _snapshot = {k: (_history if k == "history" else copy.deepcopy(v))
+                 for k, v in state.items()}
+    from .ordering import canonicalize_mappings
+    from .rng import collect_action_rolls
     try:
-        result = handler(state, side, args, rng)
+        canonicalize_mappings(state)
+        with collect_action_rolls() as action_rolls:
+            result = handler(state, side, args, rng)
     except Exception as exc:
         if _snapshot is not None:
             state.clear()
@@ -180,17 +183,18 @@ def dispatch(state: dict[str, Any], action: dict[str, Any]) -> dict[str, Any]:
     _check_campaign_victory(state)  # 5.2 sudden-death
     rolls_consumed = rng.advance_count - rolls_before
     state["meta"]["rng_advance"] = state["meta"].get("rng_advance", 0) + rolls_consumed
-    if rolls_consumed:
-        result.setdefault("rolls", []).extend(
-            [{"context": r.context, "value": r.value} for r in rng.drain_log()]
-        )
+    # Authoritative chronological action log: one entry per genuine RNG call,
+    # including recovery, Quarter, Revolt and FPD's separately owned generators.
+    # Do not append handler summaries (which can contain these same rolls).
+    result["rolls"] = action_rolls
+    rng.drain_log()
     # Append to history
     state.setdefault("history", []).append({
         "action": name,
         "side": side,
         "args": copy.deepcopy(args),
-        "rolls": result.get("rolls", []),
-        "state_changes": result.get("state_changes", {}),
+        "rolls": copy.deepcopy(result.get("rolls", [])),
+        "state_changes": copy.deepcopy(result.get("state_changes", {})),
         "rule_citation": result.get("rule_citation"),
     })
     return result
@@ -680,10 +684,42 @@ def _h_levy_disband_done(state, side, args, rng) -> dict[str, Any]:
     return {"state_changes": {"step": "disband_done"}, "rule_citation": "3.3"}
 
 
+def _disband_comune(state, lid: str) -> None:
+    """1.6/3.5.2: clear the attached mat, not the captured-Carroccio record."""
+    lord = state["lords"][lid]
+    former_locales = []
+    for name, loc in state["locales"].items():
+        if lid in loc.get("lords_present", []):
+            loc["lords_present"] = [oid for oid in loc["lords_present"] if oid != lid]
+            former_locales.append(name)
+    _place_service(state, lid, None)
+    _place_cylinder(state, lid, None)
+    state["decks"][lord["side"]]["aow_deck"].extend(lord.get("capabilities", []))
+    lord.update(status="in_levy_pool", location=None, capabilities=[],
+                forces={}, routed_units={}, assets={}, vassals=[], flags={})
+    for name in former_locales:
+        _sweep_freed_stronghold(state, name)
+
+
+def _disband_attached_comuni(state, commander_id: str) -> None:
+    commander = state["lords"][commander_id]
+    if not commander.get("commander"):
+        return
+    for lid, lord in state["lords"].items():
+        if (lord.get("comune_of") in (commander_id, commander.get("name"))
+                and lord.get("side") == commander.get("side")
+                and lord.get("status") == "mustered"):
+            _disband_comune(state, lid)
+
+
 def _disband_beyond_service_limit(state, lid: str) -> None:
     """3.3.1: Regular Lord -> remove permanently. Podestà -> cylinder
     placed Service-Rating boxes ahead of current Turn (may Muster again)."""
     lord = state["lords"][lid]
+    if lord.get("comune_of"):
+        _disband_comune(state, lid)
+        return
+    _disband_attached_comuni(state, lid)
     # Pop from current Locale's lords_present
     _disband_from_loc = lord.get("location")
     loc = state["locales"].get(lord.get("location") or "")
@@ -702,6 +738,7 @@ def _disband_beyond_service_limit(state, lid: str) -> None:
     # Clear mat state.
     lord["capabilities"] = []
     lord["forces"] = {}
+    lord["routed_units"] = {}
     lord["assets"] = {}
     lord["vassals"] = []
     lord["location"] = None
@@ -758,6 +795,10 @@ def _disband_at_service_limit(state, lid: str, levy_box: int) -> None:
     marker Disbands; cylinder placed Service-Rating boxes right of current.
     Does NOT trigger Revolt or Treachery."""
     lord = state["lords"][lid]
+    if lord.get("comune_of"):
+        _disband_comune(state, lid)
+        return
+    _disband_attached_comuni(state, lid)
     _disband_from_loc = lord.get("location")
     loc = state["locales"].get(lord.get("location") or "")
     if loc and lid in loc.get("lords_present", []):
@@ -775,6 +816,7 @@ def _disband_at_service_limit(state, lid: str, levy_box: int) -> None:
     # Clear mat.
     lord["capabilities"] = []
     lord["forces"] = {}
+    lord["routed_units"] = {}
     lord["assets"] = {}
     lord["vassals"] = []
     lord["location"] = None
@@ -912,7 +954,7 @@ def _h_levy_muster_lord(state, side, args, rng) -> dict[str, Any]:
       target_lord_id:  Lord being Mustered (must be Ready / on Calendar)
       target_seat:     Seat where target will be placed if roll succeeds
     """
-    _require_step(state, "3.4")
+    _require_muster_segment(state, side, args.get("muster_lord_id"))
     mlid = args.get("muster_lord_id")
     tlid = args.get("target_lord_id")
     target_seat = args.get("target_seat")
@@ -1016,7 +1058,7 @@ def _h_levy_muster_vassal(state, side, args, rng) -> dict[str, Any]:
       lord_id:   Mustering Lord
       vassal:    Name of vassal on his mat
     """
-    _require_step(state, "3.4")
+    _require_muster_segment(state, side, args.get("lord_id"))
     lid = args.get("lord_id")
     vname = args.get("vassal")
     lord = _require_lord(state, lid, side)
@@ -1043,6 +1085,8 @@ def _h_levy_muster_vassal(state, side, args, rng) -> dict[str, Any]:
         raise IllegalAction("UNKNOWN_VASSAL", f"{lid} has no Vassal named {vname!r}.", "3.4.2")
 
     if target.get("special"):
+        if target.get("on_mat"):
+            raise IllegalAction("VASSAL_ALREADY_MUSTERED", f"{vname} is already on the Comune mat.", "3.4.2")
         if vname == "Carroccio":
             raise IllegalAction("CARROCCIO_CTA_ONLY",
                                 "The Carroccio Musters only via CtA (3.5.3).", "3.4.2")
@@ -1101,7 +1145,7 @@ def _h_levy_muster_transport(state, side, args, rng) -> dict[str, Any]:
       lord_id:  Mustering Lord
       kind:     "Cart" (default) or "Ship" (Pisa only)
     """
-    _require_step(state, "3.4")
+    _require_muster_segment(state, side, args.get("lord_id"))
     lid = args.get("lord_id")
     kind = args.get("kind", "Cart")
     lord = _require_lord(state, lid, side)
@@ -1129,7 +1173,7 @@ def _h_levy_muster_capability(state, side, args, rng) -> dict[str, Any]:
     card_id selects a card from the deck. For legacy callers omitting it,
     draw an unbiased random card; explicit scope must match the printed card.
     """
-    _require_step(state, "3.4")
+    _require_muster_segment(state, side, args.get("lord_id"))
     lid = args.get("lord_id")
     lord = _require_lord(state, lid, side)
     if lord["status"] != "mustered":
@@ -1151,7 +1195,7 @@ def _h_levy_muster_capability(state, side, args, rng) -> dict[str, Any]:
         raise IllegalAction("CAPABILITY_SCOPE", f"{cid} is a {scope} Capability.", "3.4.4")
     target_id = args.get("target_lord_id", lid)
     target = _require_lord(state, target_id, side)
-    if target_id != lid and (not lord.get("commander") or target.get("comune_of") != lid):
+    if target_id != lid and (not lord.get("commander") or target.get("comune_of") not in (lid, lord.get("name"))):
         raise IllegalAction("INELIGIBLE_LORD", "Only a Commander may levy for his own Comune.", "3.4.4")
     if scope == "this_lord":
         if len(target.get("capabilities", [])) >= 2:
@@ -1171,6 +1215,14 @@ def _h_levy_muster_capability(state, side, args, rng) -> dict[str, Any]:
 
 def _h_levy_muster_done(state, side, args, rng) -> dict[str, Any]:
     """End this side's Muster segment (3.4)."""
+    if state["meta"].get("cta_extra_muster_lord"):
+        target = state["meta"]["cta_extra_muster_lord"]
+        _require_step(state, "3.5")
+        if not state["meta"].get("cta_active") or state["meta"].get("cta_substep") != "allies":
+            raise IllegalAction("WRONG_CTA_STEP", "No Allies Muster segment to finish.", "3.5.4")
+        _advance_cta(state)
+        return {"state_changes": {"step": "allies_muster_done", "lord_id": target},
+                "rule_citation": "3.5.4 / 3.4"}
     _require_step(state, "3.4")
     _clear_segment_lordship(state, side)
     advance_to_next_side_or_step(state)
@@ -1187,6 +1239,17 @@ def _h_levy_cta_skip(state, side, args, rng) -> dict[str, Any]:
     Gather is a free March) which lands in Phase 3b. Until then, both
     sides may only skip 3.5."""
     _require_step(state, "3.5")
+    if state["meta"].get("cta_active"):
+        raise IllegalAction("CTA_ALREADY_ACTIVE", "Finish the active Call to Arms first.", "3.5")
+    meta = state["meta"]
+    if meta.pop("cta_treasurers_final_offer", False):
+        # Both sides already declined; this was the final F23 opportunity.
+        meta["active_player"] = "ghibelline"
+    elif side == "ghibelline" and _cta_treasurers_playable(state):
+        meta["active_player"] = "guelph"
+        meta["cta_treasurers_final_offer"] = True
+        return {"state_changes": {"step": "cta_skipped", "treasurers_final_offer": True},
+                "rule_citation": "3.5 / F23"}
     advance_to_next_side_or_step(state)
     return {"state_changes": {"step": "cta_skipped"}, "rule_citation": "3.5"}
 
@@ -3251,201 +3314,179 @@ def _apply_post_battle(state, result, attackers: list[str], defenders: list[str]
                       battle_locale: str | None = None,
                       decisions: list[dict] | None = None,
                       callback=None) -> None:
-    """4.4.3 - 4.4.5 post-Battle bookkeeping: Spoils + Service shifts +
-    Loss rolls (with Knights' Quarter) + Lord removal + Retreat relocation.
+    """4.4.3–4.4.5: decide movement, award Spoils, roll Losses, then remove.
 
-    Conceded side gets the favourable Spoils + Service treatment.
-
-    The post-Battle player elections — for each losing-but-surviving Lord,
-    Withdraw into a Friendly Stronghold vs Retreat (4.4.3 / 11.2), and the
-    Retreat destination among legal Locales (4.4.5) — flow through a
-    BattleDecisionContext built from `decisions` (FIFO scripted list) and
-    `callback`. Both are optional, so absent operator input the behaviour is
-    byte-identical: the withdraw election defaults to meta.post_battle_withdraw
-    and the destination to the deterministic leftmost Locale.
+    Being routed out of the Array is NOT permanent removal. All-routed Lords
+    retain the same Retreat/Withdraw choice and recovery rolls as other Lords.
+    Commander/Comune cleanup is deferred until both mats' Spoils and Quarter
+    have been resolved; a removal must never erase another participant's mat.
     """
-    _bc = state["meta"].get("approach_breadcrumb") or {}
-    _approached_from = _bc.get("approached_from")
-    _approached_via = _bc.get("approached_via")
-    from .battle import (
-        BattleDecisionContext,
-        loss_roll_for_routed,
-        service_shift_for_retreated,
-        transfer_spoils,
-    )
-    bdc = BattleDecisionContext(scripted=list(decisions or []), callback=callback)
-    from .rng import HarnessRNG
-    rng = HarnessRNG(state["meta"]["rng_seed"],
-                     advance=state["meta"].get("rng_advance", 0))
+    from .battle import (BattleDecisionContext, loss_roll_for_routed,
+                         service_shift_for_retreated, transfer_spoils)
+    rng = HarnessRNG(state["meta"]["rng_seed"], state["meta"].get("rng_advance", 0))
     rolls_before = rng.advance_count
-
+    bdc = BattleDecisionContext(scripted=copy.deepcopy(decisions or []), callback=callback)
+    breadcrumb = state["meta"].get("approach_breadcrumb") or {}
+    origin, via = breadcrumb.get("approached_from"), breadcrumb.get("approached_via")
     loser = result["loser"]
     conceded = result.get("conceded") == loser
-    losers_ids = attackers if loser == "attacker" else defenders
-    winners_ids = defenders if loser == "attacker" else attackers
-    # Filter winners to surviving Mustered Lords
-    winners_alive = [w for w in winners_ids
-                     if w in state["lords"] and state["lords"][w]["status"] == "mustered"]
-
-    combat_removed: list[str] = []
-    # 4.4.3 / Battle&Storm 11.2: a losing Lord Defending at a Friendly Stronghold
-    # at the Battle Locale MAY Withdraw into it (<= Stronghold Size) instead of
-    # Retreating ("owner chooses for each"). Opt-in: the consumer lists lord_ids
-    # in meta.post_battle_withdraw; default (absent) = Retreat, unchanged.
-    _any_retreat_off = False  # set when a loser actually relocates off battle_locale
+    losers_ids = list(attackers if loser == "attacker" else defenders)
+    winners_ids = list(defenders if loser == "attacker" else attackers)
+    participants = list(dict.fromkeys(attackers + defenders))
+    winners_alive = [lid for lid in winners_ids if state["lords"].get(lid, {}).get("status") == "mustered"]
+    # Commander first, even when the Comune started at Front Center.
+    losers_ids.sort(key=lambda lid: bool(state["lords"].get(lid, {}).get("comune_of")))
     withdraw_elected = set(state["meta"].pop("post_battle_withdraw", []) or [])
-    _wd_cap = _withdraw_capacity(state, battle_locale)
-    # Count Lords already inside the Stronghold (e.g. Withdrawn during the
-    # Approach response) against capacity, so elected Withdraws can't overfill
-    # it — mirrors the already_in check on the Approach-response Withdraw path.
-    _loser_side = state["lords"][losers_ids[0]]["side"] if losers_ids else None
-    _wd_loc = state["locales"].get(battle_locale) if battle_locale else None
-    _wd_count = sum(
-        1 for _o in (_wd_loc.get("lords_present", []) if _wd_loc else [])
-        if state["lords"].get(_o, {}).get("flags", {}).get("in_stronghold")
-        and state["lords"][_o]["side"] == _loser_side
-    )
-    _retreated_for_shift: list[str] = []
-    for lid in losers_ids:
-        if lid not in state["lords"]:
-            continue
-        # Determine fate: removed (zero forces) / retreated / withdrew
+    wd_cap = _withdraw_capacity(state, battle_locale)
+    loc = state["locales"].get(battle_locale, {})
+    loser_side = state["lords"][losers_ids[0]]["side"] if losers_ids else None
+    wd_count = sum(1 for lid in loc.get("lords_present", [])
+                   if state["lords"][lid].get("side") == loser_side
+                   and state["lords"][lid].get("flags", {}).get("in_stronghold")
+                   and not state["lords"][lid].get("comune_of"))
+    fates, spoils, shifts = {}, [], []
+    fully_spoiled = set()
+    combat_removed = set()
+
+    def attached(lid):
         lord = state["lords"][lid]
-        if sum(lord.get("forces", {}).values()) == 0 or lid in result.get("removed_lords", []):
-            # Removed per 4.4.5: Spoils, then Knights' Quarter for ALL his
-            # Cavalieri/Ritter (CONF-022), then removal as Beyond Service.
-            transfer_spoils(state, lid, winners_alive,
-                            retreated=False, conceded=conceded, withdrew=False)
+        return [cid for cid, com in state["lords"].items()
+                if com.get("comune_of") in (lid, lord.get("name"))
+                and com.get("comune_of") is not None
+                and com.get("side") == lord.get("side") and com.get("status") == "mustered"]
+
+    def removal_group(ids):
+        group = set(ids)
+        for lid in list(group):
+            group.update(attached(lid))
+        return group
+
+    def empty(lid):
+        l = state["lords"][lid]
+        return not (sum(l.get("forces", {}).values()) + sum(l.get("routed_units", {}).values()))
+
+    def award(lid, fate):
+        full = fate == "removed" or (fate == "retreated" and not conceded)
+        if full and lid in fully_spoiled:
+            return
+        spoils.append(transfer_spoils(state, lid, winners_alive,
+                      retreated=fate == "retreated", conceded=conceded,
+                      withdrew=fate == "withdrew"))
+        if full:
+            fully_spoiled.add(lid)
+
+    def remove_group(ids):
+        group = removal_group(ids)
+        group = {lid for lid in group if state["lords"][lid].get("status") == "mustered"}
+        # Resolve EVERY losing mat before any destructive Commander cleanup.
+        for lid in sorted(group):
+            if state["lords"][lid].get("side") == loser_side:
+                award(lid, "removed")
             _knights_quarter_all(state, lid)
+            fates[lid] = {"fate": "removed"}
+        for lid in sorted(group, key=lambda x: (not bool(state["lords"][x].get("comune_of")), x)):
             _disband_beyond_service_limit(state, lid)
-            combat_removed.append(lid)
+            combat_removed.add(lid)
+
+    preliminary = removal_group([lid for lid in participants
+        if state["lords"].get(lid, {}).get("status") == "mustered" and empty(lid)])
+    for lid in losers_ids:
+        lord = state["lords"].get(lid)
+        if not lord or lord.get("status") != "mustered":
+            continue
+        if lid in preliminary:
+            fates[lid] = {"fate": "removed"}
+            continue
+        parent = next((pid for pid in losers_ids
+                       if lord.get("comune_of") and lord["comune_of"] in
+                       (pid, state["lords"][pid].get("name"))), None)
+        if parent and parent in fates:
+            outcome = dict(fates[parent])
         elif lord.get("flags", {}).get("in_stronghold"):
-            # Withdrew into Stronghold: keep Assets, no Service shift.
-            transfer_spoils(state, lid, winners_alive,
-                            retreated=False, conceded=False, withdrew=True)
+            outcome = {"fate": "withdrew"}  # Sallying losers return inside.
         else:
-            # 4.4.3 / 11.2 / 4.4.5: a losing-but-surviving Lord either Withdraws
-            # into a Friendly Stronghold at the Battle Locale (when eligible) or
-            # Retreats to a legal adjacent Locale (Removed if none). Both the
-            # withdraw-vs-retreat election and the Retreat destination are
-            # operator-controllable here; absent operator input they fall back
-            # to meta.post_battle_withdraw (default Retreat) and the
-            # deterministic leftmost Locale, so legacy callers are unchanged.
-            is_marching_attacker = (loser == "attacker")
-            eligible_withdraw = (_wd_count < _wd_cap
-                                 and _can_withdraw_into_stronghold(state, lid, battle_locale))
+            default_dest = _retreat_destination(state, lid, battle_locale, lord["side"],
+                                                loser == "attacker", origin, via)
             do_withdraw = False
-            if eligible_withdraw:
-                _wd_default = "withdraw" if lid in withdraw_elected else "retreat"
-                _wd_choice = bdc.decide_optional(
-                    "post_battle_withdraw", lord["side"],
-                    options=["retreat", "withdraw"], default=_wd_default,
+            if wd_count < wd_cap and _can_withdraw_into_stronghold(state, lid, battle_locale):
+                fallback = "withdraw" if lid in withdraw_elected else ("retreat" if default_dest else "remove")
+                choice = bdc.decide_optional("post_battle_withdraw", lord["side"],
+                    options=["retreat" if default_dest else "remove", "withdraw"], default=fallback,
                     info={"lord_id": lid, "locale": battle_locale})
-                do_withdraw = (_wd_choice == "withdraw")
+                do_withdraw = choice == "withdraw"
             if do_withdraw:
-                # Withdraw INSIDE: keep Assets, no Service shift, stay put.
-                lord.setdefault("flags", {})["in_stronghold"] = True
-                _wd_count += 1
-                transfer_spoils(state, lid, winners_alive,
-                                retreated=False, conceded=False, withdrew=True)
-                continue
-            # SMOKE-Inferno-090: RETREAT to a legal adjacent Locale (4.4.5).
-            _default_dest = _retreat_destination(
-                state, lid, battle_locale, lord["side"],
-                is_marching_attacker, _approached_from, _approached_via)
-            if _default_dest is None:
-                dest = None
+                outcome = {"fate": "withdrew"}
+                wd_count += 1
+            elif default_dest is None:
+                outcome = {"fate": "removed"}
             else:
-                _cands = _retreat_candidates(
-                    state, lid, battle_locale, lord["side"],
-                    is_marching_attacker, _approached_from, _approached_via)
-                if _default_dest not in _cands:
-                    _cands = [_default_dest] + _cands
-                dest = bdc.decide_optional(
-                    "retreat_destination", lord["side"], options=_cands,
-                    default=_default_dest, info={"lord_id": lid})
-            if dest is None:
-                # No legal Retreat target -> Removed (4.4.5): Spoils, then
-                # Knights' Quarter for ALL his Cavalieri/Ritter (CONF-022).
-                transfer_spoils(state, lid, winners_alive,
-                                retreated=False, conceded=conceded, withdrew=False)
-                _knights_quarter_all(state, lid)
-                _disband_beyond_service_limit(state, lid)
-                combat_removed.append(lid)
-                continue
-            # Retreated.
-            transfer_spoils(state, lid, winners_alive,
-                            retreated=True, conceded=conceded, withdrew=False)
-            # Relocate the Lord OFF the battle Locale to the chosen destination.
-            if battle_locale and battle_locale in state["locales"]:
-                bl = state["locales"][battle_locale]
-                if lid in bl.get("lords_present", []):
-                    bl["lords_present"].remove(lid)
-            lord["location"] = dest
-            state["locales"][dest].setdefault("lords_present", []).append(lid)
-            _any_retreat_off = True
-            # Service shift deferred: CONF-028 (RoP 4.4.3 EXCEPTION) is
-            # SIDE-scoped — "EACH Lord of a side that Conceded and Retreated
-            # with a Carroccio shifts Service just one box left" — so the
-            # 1-box shift is decided only once every loser's fate is known.
-            _retreated_for_shift.append(lid)
-    # CONF-028: if the side Conceded and its (retained) Carroccio Retreated,
-    # EVERY Retreated Lord of that side shifts exactly one box; otherwise each
-    # rolls the normal 1-3 box die (4.4.3). Previously only the Lord personally
-    # carrying the Carroccio got the flat 1-box shift.
-    _side_carroccio = bool(conceded) and any(
-        any(v.get("name") == "Carroccio" and v.get("on_mat")
-            for v in state["lords"][r].get("vassals", []))
-        for r in _retreated_for_shift if r in state["lords"])
-    for _rid in _retreated_for_shift:
-        if _rid in state["lords"]:
-            service_shift_for_retreated(
-                state, _rid,
-                conceded_with_carroccio=_side_carroccio,
-                rng_caller=rng.roll,
-            )
-    if bdc.trace:
-        result["post_battle_decisions"] = list(bdc.trace)
-    # 4.4.1 Relief Sally: if the combined Attackers (incl. relief-Sallying Besieged
-    # Lords) LOSE, the Sallying Lords Withdraw back inside (handled above via the
-    # in_stronghold branch) AND the Siege markers there are reduced to ONE.
-    if (loser == "attacker" and battle_locale
-            and any(state["lords"].get(a, {}).get("flags", {}).get("relief_sallying")
-                    for a in attackers)):
-        bl = state["locales"].get(battle_locale)
-        if bl and bl.get("siege"):
-            sg0 = bl["siege"][0]
-            bl["siege"] = [{"side": sg0["side"], "color": sg0["color"], "count": 1}]
-    # Clear the transient relief_sallying flags now that the battle is resolved.
-    for a in attackers:
-        state["lords"].get(a, {}).get("flags", {}).pop("relief_sallying", None)
-    # SMOKE-Inferno-088: a Retreat off the Battle Locale is a departure too, so
-    # sweep any Siege/Bypass marker the departing loser freed there (e.g. the
-    # last Besieger Retreated). The sweep is conservative — it lifts a marker
-    # only when no Mustered besieger of that side remains outside the Locale.
-    if battle_locale and _any_retreat_off:
-        _sweep_freed_stronghold(state, battle_locale)
-    # Loss rolls for ALL participants (winners + losers) with their Routed piles
-    loss_results: dict[str, dict] = {}
-    for lid in attackers + defenders:
-        if lid not in state["lords"]:
-            continue
-        if not state["lords"][lid].get("routed_units"):
-            continue
-        # Harsh Recovery: side that Retreated without Conceding.
-        retreated_no_concede = (
-            lid in losers_ids
-            and not state["lords"][lid].get("flags", {}).get("in_stronghold")
-            and not conceded
-        )
-        loss_results[lid] = loss_roll_for_routed(
-            state, lid, harsh_recovery=retreated_no_concede, rng_caller=rng.roll)
-    # SMOKE-Inferno-080: F24/S24 Doctors — restore half (round up) of each named
-    # Lord's Lost units (incl. Knights who received Quarter) after Loss rolls.
+                candidates = _retreat_candidates(state, lid, battle_locale, lord["side"],
+                                                  loser == "attacker", origin, via)
+                if default_dest not in candidates:
+                    candidates = [default_dest] + candidates
+                dest = bdc.decide_optional("retreat_destination", lord["side"], options=candidates,
+                                          default=default_dest, info={"lord_id": lid})
+                outcome = {"fate": "retreated", "destination": dest}
+        fates[lid] = outcome
+        fate = outcome["fate"]
+        if fate == "removed":
+            preliminary.update(removal_group([lid]))
+        elif fate == "withdrew":
+            lord.setdefault("flags", {})["in_stronghold"] = True
+            award(lid, fate)
+        else:
+            award(lid, fate)
+            old_loc = state["locales"].get(lord.get("location"), {})
+            if lid in old_loc.get("lords_present", []):
+                old_loc["lords_present"].remove(lid)
+            lord["location"] = outcome["destination"]
+            lord.get("flags", {}).pop("in_stronghold", None)
+            target = state["locales"][outcome["destination"]].setdefault("lords_present", [])
+            if lid not in target:
+                target.append(lid)
+
+    remove_group(preliminary)
+    retreated = [lid for lid in losers_ids if fates.get(lid, {}).get("fate") == "retreated"
+                 and state["lords"][lid].get("status") == "mustered"]
+    carroccio_retained = conceded and any(
+        any(v.get("name") == "Carroccio" and v.get("on_mat") for v in state["lords"][lid].get("vassals", []))
+        for lid in retreated)
+    for lid in retreated:
+        if not state["lords"][lid].get("comune_of"):
+            shifts.append(service_shift_for_retreated(state, lid,
+                conceded_with_carroccio=carroccio_retained, rng_caller=rng.roll))
+
+    # Standard recovery for winners/Withdrawn Lords; harsh only for actual
+    # Retreat without Concede. Routed-only Lords reach this step normally.
+    loss_results = {}
+    for lid in participants:
+        lord = state["lords"].get(lid, {})
+        if lord.get("status") == "mustered" and lord.get("routed_units"):
+            loss_results[lid] = loss_roll_for_routed(state, lid,
+                harsh_recovery=lid in retreated and not conceded, rng_caller=rng.roll)
     _apply_doctors_restoration(state, result.get("doctors", []), loss_results)
-    # 4.4.5 Revolt & Treachery for Lords removed in this Battle.
-    _trigger_disband_revolt_and_treachery(state, combat_removed, rng, context="battle")
-    state["meta"]["rng_advance"] = state["meta"].get("rng_advance", 0) + (rng.advance_count - rolls_before)
+    remove_group([lid for lid in participants
+                  if state["lords"].get(lid, {}).get("status") == "mustered" and empty(lid)])
+
+    if (loser == "attacker" and battle_locale and any(
+            state["lords"].get(lid, {}).get("flags", {}).get("relief_sallying") for lid in attackers)):
+        if loc.get("siege"):
+            first = loc["siege"][0]
+            loc["siege"] = [{"side": first["side"], "color": first["color"], "count": 1}]
+    for lid in attackers:
+        state["lords"].get(lid, {}).get("flags", {}).pop("relief_sallying", None)
+    if battle_locale:
+        _sweep_freed_stronghold(state, battle_locale)
+    _trigger_disband_revolt_and_treachery(state, sorted(combat_removed), rng, context="battle")
+    state["meta"]["rng_advance"] = state["meta"].get("rng_advance", 0) + rng.advance_count - rolls_before
+    result["routed_lords"] = list(result.get("removed_lords", []))
+    result["removed_lords"] = sorted(combat_removed)
+    result["post_battle_fates"] = copy.deepcopy(fates)
+    result["spoils"] = spoils
+    result["service_shifts"] = shifts
+    result["loss_results"] = loss_results
+    result["post_battle_decisions"] = bdc.trace
+    result.setdefault("rolls", []).extend({"context": r.context, "value": r.value} for r in rng.drain_log())
 
 
 # Register new handlers
@@ -3693,6 +3734,8 @@ def _storm_with_aftermath(state, side, lid, args, rng, *, round_limit=None):
         loss_results = _roll_routed_losses(state, specs, capture_knights=False)
     else:
         loss_results = {}
+    _apply_doctors_restoration(state, result.get("doctors", []), loss_results)
+    result["loss_results"] = loss_results
     # CONF-024b (RoP 4.4.5): Lords removed in Storm "by ... Loss of all his
     # Forces" suffer removal as if Disbanding Beyond Service (incl. Revolt and
     # Treachery) — but NO Knights' Quarter ("if in Battle" only; Storm capture
@@ -3708,8 +3751,6 @@ def _storm_with_aftermath(state, side, lid, args, rng, *, round_limit=None):
         _disband_beyond_service_limit(state, _eid)
     _trigger_disband_revolt_and_treachery(state, _storm_emptied, rng,
                                           context=f"storm_empty_{locale_name}")
-    # SMOKE-Inferno-080: Doctors restoration now also fires in Storm.
-    _apply_doctors_restoration(state, result.get("doctors", []), loss_results)
     return result
 
 
@@ -3786,7 +3827,11 @@ def _apply_sack(state, locale_name, side, storm_result, rng):
 
     # Now do the Ruin/Allegiance/marker stuff
     loc["siege"] = []
+    removed_allegiance = [m for m in loc.get("current_allegiance", []) if m.get("side") == enemy]
     loc["current_allegiance"] = [m for m in loc.get("current_allegiance", []) if m.get("side") != enemy]
+    allegiance_vp = sum(m.get("value", 1) for m in removed_allegiance)
+    state["vp"][enemy] = max(0.0, state["vp"].get(enemy, 0) - allegiance_vp)
+    spoils_log["allegiance_vp_removed"] = {enemy: allegiance_vp}
     loc["walls_plus_one"] = None
     ruins_color = "gold" if loc["allegiance"] == "guelph" else "purple"
     loc["ruins"] = ruins_color
@@ -3867,66 +3912,21 @@ def _h_cmd_sally(state, side, args, rng) -> dict[str, Any]:
         scripted_decisions=args.get("scripted_decisions"),
         callback=state.get("battle_callback"),
     )
+    # Sally shares Battle aftermath. A routed Array Lord is not yet removed,
+    # and defeated Besiegers really Retreat (with Spoils and harsh recovery
+    # unless they Conceded). Sallying losers must instead return inside.
     if result["loser"] == "defender":
-        # Besiegers lose: Siege ends (4.5.3)
         loc["siege"] = []
-        # SMOKE-Inferno-093: losing-but-surviving Besiegers must RETREAT normally
-        # (4.5.3 SALLY LOSING / 11.2) -- not remain co-located at the Locale. No
-        # Approach breadcrumb applies in a Sally (no marching attacker).
-        # The losing Besiegers' Retreat destination is operator-controllable via
-        # the post_battle_decisions channel (retreat_destination), mirroring the
-        # field-Battle path; absent input it is the deterministic leftmost.
-        from .battle import BattleDecisionContext
-        _sally_bdc = BattleDecisionContext(
-            scripted=list(args.get("post_battle_decisions") or []),
-            callback=state.get("battle_callback"))
-        for bid in list(besiegers):
-            b = state["lords"].get(bid)
-            if (b is None or bid in result.get("removed_lords", [])
-                    or b.get("status") != "mustered"
-                    or sum(b.get("forces", {}).values()) == 0):
-                continue  # fully Routed besiegers are Removed below
-            _cands = _retreat_candidates(state, bid, locale_name, enemy_side,
-                                         False, None, None)
-            if not _cands:
-                dest = None
-            else:
-                dest = _sally_bdc.decide_optional(
-                    "retreat_destination", enemy_side, options=_cands,
-                    default=_cands[0], info={"lord_id": bid})
-            if dest is None:
-                _disband_beyond_service_limit(state, bid)
-            else:
-                if bid in loc.get("lords_present", []):
-                    loc["lords_present"].remove(bid)
-                b["location"] = dest
-                state["locales"][dest].setdefault("lords_present", []).append(bid)
-        if _sally_bdc.trace:
-            result["post_battle_decisions"] = list(_sally_bdc.trace)
     else:
-        # Sallying Lords lose: RAID — reduce Siege markers to 1
         if loc.get("siege"):
-            loc["siege"] = [{"side": loc["siege"][0]["side"], "color": loc["siege"][0]["color"], "count": 1}]
-        # Losing Sallying Lords must Withdraw back inside (4.5.3 END).
-        for sid_ in sallying:
-            if sid_ in state["lords"]:
-                state["lords"][sid_].setdefault("flags", {})["in_stronghold"] = True
-    sally_removed = [rl for rl in result["removed_lords"] if rl in state["lords"]]
-    # CONF-022 (RoP 4.4.5): a Lord removed in a Sally (Battle rules, 4.5.3)
-    # receives Knights' Quarter for ALL his Cavalieri and Ritter BEFORE his
-    # remaining Forces return to the pool.
-    for removed_lid in sally_removed:
-        _knights_quarter_all(state, removed_lid)
-        _disband_beyond_service_limit(state, removed_lid)
-    # SMOKE-Inferno-081: 4.4.4 Loss rolls for surviving participants' Routed
-    # units. Sally uses Battle procedure (Battle&Storm 2.3), so Knights' Quarter
-    # applies (capture_knights=True) and recovery is Standard — neither side
-    # "Retreats without Conceding" in a Sally (the Sallying Lord returns inside;
-    # the Besiegers hold their ground), so Harsh Recovery does not apply.
-    _roll_routed_losses(state, [(p, False) for p in sallying + besiegers],
-                        capture_knights=True)
-    # 4.4.5 Revolt & Treachery for Lords removed in this Sally.
-    _trigger_disband_revolt_and_treachery(state, sally_removed, rng, context="sally")
+            first = loc["siege"][0]
+            loc["siege"] = [{"side": first["side"], "color": first["color"], "count": 1}]
+        for participant in sallying:
+            state["lords"][participant].setdefault("flags", {})["in_stronghold"] = True
+    state["meta"].pop("approach_breadcrumb", None)  # Sally has no Approach Way.
+    _apply_post_battle(state, result, sallying, besiegers, battle_locale=locale_name,
+                      decisions=args.get("post_battle_decisions"),
+                      callback=state.get("battle_callback"))
     return _finish_card_with({"sally_result": result}, state, side,
                               reason="sally_ends_card", citation="4.5.3")
 
@@ -4216,6 +4216,39 @@ _HANDLERS.update({
 # =====================================================================
 # Phase 3d: Bypass-state March (4.3.6) + Lieutenants (4.1.3) + 1.6 helper
 # =====================================================================
+
+
+def _allies_muster_eligible(state, lid: str) -> bool:
+    """3.5.4 extra Muster uses the ordinary 3.4 location requirements."""
+    lord = state["lords"].get(lid, {})
+    if lord.get("status") != "mustered" or lord.get("comune_of"):
+        return False
+    loc = state["locales"].get(lord.get("location"))
+    if not loc or not _is_friendly_locale(state, loc, lord["side"]):
+        return False
+    flags = lord.get("flags", {})
+    if flags.get("bypassing"):
+        return False
+    if loc.get("siege"):
+        # Urban Army: only a Podesta INSIDE his own Main Seat may Levy.
+        return bool(flags.get("in_stronghold") and lord.get("podesta")
+                    and lord.get("seats") and lord["seats"][0] == lord["location"])
+    return True
+
+
+def _require_muster_segment(state, side: str, lid: str) -> None:
+    """Allow 3.4 actions in the one-Lord segment opened by 3.5.4 Allies."""
+    meta = state["meta"]
+    target = meta.get("cta_extra_muster_lord")
+    if (meta.get("phase") == "levy" and current_step(state) == "3.5"
+            and meta.get("cta_active") and meta.get("cta_substep") == "allies"
+            and target):
+        if side != current_side(state) or lid != target:
+            raise IllegalAction("CTA_MUSTER_LORD", f"Only {target} may spend this Allies segment.", "3.5.4")
+        if not _allies_muster_eligible(state, lid):
+            raise IllegalAction("MUSTER_NOT_ELIGIBLE", f"{lid} cannot Muster here.", "3.4 / 3.5.4")
+        return
+    _require_step(state, "3.4")
 
 
 def _lordship_limit(state, lord_id: str) -> int:
@@ -4637,7 +4670,8 @@ def _h_end_game_check(state, side, args, rng) -> dict[str, Any]:
     if current_campaign_step(state) != "end_campaign":
         raise IllegalAction("WRONG_STEP", "Game-end check in end_campaign.", "4.9.3")
     cal = state["calendar"]
-    if cal.get("end_box") and state["meta"]["turn"] >= cal["end_box"] - 1:
+    last_turn = min(16, cal["end_box"] - 1) if cal.get("end_box") else 16
+    if state["meta"]["turn"] >= last_turn:
         # Apply scenario-end VP modifiers per 5.1 + scenario rules.
         g, h = _compute_final_vp(state)
         winner = None
@@ -4648,6 +4682,8 @@ def _h_end_game_check(state, side, args, rng) -> dict[str, Any]:
         state["meta"]["phase"] = "victory"
         state["meta"]["game_over"] = True
         state["meta"]["winner"] = winner
+        state["meta"]["final_vp"] = {"guelph": g, "ghibelline": h}
+        state["meta"]["campaign_step"] = None
         # CONF-017: winner is decided from the TRUE (uncapped) g,h above; the
         # running track is clamped to 17.5 for the display bound / assert_vp_cap.
         state["vp"]["guelph"] = min(g, 17.5)
@@ -4711,8 +4747,9 @@ def _h_end_waste(state, side, args, rng) -> dict[str, Any]:
         choice = discards.get(lid)
         if choice is None:
             # Default: discard the first Asset with count > 1
-            for a, c in lord["assets"].items():
-                if c > 1:
+            from .ordering import ASSET_ORDER
+            for a in (*ASSET_ORDER, *sorted(set(lord["assets"]) - set(ASSET_ORDER))):
+                if lord["assets"].get(a, 0) > 1:
                     lord["assets"][a] -= 1
                     waste_log.append({"lord_id": lid, "discarded_asset": a})
                     break
@@ -4771,6 +4808,9 @@ def _h_end_reset(state, side, args, rng) -> dict[str, Any]:
             if isinstance(cid, str) and esd in state["decks"] and cid[:1] in ("F", "S"):
                 state["decks"][esd]["aow_discard"].append(cid)
     state.pop("active_events", None)
+    # War/Treasurers permissions belong to one Levy, never another Turn.
+    state.pop("war_declared_this_levy", None)
+    state["meta"].pop("cta_extra_muster_lord", None)
     # Advance Calendar
     cal = state["calendar"]
     cur_box = cal["levy_box"]
@@ -4912,6 +4952,9 @@ def _h_play_event(state, side, args, rng) -> dict[str, Any]:
     effect_args = args.get("effect_args", {})
     if not isinstance(effect_args, dict):
         raise IllegalAction("MALFORMED", "effect_args must be a JSON object.", "3.1.3")
+    if (cid == "F23" and effect_args.get("mode", "declare_cta") == "declare_cta"
+            and not _cta_treasurers_playable(state)):
+        raise IllegalAction("NO_PLAY_WINDOW", "Treasurers Call to Arms requires its Levy declaration window and 2 Coin.", "3.5 / F23")
     effect_result = ce.apply_event_effect(state, cid, side, effect_args, rng)
     if effect_result.get("manual") or not effect_result.get("applied"):
         raise IllegalAction("EVENT_UNRESOLVED", effect_result.get("note") or effect_result.get("reason") or "Event needs a valid choice.", "3.1.3")
@@ -5007,6 +5050,17 @@ COMMANDER_LORD = {"guelph": "firenze", "ghibelline": "siena"}
 CTA_SUBSTEPS = ["gather", "commander_arms", "comune", "allies"]
 
 
+def _cta_treasurers_playable(state) -> bool:
+    """An available paid Event play, never permission for an unpaid declare."""
+    meta = state["meta"]
+    return bool(meta.get("phase") == "levy" and meta.get("levy_step") == "3.5"
+                and not meta.get("cta_active") and meta.get("scenario") not in ("A", "C", "E")
+                and "F23" in state["decks"]["guelph"]["aow_held"]
+                and sum(l.get("assets", {}).get("Coin", 0)
+                        for l in state["lords"].values()
+                        if l.get("side") == "guelph" and l.get("status") == "mustered") >= 2)
+
+
 def _cta_trigger_met(state, side: str) -> tuple[bool, str]:
     """Per 3.5: a side may declare CtA if any of:
       (1) VP score ≥ 4 below the other (2.2.5, 5.1)
@@ -5043,16 +5097,6 @@ def _cta_trigger_met(state, side: str) -> tuple[bool, str]:
         return True, "vp_lag"
     if side in state.get("war_declared_this_levy", []):
         return True, "war_event"
-    # Treasurers: F23 in held + Guelph has 2 Coin
-    if side == "guelph":
-        held = state["decks"]["guelph"]["aow_held"]
-        if "F23" in held:
-            total_coin = sum(
-                l["assets"].get("Coin", 0) for l in state["lords"].values()
-                if l["side"] == "guelph" and l["status"] == "mustered"
-            )
-            if total_coin >= 2:
-                return True, "treasurers_available"
     return False, "no_trigger"
 
 
@@ -5061,6 +5105,8 @@ def _h_levy_cta_declare(state, side, args, rng) -> dict[str, Any]:
     will go through the 4 sub-steps (Guelph first, then Ghibelline).
     """
     _require_step(state, "3.5")
+    if state["meta"].get("cta_active"):
+        raise IllegalAction("CTA_ALREADY_ACTIVE", "Finish the active Call to Arms first.", "3.5")
     eligible, reason = _cta_trigger_met(state, side)
     if not eligible:
         raise IllegalAction(
@@ -5072,6 +5118,8 @@ def _h_levy_cta_declare(state, side, args, rng) -> dict[str, Any]:
         )
     # Mark CtA active; both sides will run through the 4 substeps.
     state["meta"]["cta_active"] = True
+    state["meta"].pop("cta_gather_progress", None)
+    state["meta"].pop("cta_treasurers_final_offer", None)
     if state["meta"]["scenario"] == "C" and side == "ghibelline":
         state["meta"]["c_cta_done"] = True
     state["meta"]["cta_substep"] = "gather"
@@ -5089,15 +5137,18 @@ def _advance_cta(state) -> None:
     cur_substep = state["meta"].get("cta_substep")
     if cur_substep is None:
         return
+    if cur_substep == "gather":
+        state["meta"].pop("cta_gather_progress", None)
     idx = CTA_SUBSTEPS.index(cur_substep)
     if idx + 1 < len(CTA_SUBSTEPS):
         state["meta"]["cta_substep"] = CTA_SUBSTEPS[idx + 1]
         return
-    # Done with this side's CtA
+    # Done with this side's CtA, including its optional one-Lord Muster.
+    state["meta"].pop("cta_extra_muster_lord", None)
     _clear_segment_lordship(state, side)
     done = set(state["meta"].get("cta_sides_done", []))
     done.add(side)
-    state["meta"]["cta_sides_done"] = list(done)
+    state["meta"]["cta_sides_done"] = sorted(done)
     other = "ghibelline" if side == "guelph" else "guelph"
     if other not in done:
         state["meta"]["active_player"] = other
@@ -5143,68 +5194,111 @@ def _cta_gather_dest_legal(state, side: str, dest_name: str) -> str | None:
     return None
 
 
-def _h_cta_gather_march(state, side, args, rng) -> dict[str, Any]:
-    """3.5.1 GATHER — free March (no Moved/Fought, no Feed). Each Lord
-    must end CLOSER to his Leading City. Phase 5: single-Lord per call.
-
-    args:
-      lord_id:    Lord doing the free march
-      destination: Locale name
-      way_type:   road/track
-    """
-    if state["meta"].get("cta_substep") != "gather":
-        raise IllegalAction("WRONG_CTA_STEP", "gather substep only.", "3.5.1")
-    lid = args.get("lord_id")
+def _cta_gather_group(state, side: str, lid: str) -> list[str]:
+    """Gather moves a Commander AND his compulsory Comune, not either alone."""
     lord = _require_lord(state, lid, side)
-    if lord["status"] != "mustered":
+    if lord.get("status") != "mustered":
         raise IllegalAction("LORD_NOT_ON_MAP", f"{lid} not on map.", "3.5.1")
-    dest_name = args.get("destination")
-    if not dest_name or dest_name not in state["locales"]:
-        raise IllegalAction("BAD_DEST", f"Unknown destination {dest_name!r}.", "3.5.1")
-    cur_loc = lord.get("location")
-    if cur_loc is None:
-        raise IllegalAction("NO_LOCATION", f"{lid} has no Locale.", "3.5.1")
-    # Adjacency check
-    way_type = args.get("way_type")
-    adj = sd.adjacent_to(cur_loc)
-    if way_type:
-        if (dest_name, way_type) not in adj:
-            raise IllegalAction("BAD_WAY", f"No {way_type} from {cur_loc} to {dest_name}.", "3.5.1")
-    else:
-        ways = [w for n, w in adj if n == dest_name]
-        if not ways:
-            raise IllegalAction("NOT_ADJACENT", f"{cur_loc} not adjacent to {dest_name}.", "3.5.1")
-        way_type = ways[0]
-    # Closer-to-Leading-City check
-    leading = LEADING_CITY[side]
-    dist_before = _bfs_distance(cur_loc, leading)
-    dist_after = _bfs_distance(dest_name, leading)
-    if dist_after >= dist_before:
-        raise IllegalAction(
-            "NOT_CLOSER",
-            f"Gather March must end closer to {leading}; "
-            f"{cur_loc}->{dest_name} doesn't reduce distance ({dist_before}->{dist_after}).",
-            "3.5.1",
-        )
-    # May NOT enter a Locale with an Unbesieged/Unbypassed Enemy Lord or an
-    # un-Ruined Enemy Stronghold (predicate shared with the enumerator).
-    dest = state["locales"][dest_name]
+    if lord.get("comune_of"):
+        raise IllegalAction("COMUNE_CANNOT_LEAD", "Gather with the Comune's Commander.", "1.6 / 3.5.1")
+    group = [lid]
+    for oid, other in state["lords"].items():
+        if (other.get("comune_of") in (lid, lord.get("name"))
+                and other.get("side") == side and other.get("status") == "mustered"):
+            if other.get("location") != lord.get("location"):
+                raise IllegalAction("COMUNE_SEPARATED", "Comune and Commander must already be together.", "1.6 / 3.5.1")
+            group.append(oid)
+    for oid in group:
+        member = state["lords"][oid]
+        loc = state["locales"].get(member.get("location"), {})
+        if member.get("flags", {}).get("in_stronghold") and loc.get("siege"):
+            raise IllegalAction("BESIEGED", f"{oid} cannot Gather out of a Siege.", "3.5.1")
+    return group
+
+
+def _gather_command_rating(state, side, lid):
+    """3.5.1: Command modified at the start of this Lord's Gather.
+
+    Astrologers is explicitly first Command card each Campaign, not Gather.
+    Via Francigena modifies Command at a Friendly Lord Seat.
+    """
+    from .battle import _lord_has_capability
+    lord = state["lords"][lid]
+    rating = lord.get("ratings", {}).get("C", 0)
+    seats = {seat for other in state["lords"].values() for seat in other.get("seats", [])}
+    loc = state["locales"].get(lord.get("location"), {})
+    if (side == "guelph" and lid not in ("guido_guerra", "orvieto")
+            and lord.get("location") in seats and loc
+            and _is_friendly_locale(state, loc, side)
+            and _lord_has_capability(state, lid, "Via Francigena")):
+        rating += 1
+    return rating
+
+
+def _cta_gather_preview(state, side, args):
+    """Pure validation shared by Gather's menu and handler.
+
+    Each Lord gets ONE Command allowance for the entire Gather substep, with
+    one first-Road discount. Neither reloading nor switching marching Lords
+    resets that budget. Campaign flags/actions are not used or changed.
+    """
+    if not state["meta"].get("cta_active") or state["meta"].get("cta_substep") != "gather":
+        raise IllegalAction("WRONG_CTA_STEP", "Gather substep only.", "3.5.1")
+    lid = args.get("lord_id")
+    _cta_gather_group(state, side, lid)  # Includes compulsory Comune checks.
+    lord = state["lords"][lid]
+    progress = state["meta"].get("cta_gather_progress", {}).get(lid, {})
+    allowance = progress.get("allowance", _gather_command_rating(state, side, lid))
+    spent = progress.get("spent", 0)
+    # Reuse ordinary March's group, terrain, cargo and scenario checks on a
+    # lightweight view. Only this leader's first-March flag is substituted.
+    view = dict(state, current_lord_id=lid, actions_remaining=max(2, allowance-spent))
+    view["lords"] = dict(state["lords"])
+    view["lords"][lid] = dict(lord, flags={**lord.get("flags", {}),
+        "first_march_used_this_card": progress.get("first_march_used", False)})
+    preview = _march_preview(view, side, args)
+    if preview["way_type"] not in ("road", "track"):
+        raise IllegalAction("BAD_WAY", "Gather is land March, not Sail.", "3.5.1")
+    for member in preview["group"]:
+        _require_lord(state, member, side)
+    if spent + preview["cost"] > allowance:
+        raise IllegalAction("GATHER_EXHAUSTED", "This Lord has spent his Gather Command allowance.", "3.5.1")
+    dest_name, cur_loc = preview["destination"], preview["source"]
     code = _cta_gather_dest_legal(state, side, dest_name)
-    if code == "ENEMY_LORD_AT_DEST":
-        raise IllegalAction("ENEMY_LORD_AT_DEST", f"An Enemy Lord blocks Gather to {dest_name}.", "3.5.1")
-    if code == "ENEMY_STRONGHOLD":
-        raise IllegalAction("ENEMY_STRONGHOLD", f"{dest_name} un-Ruined enemy stronghold.", "3.5.1")
-    # Move (NOT marked Moved/Fought; NO Feed)
-    src = state["locales"][cur_loc]
-    if lid in src.get("lords_present", []):
-        src["lords_present"].remove(lid)
-    dest.setdefault("lords_present", []).append(lid)
-    lord["location"] = dest_name
-    return {
-        "state_changes": {"gather_march_from": cur_loc, "to": dest_name,
-                          "distance_to_leading_city": dist_after},
-        "rule_citation": "3.5.1",
-    }
+    if code:
+        raise IllegalAction(code, f"Gather cannot enter {dest_name}.", "3.5.1")
+    leading = LEADING_CITY[side]
+    dist_after = _bfs_distance(dest_name, leading)
+    if dist_after >= _bfs_distance(cur_loc, leading):
+        raise IllegalAction("NOT_CLOSER", f"Gather must end closer to {leading}.", "3.5.1")
+    return {**preview, "allowance": allowance, "spent": spent,
+            "distance_to_leading_city": dist_after}
+
+
+def _h_cta_gather_march(state, side, args, rng) -> dict[str, Any]:
+    """3.5.1: bounded free March, without Moved/Fought, Feed, or asset cost."""
+    preview = _cta_gather_preview(state, side, args)
+    lid, group = preview["lord_id"], preview["group"]
+    cur_loc, dest_name = preview["source"], preview["destination"]
+    src, dest = state["locales"][cur_loc], state["locales"][dest_name]
+    for member_id in group:
+        if member_id in src.get("lords_present", []):
+            src["lords_present"].remove(member_id)
+        if member_id not in dest.setdefault("lords_present", []):
+            dest["lords_present"].append(member_id)
+        member = state["lords"][member_id]
+        member["location"] = dest_name
+        member.get("flags", {}).pop("in_stronghold", None)
+        member.get("flags", {}).pop("bypassing", None)
+    spent = preview["spent"] + preview["cost"]
+    state["meta"].setdefault("cta_gather_progress", {})[lid] = {
+        "allowance": preview["allowance"], "spent": spent, "first_march_used": True}
+    _sweep_freed_stronghold(state, cur_loc)
+    return {"state_changes": {
+        "gather_march_from": cur_loc, "to": dest_name, "group": group,
+        "distance_to_leading_city": preview["distance_to_leading_city"],
+        "cost": preview["cost"], "gather_actions_remaining": preview["allowance"] - spent,
+    }, "rule_citation": "3.5.1"}
 
 
 def _bfs_distance(src: str, target: str) -> int:
@@ -5294,88 +5388,100 @@ def _h_cta_commander_arms(state, side, args, rng) -> dict[str, Any]:
     return {"state_changes": log, "rule_citation": "3.5.2"}
 
 
-def _h_cta_comune_setup(state, side, args, rng) -> dict[str, Any]:
-    """3.5.3 COMUNE: bring out the Comune mat with its Assets and Special
-    Vassals; stack the Comune cylinder under the Commander. Comune must
-    end up with at least Carroccio + 1 Sestiere/Terzo.
+def _comune_setup_preview(state, side, args) -> dict[str, Any]:
+    """3.5.3: set up a new Comune, or add unmustered Special Vassals to it.
 
-    args:
-      muster_special_vassals: list of vassal names (e.g. ["Carroccio",
-                              "Sixth of Porta San Piero"])
+    Existing Forces (including casualties), Assets, and Capabilities are not
+    refreshed. Requested vassals already on the mat contribute nothing again.
     """
     if state["meta"].get("cta_substep") != "comune":
         raise IllegalAction("WRONG_CTA_STEP", "comune substep only.", "3.5.3")
-    commander_id = COMMANDER_LORD[side]
-    commander = state["lords"][commander_id]
-    if (commander["status"] != "mustered"
-            or commander.get("location") != LEADING_CITY[side]):
-        # Comune step skipped — Commander must be inside Leading City
-        _advance_cta(state)
-        return {"state_changes": {"comune": "skipped_no_commander_in_leading"},
-                "rule_citation": "3.5.3"}
+    commander = state["lords"][COMMANDER_LORD[side]]
+    if commander["status"] != "mustered" or commander.get("location") != LEADING_CITY[side]:
+        return {"skip": "skipped_no_commander_in_leading"}
     comune_id = COMUNE_LORD[side]
     comune = state["lords"][comune_id]
     if comune["status"] == "removed":
-        _advance_cta(state)
-        return {"state_changes": {"comune": "skipped_removed"}, "rule_citation": "3.5.3"}
-    # Bring out Comune mat with starting Assets
-    canonical = comune["name"]
-    base = sd.LORDS.get(canonical, {})
-    comune["status"] = "mustered"
-    comune["location"] = LEADING_CITY[side]
-    comune["assets"] = copy.deepcopy(base.get("assets", {}))
-    # SMOKE-Inferno-091: the Comune stacks UNDER the Commander cylinder; if the
-    # Commander is Besieged inside the Leading City, the Comune is inside too
-    # (it must not read as an in-the-open Lord co-located with the besiegers).
-    if commander.get("flags", {}).get("in_stronghold"):
-        comune.setdefault("flags", {})["in_stronghold"] = True
-    # Wire into Locale
+        return {"skip": "skipped_removed"}
+    existing = comune["status"] == "mustered"
+    if existing and comune.get("location") != commander["location"]:
+        raise IllegalAction("COMUNE_SEPARATED", "An existing Comune must remain with its Commander.", "1.6 / 3.5.3")
     loc = state["locales"][LEADING_CITY[side]]
-    if comune_id not in loc["lords_present"]:
-        loc["lords_present"].append(comune_id)
-    # Initialize Vassal list (all Special Vassals, all not on_mat yet)
+    if (not _is_friendly_locale(state, loc, side)
+            or commander.get("flags", {}).get("bypassing")
+            or (loc.get("siege") and not commander.get("flags", {}).get("in_stronghold"))):
+        raise IllegalAction("COMMANDER_NOT_INSIDE", "Commander must be inside his Leading City.", "3.5.3")
+    inside = bool(commander.get("flags", {}).get("in_stronghold"))
+    if not existing and inside:
+        size = sd.STRONGHOLDS[loc["type"]]["size"]
+        count = sum(bool(state["lords"][lid].get("flags", {}).get("in_stronghold"))
+                    for lid in loc.get("lords_present", []))
+        if count >= size:
+            raise IllegalAction("STRONGHOLD_FULL", "No room for the Comune cylinder.", "3.5.3 / 4.3.4")
     from .scenarios import _init_vassals_for
-    comune["vassals"] = _init_vassals_for(base)
-    # Mark Special Vassals from arg list as on_mat (auto-muster path).
-    requested = set(args.get("muster_special_vassals", []) or [])
+    base = sd.LORDS[comune["name"]]
+    vassals = copy.deepcopy(comune["vassals"]) if existing else _init_vassals_for(base)
+    enemy = "ghibelline" if side == "guelph" else "guelph"
+    captured = bool(state.get("captured_carroccio_for_side", {}).get(enemy, 0))
+    if captured:
+        vassals = [v for v in vassals if v["name"] != "Carroccio"]
+    requested = args.get("muster_special_vassals", [])
+    if (not isinstance(requested, list) or any(not isinstance(n, str) for n in requested)
+            or len(requested) != len(set(requested))):
+        raise IllegalAction("BAD_SPECIAL_VASSALS", "Provide a list of distinct Special Vassal names.", "3.5.3")
+    available = {v["name"] for v in vassals if v.get("special")}
+    if captured and "Carroccio" in requested:
+        raise IllegalAction("CARROCCIO_CAPTURED", "A captured Carroccio cannot return to play.", "3.5.3 / 5.1")
+    if any(n not in available for n in requested):
+        raise IllegalAction("UNKNOWN_VASSAL", "Unknown Comune Special Vassal.", "3.5.3")
+    on_mat = {v["name"] for v in vassals if v.get("on_mat")}
+    subdivisions = [v["name"] for v in vassals if v.get("special") and
+                    ("Sixth" in v["name"] or "Terzo" in v["name"])]
     if not requested:
-        # Default: Carroccio + one Sestiere/Terzo (the minimum)
-        requested = {"Carroccio"}
-        for v in comune["vassals"]:
-            if v.get("special") and "Sixth" in v.get("name", "") or "Terzo" in v.get("name", ""):
-                requested.add(v["name"])
-                break
-    mustered_vassals = []
-    for v in comune["vassals"]:
-        if v["name"] in requested and v.get("special"):
+        # Default adds only missing minimum requirements, never restores losses.
+        requested = ([] if captured or "Carroccio" in on_mat else ["Carroccio"])
+        if not on_mat.intersection(subdivisions) and subdivisions:
+            requested.append(subdivisions[0])
+    resulting = on_mat | set(requested)
+    if (not captured and "Carroccio" not in resulting) or not resulting.intersection(subdivisions):
+        raise IllegalAction("COMUNE_MIN_NOT_MET", "Comune needs its uncaptured Carroccio and at least one Sestiere/Terzo.", "3.5.3")
+    added = []
+    forces = copy.deepcopy(comune["forces"] if existing else base.get("forces", {}))
+    for v in vassals:
+        if v["name"] in requested and not v.get("on_mat"):
             v["on_mat"] = True
-            v["ready"] = True
-            # Add Forces
-            for u, c in v.get("forces", {}).items():
-                comune["forces"][u] = comune["forces"].get(u, 0) + c
-            mustered_vassals.append(v["name"])
-    # Validate: must include Carroccio + at least one Sestiere/Terzo
-    has_carroccio = "Carroccio" in mustered_vassals
-    has_sub = any(("Sixth" in n) or ("Terzo" in n) for n in mustered_vassals)
-    if not (has_carroccio and has_sub):
-        # Roll back — Comune cannot be set with insufficient Special Vassals
-        comune["status"] = "in_levy_pool"
-        comune["location"] = None
-        comune["vassals"] = []
-        comune["forces"] = {}
-        comune["assets"] = {}
-        if comune_id in loc["lords_present"]:
-            loc["lords_present"].remove(comune_id)
-        raise IllegalAction(
-            "COMUNE_MIN_NOT_MET",
-            "Comune must include Carroccio + at least one Sestiere/Terzo.",
-            "3.5.3",
-        )
+            v["ready"] = False
+            for unit, count in v.get("forces", {}).items():
+                forces[unit] = forces.get(unit, 0) + count
+            added.append(v["name"])
+    return {"comune_id": comune_id, "existing": existing, "inside": inside,
+            "forces": forces, "vassals": vassals, "added": added}
+
+
+def _h_cta_comune_setup(state, side, args, rng) -> dict[str, Any]:
+    preview = _comune_setup_preview(state, side, args)
+    if preview.get("skip"):
+        _advance_cta(state)
+        return {"state_changes": {"comune": preview["skip"]}, "rule_citation": "3.5.3"}
+    comune_id = preview["comune_id"]
+    comune = state["lords"][comune_id]
+    existing = preview["existing"]
+    if not existing:
+        base = sd.LORDS[comune["name"]]
+        comune.update(status="mustered", location=LEADING_CITY[side],
+                      assets=copy.deepcopy(base.get("assets", {})), flags={}, routed_units={})
+        _place_cylinder(state, comune_id, None)
+        _place_service(state, comune_id, None)
+        if preview["inside"]:
+            comune["flags"]["in_stronghold"] = True
+        loc = state["locales"][LEADING_CITY[side]]
+        if comune_id not in loc["lords_present"]:
+            loc["lords_present"].append(comune_id)
+    comune["forces"] = preview["forces"]
+    comune["vassals"] = preview["vassals"]
     _advance_cta(state)
-    return {
-        "state_changes": {"comune_setup": True, "mustered_vassals": mustered_vassals},
-        "rule_citation": "3.5.3",
-    }
+    return {"state_changes": {"comune_setup": True, "already_mustered": existing,
+                               "mustered_vassals": preview["added"]}, "rule_citation": "3.5.3"}
 
 
 def _h_cta_allies(state, side, args, rng) -> dict[str, Any]:
@@ -5393,7 +5499,11 @@ def _h_cta_allies(state, side, args, rng) -> dict[str, Any]:
     """
     if state["meta"].get("cta_substep") != "allies":
         raise IllegalAction("WRONG_CTA_STEP", "allies substep only.", "3.5.4")
+    if state["meta"].get("cta_extra_muster_lord"):
+        raise IllegalAction("CTA_MUSTER_ACTIVE", "Finish the chosen extra Muster segment first.", "3.5.4")
     mode = args.get("mode", "skip")
+    if mode not in ("auto_muster", "extra_muster", "skip"):
+        raise IllegalAction("BAD_MODE", f"Unknown Allies mode {mode!r}.", "3.5.4")
     target = args.get("target_lord_id")
     log = {"mode": mode}
     if mode == "auto_muster":
@@ -5446,8 +5556,8 @@ def _h_cta_allies(state, side, args, rng) -> dict[str, Any]:
             tlord.setdefault("flags", {})["in_stronghold"] = True
         log["auto_mustered"] = target
     elif mode == "extra_muster":
-        # Grant the named Lord an extra Lordship segment by resetting
-        # his lordship_used counter (Phase 5 will respect this).
+        # Keep 3.5.4 and this player active until the selected Lord finishes.
+        # This is a NEW segment, so arrival in the prior 3.4 segment is no bar.
         if not target or target not in state["lords"]:
             raise IllegalAction("MISSING_TARGET", "extra_muster needs target_lord_id.", "3.5.4")
         tlord = state["lords"][target]
@@ -5455,8 +5565,13 @@ def _h_cta_allies(state, side, args, rng) -> dict[str, Any]:
             raise IllegalAction("WRONG_SIDE", f"{target} not on {side}.", "3.5.4")
         if tlord["status"] != "mustered":
             raise IllegalAction("NOT_MUSTERED", f"{target} not Mustered.", "3.5.4")
+        if not _allies_muster_eligible(state, target):
+            raise IllegalAction("MUSTER_NOT_ELIGIBLE", f"{target} cannot conduct a Muster segment here.", "3.4 / 3.5.4")
         tlord.setdefault("flags", {})["lordship_used"] = 0
+        tlord["flags"].pop("just_mustered_this_segment", None)
+        state["meta"]["cta_extra_muster_lord"] = target
         log["extra_segment_for"] = target
+        return {"state_changes": log, "rule_citation": "3.5.4"}
     # else: skip
     _advance_cta(state)
     return {"state_changes": log, "rule_citation": "3.5.4"}
