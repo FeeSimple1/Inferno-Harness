@@ -69,6 +69,10 @@ def advance_to_next_side_or_step(state: dict[str, Any]) -> None:
                 lord.get("flags", {}).pop("lordship_used", None)
                 lord.get("flags", {}).pop("just_mustered_this_segment", None)
     else:
+        # This-Levy Lordship grants must not recur at every later Muster.
+        for lord in state["lords"].values():
+            lord.get("flags", {}).pop("lordship_bonus_pending", None)
+            lord.get("flags", {}).pop("lordship_bonus_segment", None)
         # End of Levy: enter Campaign at the capability-discard step.
         state["meta"]["phase"] = "campaign"
         state["meta"]["levy_step"] = None

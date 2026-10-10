@@ -147,6 +147,9 @@ def dispatch(state: dict[str, Any], action: dict[str, Any]) -> dict[str, Any]:
             and (state.get("pending_revolts") or state.get("pending_exiles"))
             and name not in ("cmd_resolve_revolt", "cmd_resolve_exiles")):
         raise IllegalAction("PENDING_DECISION", "Resolve the drawn Event's consequences first.", "3.1.3")
+    if state.get("pending_besiege") and name not in (
+            "besiege_or_bypass", "play_event", "cmd_resolve_revolt", "cmd_resolve_exiles"):
+        raise IllegalAction("PENDING_DECISION", "Resolve Besiege/Bypass at the March destination first.", "4.3.5")
     handler = _HANDLERS.get(name)
     if handler is None:
         raise IllegalAction(
@@ -1169,6 +1172,7 @@ def _h_levy_muster_capability(state, side, args, rng) -> dict[str, Any]:
 def _h_levy_muster_done(state, side, args, rng) -> dict[str, Any]:
     """End this side's Muster segment (3.4)."""
     _require_step(state, "3.4")
+    _clear_segment_lordship(state, side)
     advance_to_next_side_or_step(state)
     return {"state_changes": {"step": "muster_done"}, "rule_citation": "3.4"}
 
@@ -2258,7 +2262,7 @@ def _require_campaign_step(state, expected: str) -> None:
         )
 
 
-def _require_active_lord(state, side, lord_id: str | None) -> str:
+def _require_active_lord(state, side, lord_id: str | None, *, allow_exhausted: bool = False) -> str:
     cur_lid = state.get("current_lord_id")
     if cur_lid is None:
         raise IllegalAction("NO_ACTIVE_LORD", "No Lord is currently activated.", "4.2")
@@ -2271,7 +2275,7 @@ def _require_active_lord(state, side, lord_id: str | None) -> str:
     lord = state["lords"].get(cur_lid)
     if lord is None or lord["side"] != side:
         raise IllegalAction("WRONG_LORD_SIDE", f"Active lord {cur_lid!r} not on {side}.", "2.2.4")
-    if state.get("actions_remaining", 0) is None or state.get("actions_remaining", 0) <= 0:
+    if not allow_exhausted and (state.get("actions_remaining", 0) is None or state.get("actions_remaining", 0) <= 0):
         raise IllegalAction("NO_ACTIONS_LEFT", "Active Lord has no actions remaining.", "4.2")
     return cur_lid
 
@@ -2307,6 +2311,8 @@ def _maybe_end_card(payload: dict, state, side, citation: str) -> dict[str, Any]
     """If actions_remaining <= 0 (or entire-card consumed), finish; else
     return the action result without ending the card."""
     state["card_actions_started"] = True
+    if state.get("pending_besiege"):
+        return {"state_changes": payload, "rule_citation": citation}
     if state.get("card_action_consumed_by_entire_card") or (state.get("actions_remaining") or 0) <= 0:
         return _finish_card_with(payload, state, side, reason="actions_exhausted", citation=citation)
     return {"state_changes": payload, "rule_citation": citation}
@@ -2534,10 +2540,10 @@ def _sweep_freed_stronghold(state, locale_name: str) -> dict:
     return lifted
 
 
-def _h_cmd_march(state, side, args, rng) -> dict[str, Any]:
-    """4.3 March: move one or a group of Lords across one Way.
+def _march_preview(state, side, args) -> dict[str, Any]:
+    """Validate and price a March without changing state, history, or RNG.
 
-    Phase v1.5 supports Group March (4.3.1):
+    Group March (4.3.1):
       - args.with_lords (optional): additional Lord IDs to move with the
         active Lord. All must be at the same starting Locale.
       - Lieutenant + Lower Lord MUST move together (4.1.3): if active or
@@ -2547,7 +2553,7 @@ def _h_cmd_march(state, side, args, rng) -> dict[str, Any]:
       - Cost: max of per-Lord costs (typically 1; the group is bottlenecked
         by the slowest Lord's Laden/Speed status).
 
-    Approach (4.3.4) detection considers the entire group.
+    The executor uses the returned group for Approach (4.3.4) detection.
 
     args:
       lord_id:      Active Marching Lord
@@ -2629,6 +2635,13 @@ def _h_cmd_march(state, side, args, rng) -> dict[str, Any]:
             ul = state["lords"].get(upper)
             if ul and ul.get("location") == cur_loc_name:
                 group.append(upper)
+    for member_id in list(group):
+        for oid, other in state["lords"].items():
+            if (other.get("comune_of")
+                    and other["comune_of"] in (member_id, state["lords"][member_id].get("name"))
+                    and other.get("status") == "mustered"
+                    and other.get("location") == cur_loc_name and oid not in group):
+                group.append(oid)
     for member_id in group:
         member = state["lords"][member_id]
         if (member.get("flags", {}).get("in_stronghold")
@@ -2685,7 +2698,7 @@ def _h_cmd_march(state, side, args, rng) -> dict[str, Any]:
 
     # 4.3.3 Speed: standard 1 action; Unladen first-March-of-card on Road = 0;
     # Laden = 2 actions.
-    flags = lord.setdefault("flags", {})
+    flags = lord.get("flags", {})
     first_march = not flags.get("first_march_used_this_card", False)
     effective_way = "road" if (road_works_active and way_type == "track") else way_type
     if laden:
@@ -2700,6 +2713,17 @@ def _h_cmd_march(state, side, args, rng) -> dict[str, Any]:
             f"March needs {cost} actions; {state.get('actions_remaining')} remaining.",
             "4.3.3",
         )
+    return {"lord_id": lid, "group": group, "source": cur_loc_name,
+            "destination": dest_name, "way_type": way_type, "cost": cost, "laden": laden}
+
+
+def _h_cmd_march(state, side, args, rng) -> dict[str, Any]:
+    preview = _march_preview(state, side, args)
+    lid, group = preview["lord_id"], preview["group"]
+    cur_loc_name, dest_name = preview["source"], preview["destination"]
+    way_type, cost, laden = preview["way_type"], preview["cost"], preview["laden"]
+    lord = state["lords"][lid]
+    flags = lord.setdefault("flags", {})
     # Mark first-March-used-this-card
     flags["first_march_used_this_card"] = True
     state["card_actions_started"] = True
@@ -2707,6 +2731,7 @@ def _h_cmd_march(state, side, args, rng) -> dict[str, Any]:
     # Move all group members
     src = state["locales"][cur_loc_name]
     dest = state["locales"][dest_name]
+    empty_on_arrival = not dest.get("lords_present")
     for member_id in group:
         ml = state["lords"][member_id]
         if member_id in src.get("lords_present", []):
@@ -2772,6 +2797,16 @@ def _h_cmd_march(state, side, args, rng) -> dict[str, Any]:
             "rule_citation": "4.3 / 4.3.4",
         }
 
+    # 4.3.5 is part of this March, not an additional Command action. Pause
+    # before ending the card even when March spent the last action. Record
+    # pre-arrival occupancy for F3/S3, rather than infer it from a siege elsewhere.
+    if (dest.get("type") != "outpost" and not dest.get("ruins")
+            and not _is_friendly_locale(state, dest, side)
+            and not dest.get("siege") and not dest.get("bypass")):
+        state["pending_besiege"] = {
+            "side": side, "lord_id": lid, "locale": dest_name,
+            "group": list(group), "empty_on_arrival": empty_on_arrival,
+        }
     # No approach — return action result and continue card.
     return _maybe_end_card({
         "marched_from": cur_loc_name, "to": dest_name, "way_type": way_type,
@@ -3431,18 +3466,26 @@ def _h_besiege_or_bypass(state, side, args, rng) -> dict[str, Any]:
       lord_id:  the Lord at the Locale outside the Stronghold
       choice:   'besiege' or 'bypass'
     """
-    lid = _require_active_lord(state, side, args.get("lord_id"))
+    lid = _require_active_lord(state, side, args.get("lord_id"), allow_exhausted=True)
     lord = state["lords"][lid]
     locale_name = lord.get("location")
     loc = state["locales"].get(locale_name)
     if not loc:
         raise IllegalAction("NO_LOCATION", f"{lid} has no Locale.", "4.3.5")
-    if loc["allegiance"] == side and not loc.get("current_allegiance"):
+    if _is_friendly_locale(state, loc, side):
         raise IllegalAction("FRIENDLY_LOCALE", f"{locale_name} is Friendly; no Besiege/Bypass.", "4.3.5")
     if loc.get("ruins"):
         raise IllegalAction("RUINS_NO_STRONGHOLD", f"{locale_name} is Ruins; no Stronghold to Besiege.", "4.3.5")
     if loc["type"] == "outpost":
         raise IllegalAction("OUTPOST", "Outposts never Besieged.", "4.3.5")
+    if lord.get("flags", {}).get("in_stronghold"):
+        raise IllegalAction("INSIDE_STRONGHOLD", "A Lord inside cannot Besiege/Bypass it.", "4.3.5")
+    if loc.get("siege") or loc.get("bypass"):
+        raise IllegalAction("ALREADY_ENCIRCLED", "Use the existing Siege/Bypass procedure.", "4.3.5")
+    if any(state["lords"][oid].get("side") != side
+           and not state["lords"][oid].get("flags", {}).get("in_stronghold")
+           for oid in loc.get("lords_present", [])):
+        raise IllegalAction("ENEMY_OUTSIDE", "Resolve the Enemy outside before Besiege/Bypass.", "4.3.4")
     choice = args.get("choice")
     if choice not in ("besiege", "bypass"):
         raise IllegalAction("BAD_CHOICE", f"choice must be besiege/bypass; got {choice!r}.", "4.3.5")
@@ -3451,32 +3494,21 @@ def _h_besiege_or_bypass(state, side, args, rng) -> dict[str, Any]:
         # SMOKE-Inferno-041: F3/S3 Surprise — Besieging with no other Lord
         # consumes a pending surprise modifier: 2 Siege markers + mandatory
         # auto-Storm up to 3 Rounds at Walls -2.
-        other_lords_here = [
-            oid for oid in loc.get("lords_present", [])
-            if oid != lid and not state["lords"][oid].get("flags", {}).get("in_stronghold")
-        ]
-        surprise = None
-        if not other_lords_here:
-            for i, m in enumerate(state.get("besiege_modifiers_pending", []) or []):
-                if m.get("effect") == "surprise_besiege_alone" and m.get("side") == side:
-                    surprise = state["besiege_modifiers_pending"].pop(i)
-                    break
+        surprise = next((m for m in state.get("besiege_modifiers_pending", [])
+                         if m.get("effect") == "surprise_besiege_alone" and m.get("side") == side
+                         and m.get("lord_id") == lid and m.get("locale") == locale_name), None)
+        if surprise and not _surprise_window_open(state, side):
+            raise IllegalAction("NO_PLAY_WINDOW", "Surprise no longer matches this arrival.", "F3/S3")
+        state.pop("pending_besiege", None)
         if surprise:
+            state["besiege_modifiers_pending"].remove(surprise)
             loc.setdefault("siege", []).append({
                 "side": side, "color": "purple" if side == "guelph" else "gold", "count": 2,
             })
             state.setdefault("battle_modifiers_pending", []).append({
                 "id": "F3/S3", "side": side, "effect": "storm_walls_minus", "value": 2,
             })
-            enemy_side = "ghibelline" if side == "guelph" else "guelph"
-            defenders = [oid for oid in loc.get("lords_present", [])
-                         if state["lords"][oid].get("flags", {}).get("in_stronghold")
-                         and state["lords"][oid]["side"] == enemy_side]
-            from .battle import resolve_storm
-            result = resolve_storm(state, attackers=[lid], defenders=defenders,
-                                    active_id=lid, locale_name=locale_name)
-            if result["outcome"] == "sack":
-                _apply_sack(state, locale_name, side, result, rng)
+            result = _storm_with_aftermath(state, side, lid, args, rng, round_limit=3)
             return _finish_card_with({
                 "surprise_besiege": locale_name, "auto_storm": result,
             }, state, side, reason="surprise_besiege_storm", citation="F3/S3 / 4.3.5")
@@ -3484,6 +3516,7 @@ def _h_besiege_or_bypass(state, side, args, rng) -> dict[str, Any]:
         return _finish_card_with({"besieged": locale_name}, state, side,
                                   reason="besiege_ends_card", citation="4.3.5")
     else:  # bypass
+        state.pop("pending_besiege", None)
         loc.setdefault("bypass", []).append({"side": side, "lord_id": lid})
         lord.setdefault("flags", {})["bypassing"] = locale_name
         return _maybe_end_card({"bypassed": locale_name}, state, side, citation="4.3.5")
@@ -3611,6 +3644,15 @@ def _h_cmd_storm(state, side, args, rng) -> dict[str, Any]:
     loc = state["locales"][locale_name]
     if not loc.get("siege"):
         raise IllegalAction("NO_SIEGE_HERE", f"No Siege at {locale_name}.", "4.5.2")
+    result = _storm_with_aftermath(state, side, lid, args, rng)
+    return _finish_card_with({"storm_result": result}, state, side,
+                             reason="storm_ends_card", citation="4.5.2")
+
+
+def _storm_with_aftermath(state, side, lid, args, rng, *, round_limit=None):
+    """Normal Storm and Surprise share resolution, losses, and removal rules."""
+    locale_name = state["lords"][lid]["location"]
+    loc = state["locales"][locale_name]
     enemy_side = "ghibelline" if side == "guelph" else "guelph"
     defenders = [oid for oid in loc.get("lords_present", [])
                  if state["lords"][oid].get("flags", {}).get("in_stronghold")
@@ -3632,6 +3674,7 @@ def _h_cmd_storm(state, side, args, rng) -> dict[str, Any]:
         active_id=lid, locale_name=locale_name,
         scripted_decisions=args.get("scripted_decisions"),
         callback=state.get("battle_callback"),
+        round_limit=round_limit,
     )
     # SMOKE-Inferno-081: 4.4.4 Loss rolls for Routed units. The Attacker is
     # "Attacking in Storm" -> Harsh Recovery; Storm Knights' Quarter happens
@@ -3667,10 +3710,7 @@ def _h_cmd_storm(state, side, args, rng) -> dict[str, Any]:
                                           context=f"storm_empty_{locale_name}")
     # SMOKE-Inferno-080: Doctors restoration now also fires in Storm.
     _apply_doctors_restoration(state, result.get("doctors", []), loss_results)
-    # Card ends (4.4.6)
-    return _finish_card_with({
-        "storm_result": result,
-    }, state, side, reason="storm_ends_card", citation="4.5.2")
+    return result
 
 
 def _apply_sack(state, locale_name, side, storm_result, rng):
@@ -4178,10 +4218,31 @@ _HANDLERS.update({
 # =====================================================================
 
 
+def _lordship_limit(state, lord_id: str) -> int:
+    """Shared menu/handler allowance: printed rating + Event + Capability."""
+    # SMOKE-Inferno-066: retain persistent Capability Lordship bonuses.
+    lord = state["lords"][lord_id]
+    return (lord.get("ratings", {}).get("L", 0)
+            + lord.get("flags", {}).get("lordship_bonus_pending", 0)
+            + _capability_bonus_lordship(state, lord_id))
+
+
+def _clear_segment_lordship(state, side: str) -> None:
+    """Expire Held-Event segment bonuses, preserving This-Levy bonuses."""
+    for lord in state["lords"].values():
+        if lord.get("side") == side:
+            flags = lord.get("flags", {})
+            segment = flags.pop("lordship_bonus_segment", 0)
+            if segment:
+                remaining = flags.get("lordship_bonus_pending", 0) - segment
+                if remaining > 0:
+                    flags["lordship_bonus_pending"] = remaining
+                else:
+                    flags.pop("lordship_bonus_pending", None)
+
+
 def _consume_lordship(state, mustering_lord_id: str) -> None:
-    """Each 3.4 sub-action consumes 1 Lordship from the Mustering Lord.
-    Per 3.4.1: Newly Mustered Lords may NOT themselves take Levy actions
-    this segment (SMOKE-Inferno-028)."""
+    """Spend one action from the complete allowance, including printed bonuses."""
     lord = state["lords"].get(mustering_lord_id)
     if lord is None:
         return
@@ -4191,20 +4252,8 @@ def _consume_lordship(state, mustering_lord_id: str) -> None:
             f"{mustering_lord_id} was just Mustered this Levy segment and may NOT take Levy actions (3.4.1).",
             "3.4.1",
         )
-    rating = lord.get("ratings", {}).get("L", 0)
     used = lord.setdefault("flags", {}).get("lordship_used", 0)
-    if used >= rating:
-        raise IllegalAction(
-            "LORDSHIP_EXHAUSTED",
-            f"{mustering_lord_id} has used all {rating} Lordship actions this Muster segment.",
-            "3.4",
-        )
-    # Apply Lordship bonus from F11 Poggio Bonizio (one-shot) PLUS persistent
-    # Capability bonuses (F22/S22 Tau Company: Firenze/Lucca Lordship +1).
-    # SMOKE-Inferno-066.
-    bonus = lord.get("flags", {}).get("lordship_bonus_pending", 0)
-    bonus += _capability_bonus_lordship(state, mustering_lord_id)
-    effective = rating + bonus
+    effective = _lordship_limit(state, mustering_lord_id)
     if used >= effective:
         raise IllegalAction(
             "LORDSHIP_EXHAUSTED",
@@ -4212,6 +4261,7 @@ def _consume_lordship(state, mustering_lord_id: str) -> None:
             "3.4",
         )
     lord["flags"]["lordship_used"] = used + 1
+
 
 def _check_disband_on_zero_forces(state, lord_id: str) -> bool:
     """1.6: a Lord who loses his last unit outside combat Disbands.
@@ -4776,7 +4826,7 @@ _HANDLERS.update({
 # unwindowed here (their own handlers validate context).
 _HOLD_EVENT_WINDOW = {
     "F1": "approach", "S1": "approach",
-    "F3": "combat",  "S3": "combat",
+    "F3": "besiege_alone",  "S3": "besiege_alone",
     "F4": "combat",  "F6": "combat",  "F8": "combat",  "F12": "combat",
     "F16": "combat", "F24": "combat",
     "S4": "combat",  "S6": "combat",  "S8": "combat",  "S12": "combat",
@@ -4800,12 +4850,43 @@ def _combat_window_open(state, side) -> bool:
     return False
 
 
+def _surprise_window_open(state, side) -> bool:
+    """F3/S3: just Marched alone into an empty Enemy Stronghold.
+
+    A Commander's Comune shares his cylinder; a Lieutenant pair does not.
+    The arrival record is captured BEFORE movement, not reconstructed from
+    present occupancy or from unrelated Siege markers on the map.
+    """
+    arrival = state.get("pending_besiege") or {}
+    lid = state.get("current_lord_id")
+    lord = state.get("lords", {}).get(lid, {})
+    loc = state.get("locales", {}).get(arrival.get("locale"), {})
+    if (arrival.get("side") != side or arrival.get("lord_id") != lid
+            or not arrival.get("empty_on_arrival") or not loc
+            or lord.get("side") != side or lord.get("status") != "mustered"
+            or lord.get("location") != arrival.get("locale")
+            or loc.get("type") == "outpost" or loc.get("ruins")
+            or loc.get("siege") or loc.get("bypass")
+            or _is_friendly_locale(state, loc, side)
+            or _approach_open(state)):
+        return False
+    if lord.get("flags", {}).get("has_lower_lord") or lord.get("flags", {}).get("lower_lord_of"):
+        return False
+    allowed = {lid} | {oid for oid, ol in state["lords"].items()
+                       if ol.get("comune_of") and ol["comune_of"] in (lid, lord.get("name"))
+                       and ol.get("status") == "mustered"}
+    group = set(arrival.get("group", []))
+    return bool(lid in group and group <= allowed and set(loc.get("lords_present", [])) == group)
+
+
 def _hold_event_window_ok(state, side, cid) -> bool:
     win = _HOLD_EVENT_WINDOW.get(cid)
     if win is None:
         return True  # direct-effect Holds are not window-gated here
     if win == "approach":
         return _approach_open(state)
+    if win == "besiege_alone":
+        return _surprise_window_open(state, side)
     return _combat_window_open(state, side)
 
 
@@ -4835,7 +4916,19 @@ def _h_play_event(state, side, args, rng) -> dict[str, Any]:
     if effect_result.get("manual") or not effect_result.get("applied"):
         raise IllegalAction("EVENT_UNRESOLVED", effect_result.get("note") or effect_result.get("reason") or "Event needs a valid choice.", "3.1.3")
     held.remove(cid)
-    state["decks"][side]["aow_discard"].append(cid)
+    in_duration_zone = any(e.get("id") == cid and e.get("side") == side
+                           for events in state.get("active_events", {}).values() for e in events)
+    if not in_duration_zone:
+        state["decks"][side]["aow_discard"].append(cid)
+    if cid in ("F3", "S3"):
+        # Playing Surprise chooses Besiege and resolves its mandatory Storm
+        # immediately; it cannot be banked for a later Lord/Locale or Bypass.
+        result = _h_besiege_or_bypass(state, side, {
+            "lord_id": state["current_lord_id"], "choice": "besiege",
+            "scripted_decisions": args.get("scripted_decisions"),
+        }, rng)
+        result["state_changes"].update(played=cid, effect=effect_result)
+        return result
     return {
         "state_changes": {"played": cid, "effect": effect_result},
         "rule_citation": "3.1.3 / per-card",
@@ -5001,6 +5094,7 @@ def _advance_cta(state) -> None:
         state["meta"]["cta_substep"] = CTA_SUBSTEPS[idx + 1]
         return
     # Done with this side's CtA
+    _clear_segment_lordship(state, side)
     done = set(state["meta"].get("cta_sides_done", []))
     done.add(side)
     state["meta"]["cta_sides_done"] = list(done)

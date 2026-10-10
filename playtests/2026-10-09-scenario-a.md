@@ -50,7 +50,12 @@ That is not an engine defect.
    Allegiance and Siege markers used the initial `G`. They now spell out the
    side name, with a regression comparing Cortona and Montalcino.
 
-## Confirmed, still open
+## Findings recorded at the end of this game
+
+**Subsequently corrected:** all five findings below are addressed in
+[the self-play follow-up](../SELFPLAY_FIXES.md). Their original observations and
+reproduction points are preserved here as the historical playtest record.
+
 
 ### Surprise's first legal window is rejected
 

@@ -329,12 +329,15 @@ def F2_event(state, side, args, rng):
 
 @register_event("F3")
 def F3_event(state, side, args, rng):
-    """F3 SURPRISE (Hold) — registers Besiege-alone modifier: on next
-    Besiege by this side with no other Lord, place 2 Siege markers
-    instead of 1 and run an auto-Storm up to 3 rounds with Walls -2.
+    """F3 SURPRISE: scope the modifier to the current lone March arrival.
+
+    play_event immediately consumes it for Besiege + Storm (up to 3 rounds,
+    Walls -2); it cannot be stored for another Lord or Stronghold.
     """
     state.setdefault("besiege_modifiers_pending", []).append({
         "id": "F3", "side": "guelph", "effect": "surprise_besiege_alone",
+        "lord_id": state.get("current_lord_id"),
+        "locale": (state.get("pending_besiege") or {}).get("locale"),
     })
     return {"applied": True, "flag_set": "F3_pending"}
 
@@ -400,6 +403,10 @@ def _greek_fire_apply(state, side, args):
         return {"applied": False, "reason": "Target is not an Enemy Besieger."}
     if not isinstance(unit, str) or enemy.get("forces", {}).get(unit, 0) <= 0:
         return _manual(card_id, "Specify a unit_to_remove present on the target's mat.")
+    caps = enemy.get("capabilities", [])
+    chosen_cap = args.get("capability_to_discard", caps[-1] if caps else None)
+    if chosen_cap is not None and chosen_cap not in caps:
+        return {"applied": False, "reason": "Selected Capability is not on the target's mat."}
     # Reduce to 1 marker
     if locale["siege"]:
         locale["siege"] = [{"side": locale["siege"][0]["side"],
@@ -411,10 +418,11 @@ def _greek_fire_apply(state, side, args):
         if enemy["forces"][unit] <= 0:
             enemy["forces"].pop(unit, None)
         removed_unit = unit
-    # Discard first This Lord Capability if any
+    # Discard the selected This Lord Capability, if any
     discarded_cap = None
     if enemy.get("capabilities"):
-        discarded_cap = enemy["capabilities"].pop()
+        discarded_cap = chosen_cap
+        enemy["capabilities"].remove(discarded_cap)
         state["decks"][enemy["side"]]["aow_deck"].append(discarded_cap)
     return {"applied": True, "target": enemy_lid,
             "removed_unit": removed_unit, "discarded_capability": discarded_cap}
@@ -530,6 +538,14 @@ def F10_event(state, side, args, rng):
     return _closed_gates(state, "guelph", args)
 
 
+def _grant_lordship(state, lord_id: str, amount: int, *, segment_only: bool = False) -> None:
+    """Bonuses stack; Held-Event bonuses expire after the chosen segment."""
+    flags = state["lords"][lord_id].setdefault("flags", {})
+    flags["lordship_bonus_pending"] = flags.get("lordship_bonus_pending", 0) + amount
+    if segment_only:
+        flags["lordship_bonus_segment"] = flags.get("lordship_bonus_segment", 0) + amount
+
+
 @register_event("F11")
 def F11_event(state, side, args, rng):
     """F11 POGGIO BONIZIO answers Firenze's call.
@@ -548,12 +564,16 @@ def F11_event(state, side, args, rng):
     if has_ghib_markers:
         return {"applied": False, "reason": "Poggio Bonizio has Ghibelline markers; condition not met."}
     if args.get("mode") == "treachery":
-        return {"applied": True, "added": _add_treachery_from_set_aside(state, "guelph")}
+        wanted = args.get("treachery_card")
+        if wanted is not None and wanted not in state["decks"]["guelph"]["treachery_set_aside"]:
+            return {"applied": False, "reason": "Selected Treachery is not set aside."}
+        return {"applied": True, "added": _add_treachery_from_set_aside(
+            state, "guelph", wanted.removeprefix("treachery_") if wanted else None)}
     target = args.get("target_lord_id")
     if not target or target not in state["lords"]:
         return {"applied": False, "reason": "target_lord_id required for lordship mode."}
     # One-shot bonus: applies to this Lord's next Muster segment.
-    state["lords"][target].setdefault("flags", {})["lordship_bonus_pending"] = 3
+    _grant_lordship(state, target, 3, segment_only=True)
     return {"applied": True, "lordship_bonus_for": target, "bonus": 3}
 
 
@@ -988,6 +1008,9 @@ def F23_event(state, side, args, rng):
       mode = 'treachery':              pay 2 Coin total to add a set-
             aside Guelph Treachery card to the Command deck.
     """
+    wanted = args.get("treachery_card")
+    if wanted is not None and wanted not in state["decks"]["guelph"]["treachery_set_aside"]:
+        return {"applied": False, "reason": "Selected Treachery is not set aside."}
     coin_sources = args.get("coin_sources", {})  # {lord_id: count}
     total = sum(coin_sources.values())
     if total != 2 and not coin_sources:
@@ -1017,7 +1040,7 @@ def F23_event(state, side, args, rng):
     for lid, n in coin_sources.items():
         state["lords"][lid]["assets"]["Coin"] -= n
     if args.get("mode") == "treachery":
-        added = _add_treachery_from_set_aside(state, "guelph")
+        added = _add_treachery_from_set_aside(state, "guelph", wanted.removeprefix("treachery_") if wanted else None)
         return {"applied": True, "mode": "treachery", "paid": coin_sources, "added": added}
     # declare_cta: flag Guelph CtA eligibility for this Levy.
     declared = set(state.get("war_declared_this_levy", []))
@@ -1130,6 +1153,8 @@ def S3_event(state, side, args, rng):
     """S3 SURPRISE (Ghib mirror)."""
     state.setdefault("besiege_modifiers_pending", []).append({
         "id": "S3", "side": "ghibelline", "effect": "surprise_besiege_alone",
+        "lord_id": state.get("current_lord_id"),
+        "locale": (state.get("pending_besiege") or {}).get("locale"),
     })
     return {"applied": True, "flag_set": "S3_pending"}
 
@@ -1249,7 +1274,7 @@ def S10_event(state, side, args, rng):
         target = args.get("target", "giordano")
         if target not in eligible:
             return {"applied": False, "reason": f"target must be one of {eligible}"}
-        state["lords"][target].setdefault("flags", {})["lordship_bonus_pending"] = 2
+        _grant_lordship(state, target, 2)
         return {"applied": True, "lordship_bonus_for": target, "bonus": 2}
     # Default: shift 2 Lords
     targets = args.get("targets", list(eligible[:2]))
@@ -1357,8 +1382,7 @@ def S15_event(state, side, args, rng):
     if target not in eligible:
         return {"applied": False, "reason": f"target must be one of {eligible}"}
     if args.get("mode") == "lordship":
-        state["lords"][target].setdefault("flags", {})["lordship_bonus_pending"] = (
-            state["lords"][target].get("flags", {}).get("lordship_bonus_pending", 0) + 2)
+        _grant_lordship(state, target, 2)
         return {"applied": True, "mode": "lordship", "lordship_bonus_for": target, "bonus": 2}
     if state["lords"][target].get("calendar_box") is not None:
         return {"applied": True, "mode": "shift", "target": target,
@@ -1409,9 +1433,7 @@ def S17_event(state, side, args, rng):
             targets = [lid for lid in ("provenzano", "santa_fiora")
                        if state["lords"][lid]["status"] == "mustered"]
         for t in targets:
-            state["lords"][t].setdefault("flags", {})["lordship_bonus_pending"] = (
-                state["lords"][t].get("flags", {}).get("lordship_bonus_pending", 0) + 2
-            )
+            _grant_lordship(state, t, 2, segment_only=True)
         return {"applied": True, "lordship_bonus_for": targets, "bonus": 2}
     # default shift_other
     if prov_on and not sf_on:
@@ -1612,7 +1634,7 @@ def S21_event(state, side, args, rng):
     if target not in ("siena", "pisa"):
         return {"applied": False, "reason": "target must be siena or pisa"}
     if args.get("mode") == "lordship":
-        state["lords"][target].setdefault("flags", {})["lordship_bonus_pending"] = 3
+        _grant_lordship(state, target, 3, segment_only=True)
         return {"applied": True, "lordship_bonus_for": target, "bonus": 3}
     if state["lords"][target].get("calendar_box") is not None:
         return {"applied": True, "cylinder_to": _shift_cylinder_left(state, target, 2)}

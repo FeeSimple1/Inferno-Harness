@@ -32,19 +32,9 @@ def _to_command_phase(scenario, seed=1):
 class TestSurpriseConsumption:
     def test_surprise_places_2_siege_and_auto_storms(self):
         """SMOKE-Inferno-041: F3 Surprise on lone Besiege -> 2 markers + auto-Storm."""
-        s = _to_command_phase("A", seed=1)
-        # Register a Surprise modifier for Guelph (as if F3 was played)
-        s.setdefault("besiege_modifiers_pending", []).append({
-            "id": "F3", "side": "guelph", "effect": "surprise_besiege_alone",
-        })
-        # Move firenze to Volterra (enemy Town, empty)
-        s["lords"]["firenze"]["location"] = "Volterra"
-        s["locales"]["Firenze"]["lords_present"].remove("firenze")
-        s["locales"]["Volterra"]["lords_present"].append("firenze")
-        s["plan_stacks"]["guelph"].insert(0, "command_firenze")
-        dispatch(s, {"action": "command_reveal", "side": "guelph"})
-        r = dispatch(s, {"action": "besiege_or_bypass", "side": "guelph",
-                         "args": {"lord_id": "firenze", "choice": "besiege"}})
+        from tests.test_selfplay_followup_fixes import arrive
+        s = arrive(seed=1)
+        r = dispatch(s, {"action": "play_event", "side": "guelph", "args": {"card_id": "F3"}})
         # Surprise: 2 Siege markers placed (then auto-Storm may Sack/Ruin them)
         assert "surprise_besiege" in r["state_changes"]
         assert "auto_storm" in r["state_changes"]

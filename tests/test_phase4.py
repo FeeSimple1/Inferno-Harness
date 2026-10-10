@@ -144,12 +144,9 @@ class TestPlayEvent:
         """Scenario A pre-deals F3 to Guelphs (Night March)."""
         s = load_scenario("A", seed=1)
         assert "F3" in s["decks"]["guelph"]["aow_held"]
-        # SMOKE-Inferno-094: F3 'Surprise' is played upon Besieging (AoW ref), so
-        # establish a combat window: a Guelph Lord at a Locale with a Siege marker.
-        fl = s["lords"]["firenze"]
-        s["locales"][fl["location"]].setdefault("siege", []).append(
-            {"side": "guelph", "color": "purple", "count": 1})
-        # F3 is flagged (Hold; applied on Besiege). Playing it consumes the card.
+        # Surprise requires an actual lone arrival, not an unrelated siege.
+        from tests.test_selfplay_followup_fixes import arrive
+        s = arrive(seed=1)
         r = dispatch(s, {"action": "play_event", "side": "guelph",
                          "args": {"card_id": "F3"}})
         assert "F3" not in s["decks"]["guelph"]["aow_held"]
