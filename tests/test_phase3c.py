@@ -44,6 +44,8 @@ def _to_command_with(scenario, seed, lord_id, lord_location_override=None):
         # Phase 3c keeps Guelphs-first; easier: empty Guelph's first card by revealing it,
         # then reveal Ghib's. Simplest: revealing PASS first.
         dispatch(s, {"action": "command_reveal", "side": "guelph"})
+        from tests._helpers import _finish_pending_choices
+        _finish_pending_choices(s)
         dispatch(s, {"action": "command_reveal", "side": "ghibelline"})
     else:
         dispatch(s, {"action": "command_reveal", "side": "guelph"})

@@ -29,6 +29,8 @@ def _to_end_campaign(scenario="A", seed=1, turn_override=None):
     # Reveal all cards (every Lord card is Pass for now)
     safety = 30
     while s["meta"].get("campaign_step") == "command_phase" and safety > 0:
+        from tests._helpers import _finish_pending_choices
+        _finish_pending_choices(s)
         dispatch(s, {"action": "command_reveal", "side": s["meta"]["active_player"]})
         safety -= 1
     return s

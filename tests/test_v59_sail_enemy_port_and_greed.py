@@ -79,6 +79,8 @@ def _stage_pisa(seed=1, port="Pisa", ship=6, prov=0, loot=0, forces=None):
         if len(s["plan_stacks"][side]) >= size:
             dispatch(s, {"action": "plan_done", "side": side})
     while s.get("current_lord_id") != "pisa":
+        from tests._helpers import _finish_pending_choices
+        _finish_pending_choices(s)
         dispatch(s, {"action": "command_reveal", "side": current_side(s)})
     for _ in range(3):  # clear the FPD-pay window from guelph's PASS card
         moves = enumerate_legal(s)

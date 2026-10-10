@@ -21,6 +21,8 @@ Every action is a JSON object with at minimum:
 }
 ```
 
+`action` must be a nonempty string. `args`, when supplied, must be an object (not null or an array). Rejected actions leave state, resources, history, and RNG advancement unchanged.
+
 `action` names follow snake_case. `side` is the side issuing the
 action (matches `state.meta.active_player` unless the action is a
 response to a pending decision owed by the other side).
@@ -109,3 +111,69 @@ channel accepts. It is a sibling of `args`; `dispatch` ignores it.
 - `play_event` — 3.1.3 + per-card text
 - `play_capability` — 3.4.4 + per-card text
 - `play_held_event` — designated Hold-window resolution
+
+
+## Audit corrections — v6.14.0
+
+Use `enumerate_legal(state)` to obtain executable choices and their decision
+owner. Pending choices can belong to a different side from
+`state.meta.active_player`; always use the move's `side` in the action and in
+the player's briefing. An active Command card and its Feed/Pay/Disband must
+finish before `command_reveal` can advance the sequence.
+
+### Drawn immediate Events
+
+`levy_aow_draw` now pauses at an Event that requires a choice, keeping its card
+in `pending` with `type: "event_resolution"`. Remaining drawn cards stay in
+`aow_resolution.remaining`, in draw order. Resolve with:
+
+```json
+{
+  "action": "levy_resolve_event",
+  "side": "guelph",
+  "args": {
+    "card_id": "F22",
+    "effect_args": {"target_lord_id": "giordano", "mode": "shift"}
+  }
+}
+```
+
+The enumerator provides valid targets/effects for the actual state. Resolution
+consumes the card once, then continues the draw queue. Event consequences such
+as Revolt/Exiles also finish before the next card. Incomplete `play_event`
+submissions are rejected without losing the Held card or partially applying
+its effect. Save/load preserves the pending draw queue.
+
+### Levy Capability
+
+`levy_muster_capability` accepts `lord_id`, optional explicit `card_id`, and
+optional `target_lord_id` (default: the levying Lord). Scope is determined by the
+printed Capability, not by the caller. An explicitly incompatible `scope` is
+rejected. The menu names the available card and a legal recipient; a Commander
+may provide the Capability to its own eligible Comune. Duplicate titles,
+mat limits, and printed eligibility are checked before spending Lordship.
+
+### Payments and Exiles
+
+`cmd_fpd_pay` accepts `from_lord_id`, `target_lord_id`, `asset` (`Coin` or
+`Loot`), and `amount`. The legal menu includes co-located payers, legal Loot,
+and the Podesta rate. `cmd_fpd_pay_done` declines remaining payment choices.
+Service beyond box 16 is not expired Service.
+
+`cmd_resolve_exiles` accepts `slides`, a list of `{"lord_id": "...", "kind":
+"service"}` or `"kind": "cylinder"` entries. Each entry spends one shift.
+A partial list preserves the remaining entitlement and refreshes its targets;
+an empty list declines the remainder. Shifts may leave either calendar edge.
+
+### Commands and randomness
+
+`cmd_pass.count` must be positive. Entire-card Commands are unavailable after
+any earlier Command on that card, including a zero-action Road March. Ordinary
+March cannot release a besieged Lord; an explicit marching group needs a legal
+Commander/Lieutenant relationship. Supply choices include remote sources and
+shared Carts, with the endpoint subject to the same blocking rules as the route.
+
+Deck indices now use unbiased, logged base-six rejection sampling across the
+whole deck. Old seed numbers will therefore produce different games from
+v6.13.0; replays recorded under the old draw algorithm are not promised to
+reproduce under this version. New runs remain deterministic.

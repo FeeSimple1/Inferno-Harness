@@ -221,20 +221,18 @@ class TestReliefSally:
 # =====================================================================
 class TestScenarioSpecials:
     def test_scenario_a_sudden_campaign(self):
-        """SMOKE-Inferno-035: Scenario A first Levy = 1 Cap + 1 Event."""
+        """SMOKE-Inferno-035: first draw is one Capability and one Event."""
         s = load_scenario("A", seed=42)
-        def _deployed():
-            cip = len([c for c in s["capabilities_in_play"] if c.get("side") == "guelph"])
-            mats = sum(len(l.get("capabilities", []) or [])
-                       for l in s["lords"].values() if l.get("side") == "guelph")
-            disc = len(s["decks"]["guelph"]["aow_discard"])
-            return cip + mats + disc
-        before_caps = _deployed()
-        # Draw with sudden_campaign active (it's the first Levy and scenario A)
-        dispatch(s, {"action": "levy_aow_draw", "side": "guelph"})
-        # Sudden Campaign: exactly 1 Capability deployed (side-wide OR This-Lord OR
-        # discarded), 1 card routed to an Event.
-        assert _deployed() - before_caps == 1
+        result = dispatch(s, {"action": "levy_aow_draw", "side": "guelph"})
+        cap, event = result["state_changes"]["drew"]
+        cap_ids = {c["id"] for c in s["capabilities_in_play"]}
+        cap_ids.update(cid for lord in s["lords"].values() for cid in lord.get("capabilities", []))
+        assert cap in cap_ids or cap in s["decks"]["guelph"]["aow_discard"]
+        assert event not in cap_ids
+        event_ids = set(s["decks"]["guelph"]["aow_held"] + s["decks"]["guelph"]["aow_discard"])
+        event_ids.update(p.get("card_id") for p in s.get("pending", []))
+        event_ids.update(e["id"] for entries in s.get("active_events", {}).values() for e in entries)
+        assert event in event_ids
 
     def test_scenario_c_maremma_line_cross_blocked(self):
         """SMOKE-Inferno-039: Ghib can't cross dashed line in C until Guelph aggression."""

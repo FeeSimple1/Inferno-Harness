@@ -395,6 +395,11 @@ def _greek_fire_apply(state, side, args):
     locale = state["locales"].get(enemy.get("location"))
     if not locale or not locale.get("siege"):
         return {"applied": False, "reason": "target not at a Besieged Locale"}
+    if enemy.get("flags", {}).get("in_stronghold") or not any(
+            marker.get("side") == enemy_side for marker in locale["siege"]):
+        return {"applied": False, "reason": "Target is not an Enemy Besieger."}
+    if not isinstance(unit, str) or enemy.get("forces", {}).get(unit, 0) <= 0:
+        return _manual(card_id, "Specify a unit_to_remove present on the target's mat.")
     # Reduce to 1 marker
     if locale["siege"]:
         locale["siege"] = [{"side": locale["siege"][0]["side"],
@@ -451,10 +456,9 @@ def F9_event(state, side, args, rng):
     shifts = {}
     for lid in ("firenze", "lucca", "colle"):
         # Try cylinder left first; if no cylinder on calendar, try Service right.
-        new = _shift_cylinder_left(state, lid, boxes=1)
-        if new is not None or state["lords"][lid].get("calendar_box") is None:
-            shifts[lid] = {"cylinder_to": new}
-        else:
+        if state["lords"][lid].get("calendar_box") is not None:
+            shifts[lid] = {"cylinder_to": _shift_cylinder_left(state, lid, boxes=1)}
+        elif state["lords"][lid].get("service_box") is not None:
             shifts[lid] = {"service_to": _shift_service_right(state, lid, boxes=1)}
     return {"applied": True, "mode": "shift", "shifts": shifts}
 
@@ -573,10 +577,9 @@ def F13_event(state, side, args, rng):
         return {"applied": True, "added": added}
     shifts = {}
     for lid in ("firenze", "arezzo", "lucca"):
-        new = _shift_cylinder_left(state, lid, boxes=1)
-        if new is not None or state["lords"][lid].get("calendar_box") is None:
-            shifts[lid] = {"cylinder_to": new}
-        else:
+        if state["lords"][lid].get("calendar_box") is not None:
+            shifts[lid] = {"cylinder_to": _shift_cylinder_left(state, lid, boxes=1)}
+        elif state["lords"][lid].get("service_box") is not None:
             shifts[lid] = {"service_to": _shift_service_right(state, lid, boxes=1)}
     return {"applied": True, "shifts": shifts}
 
@@ -957,9 +960,14 @@ def F22_event(state, side, args, rng):
             return {"applied": False, "reason": "Target has no Calendar marker to shift."}
     elif mode == "remove_assets":
         request = args.get("assets_to_remove", {})
+        if not isinstance(request, dict) or any(
+                not isinstance(n, int) or isinstance(n, bool) or n < 0
+                or n > target["assets"].get(a, 0) for a, n in request.items()):
+            return {"applied": False, "reason": "Choose available nonnegative integer Assets."}
         total_request = sum(request.values())
-        if total_request > 3:
-            return {"applied": False, "reason": "Cannot remove more than 3 Assets total."}
+        need = min(3, sum(target.get("assets", {}).values()))
+        if total_request != need or need == 0:
+            return {"applied": False, "reason": f"Choose exactly {need} available Assets."}
         removed = {}
         for a, n in request.items():
             have = target["assets"].get(a, 0)
@@ -1075,7 +1083,7 @@ register_capability("F2", {"siege_extra_marker": 1, "this_lord": True})
 register_capability("F3", {"siege_towers_strike_first": True, "this_lord": True})  # Siege Towers: Storm Attacker R2+ strikes first (name-driven; SMOKE-085)
 register_capability("F4", {"trebuchets_walls_minus": True, "this_lord": True})  # Trebuchets: Walls/Siegeworks -1 at 3-4 Siege (name-driven; SMOKE-085)
 register_capability("F5", {"war_engineers": True, "this_lord": True})  # War Engineers: any-size Siege + reduce-to-1 (name-driven; SMOKE-085)
-register_capability("F6", {"hills": True, "applies_to_side": "guelph"})  # Hills Capability (battle modifier — flagged)
+register_capability("F6", {"feditori": True, "this_lord": True})  # Feditori; Hills is its Event.
 register_capability("F7", {"greek_fire": True, "this_lord": True})  # flagged
 register_capability("F8", {"crossbow_for_units": ["Men-at-Arms"], "this_lord": True})  # Balestre Grosse
 register_capability("F9", {})  # Genova Capability — situational, flagged
@@ -1720,6 +1728,15 @@ register_capability("S25", {"walls_plus_one_for_seats": True, "this_lord": True}
 register_capability("S26", {"repair_ruins": True, "this_lord": True})
 
 
+# Printed Capability scope, independent of the Event on the same card.
+# Army Reserve, Distringitores, Astrologers, Reinforced Walls, and
+# Costruttori affect the side; repeated Balestrieri/Palvesari/Arcieri copies
+# always attach to a single mat (Arts of War, Capability reference).
+_THIS_LORD_NUMBERS = set(range(2, 12)) | set(range(13, 21))
+for _cid, _trigger in CAPABILITY_TRIGGERS.items():
+    _trigger["this_lord"] = int(_cid[1:]) in _THIS_LORD_NUMBERS
+
+
 def apply_event_effect(state, card_id: str, side: str, args: dict, rng) -> dict[str, Any]:
     """Call the registered Event effect for `card_id` (or no-op if no
     handler is registered)."""
@@ -1727,3 +1744,43 @@ def apply_event_effect(state, card_id: str, side: str, args: dict, rng) -> dict[
     if handler is None:
         return {"manual": True, "card_id": card_id, "note": "No effect handler registered."}
     return handler(state, side, args, rng)
+
+
+def immediate_event_options(state, card_id: str, side: str) -> list[dict] | None:
+    """Explicit choices for target-dependent immediate Events.
+
+    None means the effect has no required argument selection. An empty list
+    means there is no eligible target/effect, so the draw resolves as no effect.
+    """
+    from itertools import combinations, product
+    if card_id == "F22":
+        options = []
+        for lid, lord in state["lords"].items():
+            if lord.get("forces", {}).get("Ritter", 0) <= 0:
+                continue
+            if lord.get("calendar_box") is not None or lord.get("service_box") is not None:
+                options.append({"target_lord_id": lid, "mode": "shift"})
+            assets = {a: n for a, n in lord.get("assets", {}).items() if isinstance(n, int) and n > 0}
+            need = min(3, sum(assets.values()))
+            if need:
+                keys = list(assets)
+                for counts in product(*(range(min(need, assets[a]) + 1) for a in keys)):
+                    if sum(counts) == need:
+                        options.append({"target_lord_id": lid, "mode": "remove_assets",
+                                        "assets_to_remove": {a: n for a, n in zip(keys, counts) if n}})
+        return options
+    if card_id == "F17":
+        options = [{"mode": "service", "target": t} for t in ("guido_guerra", "orvieto")
+                   if state["lords"][t].get("service_box") is not None]
+        eligible = [t for t in ("guido_guerra", "orvieto")
+                    if state["lords"][t].get("calendar_box") is not None
+                    and state["lords"][t]["calendar_box"] > state["calendar"]["levy_box"]]
+        for card in state["decks"][side]["command_deck"]:
+            if card not in cd.TREACHERY_CARDS:
+                continue
+            for n in range(1, len(eligible) + 1):
+                for targets in combinations(eligible, n):
+                    options.append({"mode": "treachery_cylinder", "targets": list(targets),
+                                    "treachery_card": card})
+        return options
+    return None

@@ -57,6 +57,26 @@ class HarnessRNG:
         self._log.append(roll)
         return roll
 
+    def randbelow(self, size: int, context: str) -> int:
+        """Unbiased index from logged d6 rolls, without changing replay format.
+
+        Enough base-six digits cover the WHOLE pool. Rejection of the excess
+        range avoids modulo bias when its size is not a power of six.
+        """
+        if not isinstance(size, int) or size < 1:
+            raise ValueError("size must be a positive integer")
+        span, digits = 1, 0
+        while span < size:
+            span *= 6
+            digits += 1
+        limit = span - span % size
+        while True:
+            value = 0
+            for _ in range(digits):
+                value = 6 * value + self.roll(context).value - 1
+            if value < limit:
+                return value % size
+
     def drain_log(self) -> list[DieRoll]:
         """Return the rolls since last drain, clearing the buffer."""
         out, self._log = self._log, []

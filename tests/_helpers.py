@@ -24,3 +24,26 @@ def _place(s, lid, loc, inside=False, forces=None):
     s["lords"][lid].setdefault("flags", {})["in_stronghold"] = inside
     if forces is not None:
         s["lords"][lid]["forces"] = dict(forces)
+
+
+def _finish_pending_choices(state):
+    """Finish explicit decision windows before a fixture advances the turn.
+
+    Decline optional Pay/Exiles; resolve required drawn-card/Revolt choices
+    through the same legal menu used by an interactive player.
+    """
+    from inferno.actions import dispatch
+    from inferno.legal_moves import enumerate_legal
+    for _ in range(100):
+        pending = (state.get("pending_fpd") or state.get("pending_revolts")
+                   or state.get("pending_exiles") or any(
+                       p.get("type") in ("capability_placement", "event_resolution")
+                       for p in state.get("pending", [])))
+        if not pending:
+            return
+        moves = enumerate_legal(state)
+        assert moves, "A pending fixture decision must be resolvable"
+        preferred = next((m for m in moves if m["action"] == "cmd_fpd_pay_done"
+                          or (m["action"] == "cmd_resolve_exiles" and not m["args"]["slides"])), moves[0])
+        dispatch(state, preferred)
+    raise AssertionError("Fixture pending-decision loop did not finish")

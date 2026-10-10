@@ -91,6 +91,11 @@ def dispatch(state: dict[str, Any], action: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(action, dict) or "action" not in action:
         raise IllegalAction("MALFORMED", "Action must be a dict with 'action' key.")
     name = action["action"]
+    if not isinstance(name, str) or not name:
+        raise IllegalAction("MALFORMED", "action must be a non-empty string.")
+    args = action.get("args", {})
+    if not isinstance(args, dict):
+        raise IllegalAction("MALFORMED", "args must be a JSON object.")
     side = action.get("side")
     if side not in ("guelph", "ghibelline"):
         raise IllegalAction("BAD_SIDE", f"side must be guelph or ghibelline, got {side!r}")
@@ -132,6 +137,16 @@ def dispatch(state: dict[str, Any], action: dict[str, Any]) -> dict[str, Any]:
             citation="2.2.4",
         )
 
+    if state.get("pending_fpd") and name not in (
+            "cmd_fpd_pay", "cmd_fpd_pay_done", "cmd_resolve_revolt", "cmd_resolve_exiles"):
+        raise IllegalAction("PENDING_DECISION", "Resolve Feed/Pay/Disband before continuing.", "4.8")
+    if _aow_placements_pending(state, current_side(state)) and name not in (
+            "levy_place_capability", "levy_resolve_event", "cmd_resolve_revolt", "cmd_resolve_exiles"):
+        raise IllegalAction("PENDING_DECISION", "Resolve the drawn card before continuing.", "3.1")
+    if (state.get("aow_resolution")
+            and (state.get("pending_revolts") or state.get("pending_exiles"))
+            and name not in ("cmd_resolve_revolt", "cmd_resolve_exiles")):
+        raise IllegalAction("PENDING_DECISION", "Resolve the drawn Event's consequences first.", "3.1.3")
     handler = _HANDLERS.get(name)
     if handler is None:
         raise IllegalAction(
@@ -139,29 +154,16 @@ def dispatch(state: dict[str, Any], action: dict[str, Any]) -> dict[str, Any]:
             f"Action {name!r} is not implemented or not recognised.",
         )
 
-    args = action.get("args", {}) or {}
     rng = _build_rng(state)
     rolls_before = rng.advance_count
-    # Transactional dispatch: handlers follow validate-then-mutate, so an
-    # IllegalAction normally leaves state untouched. The exception is the
-    # operator decision channels (scripted_decisions / post_battle_decisions /
-    # battle_callback): their entries can only be validated at each choice
-    # point DURING combat resolution, i.e. after mutation has begun. A bad
-    # entry used to escape as a bare ValueError with units half-routed and the
-    # Approach window consumed. Whenever a decision channel is live (including
-    # scripts accumulated across an Approach-response window), snapshot the
-    # state and restore it on ANY handler failure; the decision error then
-    # surfaces as IllegalAction(BAD_DECISION) so LLM/retry loops recover like
-    # from any other rejected action.
+    # Every rejection is atomic, not just combat decision errors. History is
+    # append-only and is written below only after a successful handler, so do
+    # not deepcopy the growing transcript for every action (quadratic cost).
     from .battle import ScriptedDecisionError
-    _decision_channel_live = bool(
-        args.get("scripted_decisions")
-        or args.get("post_battle_decisions")
-        or state.get("battle_callback") is not None
-        or state.get("approach_battle_decisions")
-        or state.get("approach_post_battle_decisions")
-    )
-    _snapshot = copy.deepcopy(state) if _decision_channel_live else None
+    _history = state.get("history")
+    _snapshot = copy.deepcopy({k: v for k, v in state.items() if k != "history"})
+    if _history is not None:
+        _snapshot["history"] = _history
     try:
         result = handler(state, side, args, rng)
     except Exception as exc:
@@ -183,7 +185,7 @@ def dispatch(state: dict[str, Any], action: dict[str, Any]) -> dict[str, Any]:
     state.setdefault("history", []).append({
         "action": name,
         "side": side,
-        "args": args,
+        "args": copy.deepcopy(args),
         "rolls": result.get("rolls", []),
         "state_changes": result.get("state_changes", {}),
         "rule_citation": result.get("rule_citation"),
@@ -232,7 +234,11 @@ def _capability_eligible_mustered(state, cid: str, side: str) -> list[str]:
             continue
         if restrict is not None and lid not in restrict:
             continue
-        if len(l.get("capabilities", []) or []) >= 2:
+        caps = l.get("capabilities", []) or []
+        if len(caps) >= 2:
+            continue
+        title = cd.AOW_CARDS_BY_ID[cid]["capability_name"]
+        if any(cd.AOW_CARDS_BY_ID.get(c, {}).get("capability_name") == title for c in caps):
             continue
         out.append(lid)
     return out
@@ -276,7 +282,7 @@ def _deploy_capability(state, cid: str, side: str, notes: list, placements=None,
 
 
 def _aow_placements_pending(state, side: str) -> bool:
-    return any(p.get("type") == "capability_placement" and p.get("side") == side
+    return any(p.get("type") in ("capability_placement", "event_resolution") and p.get("side") == side
                for p in state.get("pending", []) or [])
 
 
@@ -291,99 +297,119 @@ def _advance_after_aow(state) -> None:
 
 
 def _h_levy_aow_draw(state, side: str, args, rng) -> dict[str, Any]:
-    """Per 3.1.2 / 3.1.3: each side draws 2 AoW cards.
-
-    SMOKE-Inferno-025 (Tier-2 sweep): per 3.1.1, the AoW deck is
-    re-shuffled at the start of each Levy from the discard pile,
-    excluding Held Events and Capabilities currently in play. The
-    Guelph deck went empty in Scenario F long runs prior to this fix.
-    """
+    """3.1: draw up to two cards from the whole deck, resolving in draw order."""
     _require_step(state, "3.1")
-    # Phase v1.5 SMOKE-025: reshuffle AoW deck once per Levy (idempotent
-    # within the Levy via aow_deck_reshuffled_this_levy flag).
+    if state.get("aow_resolution") or _aow_placements_pending(state, side):
+        raise IllegalAction("PENDING_DECISION", "Finish the current Arts of War draw first.", "3.1")
     _maybe_reshuffle_aow_deck(state, side)
-    # Exhaustion rule (scenario F special): roll at start of each Levy
-    # from Turn 9 onward.
     _maybe_exhaustion_roll(state, rng)
-    deck = state["decks"][side]["aow_deck"]
-    # SMOKE-Inferno-068: 3.1 draws UP TO 2 AoW cards. If the reshuffled deck has
-    # fewer than 2 (many Capabilities/Held Events in play in a long game), draw
-    # what is available (0-2) and proceed instead of dead-locking the Levy.
-    drawn = []
-    for _ in range(min(2, len(deck))):
-        idx = rng.roll("aow_draw_index").value
-        idx = (idx - 1) % len(deck)
-        drawn.append(deck.pop(idx))
-
-    auto_place = bool(args.get("auto_place", True))
+    if state["meta"].get("game_over"):
+        return {"state_changes": {"exhaustion_ended_game": True}, "rule_citation": "Scenario F"}
     is_first = is_first_levy(state)
-    # SMOKE-Inferno-035: Scenario A 'Sudden Campaign' — first Levy AoW
-    # is 1 Capability + 1 Event (rather than 2 of either).
-    sudden_campaign = (state["meta"]["scenario"] == "A" and is_first)
-    # SMOKE-Inferno-036: Scenario B 'Reprisal War' — first Levy, Ghib
-    # pre-assigns S18, S19, S20 as Capabilities (then draws 2 more normally).
-    if (state["meta"]["scenario"] == "B" and is_first
-            and side == "ghibelline"
-            and not state["meta"].get("reprisal_war_assigned")):
-        deck_g = state["decks"]["ghibelline"]["aow_deck"]
-        reprisal_notes = []
-        for forced_id in ("S18", "S19", "S20"):
-            if forced_id in deck_g:
-                deck_g.remove(forced_id)
-                _deploy_capability(state, forced_id, "ghibelline", reprisal_notes,
-                                   placements=args.get("placements"), auto_place=auto_place)
-        state["meta"]["reprisal_war_assigned"] = True
-    state.setdefault("capabilities_in_play", [])
-    held = state["decks"][side]["aow_held"]
+    auto_place = bool(args.get("auto_place", True))
+    placements = args.get("placements", {})
+    if not isinstance(placements, dict):
+        raise IllegalAction("MALFORMED", "placements must be an object.", "3.1.2")
     notes = []
-    for i, cid in enumerate(drawn):
-        card = cd.AOW_CARDS_BY_ID.get(cid)
-        if not card:
-            raise IllegalAction("UNKNOWN_CARD", f"Card {cid} not in card_data.", "3.1")
-        # Sudden Campaign override: i=0 deploys as Capability; i=1 as Event.
-        treat_as_capability = (
-            is_first if not sudden_campaign else (i == 0)
-        )
-        if treat_as_capability:
-            # 3.1.2: deploy by Capability TYPE (A4) — side-wide to the map edge,
-            # This-Lord to one Mustered Lord (or pending choice / discard).
-            _deploy_capability(state, cid, side, notes, placements=args.get("placements"), auto_place=auto_place)
-        else:
-            # 3.1.3: implement Event. Phase 4 executes effects; Phase 2
-            # routes Hold to aow_held and resolves Immediate/This-Levy/
-            # This-Campaign Events as 'noted' (LLM applies manually).
-            kind = card.get("event_kind", "immediate")
-            if kind == "hold":
-                held.append(cid)
-                notes.append(f"{cid} -> Held ({card['event_name']})")
-            elif kind in ("this_levy", "this_campaign"):
-                state.setdefault("active_events", {}).setdefault(kind, []).append({
-                    "id": cid, "side": side, "name": card["event_name"],
-                })
-                notes.append(f"{cid} -> {kind} ({card['event_name']})")
-            else:
-                # Immediate event: apply effect immediately (Phase 4 wiring).
-                from . import card_effects as ce
-                effect_result = ce.apply_event_effect(state, cid, side, {}, rng)
-                state["decks"][side]["aow_discard"].append(cid)
-                notes.append({
-                    "card_id": cid, "name": card["event_name"], "kind": "immediate",
-                    "effect": effect_result,
-                })
-
-    # A4: if a This-Lord Capability still needs a placement choice, stay in this
-    # side's 3.1 segment until placed; otherwise finish and advance.
-    if _aow_placements_pending(state, side):
-        return {
-            "state_changes": {"drew": drawn, "deployment": notes,
-                              "awaiting_capability_placement": True},
-            "rule_citation": "3.1.2",
-        }
-    _advance_after_aow(state)
-    return {
-        "state_changes": {"drew": drawn, "deployment": notes},
-        "rule_citation": "3.1.2" if is_first else "3.1.3",
+    deck = state["decks"][side]["aow_deck"]
+    # Scenario B's assigned cards leave the deck BEFORE the extra random draw.
+    if (state["meta"]["scenario"] == "B" and is_first and side == "ghibelline"
+            and not state["meta"].get("reprisal_war_assigned")):
+        for cid in ("S18", "S19", "S20"):
+            if cid in deck:
+                deck.remove(cid)
+                _deploy_capability(state, cid, side, notes, placements, auto_place)
+        state["meta"]["reprisal_war_assigned"] = True
+    drawn = [deck.pop(rng.randbelow(len(deck), "aow_draw_index"))
+             for _ in range(min(2, len(deck)))]
+    sudden = state["meta"]["scenario"] == "A" and is_first
+    state["aow_resolution"] = {
+        "side": side, "auto_place": auto_place, "placements": placements,
+        "remaining": [{"card_id": cid, "as_capability": (i == 0 if sudden else is_first)}
+                      for i, cid in enumerate(drawn)],
     }
+    notes.extend(_continue_aow_draw(state, rng))
+    return {"state_changes": {"drew": drawn, "deployment": notes,
+                              "awaiting_capability_placement": any(p.get("type") == "capability_placement" for p in state.get("pending", [])),
+                              "awaiting_event_choice": any(p.get("type") == "event_resolution" for p in state.get("pending", []))},
+            "rule_citation": "3.1.2" if is_first else "3.1.3"}
+
+
+def _aow_decisions_pending(state, side: str) -> bool:
+    return bool(_aow_placements_pending(state, side)
+                or state.get("pending_revolts") or state.get("pending_exiles"))
+
+
+def _continue_aow_draw(state, rng) -> list:
+    """Resume the ordered draw queue after a Capability/Event choice."""
+    from . import card_effects as ce
+    queue = state.get("aow_resolution")
+    if queue is None:
+        if not _aow_placements_pending(state, current_side(state)):
+            _advance_after_aow(state)
+        return []
+    side = queue["side"]
+    notes = []
+    while queue["remaining"] and not _aow_decisions_pending(state, side):
+        item = queue["remaining"].pop(0)
+        cid = item["card_id"]
+        card = cd.AOW_CARDS_BY_ID[cid]
+        if item["as_capability"]:
+            _deploy_capability(state, cid, side, notes, queue["placements"], queue["auto_place"])
+            continue
+        kind = card.get("event_kind", "immediate")
+        if kind == "hold":
+            state["decks"][side]["aow_held"].append(cid)
+            notes.append(f"{cid} -> Held ({card['event_name']})")
+        elif kind in ("this_levy", "this_campaign"):
+            state.setdefault("active_events", {}).setdefault(kind, []).append(
+                {"id": cid, "side": side, "name": card["event_name"]})
+            notes.append(f"{cid} -> {kind} ({card['event_name']})")
+        else:
+            options = ce.immediate_event_options(state, cid, side)
+            if options:
+                state.setdefault("pending", []).append({"type": "event_resolution", "side": side,
+                                                         "card_id": cid, "name": card["event_name"]})
+                notes.append({"card_id": cid, "decision_required": True})
+                break
+            effect = ({"applied": False, "reason": "No eligible effect or target."} if options == []
+                      else ce.apply_event_effect(state, cid, side, {}, rng))
+            if effect.get("manual"):
+                state.setdefault("pending", []).append({"type": "event_resolution", "side": side,
+                                                         "card_id": cid, "name": card["event_name"],
+                                                         "prompt": effect.get("note")})
+                break
+            state["decks"][side]["aow_discard"].append(cid)
+            notes.append({"card_id": cid, "kind": "immediate", "effect": effect})
+    if not queue["remaining"] and not _aow_decisions_pending(state, side):
+        state.pop("aow_resolution", None)
+        _advance_after_aow(state)
+    return notes
+
+
+def _h_levy_resolve_event(state, side, args, rng) -> dict[str, Any]:
+    """Resolve the current immediate Event before consuming it or drawing on."""
+    from . import card_effects as ce
+    _require_step(state, "3.1")
+    pending = next((p for p in state.get("pending", [])
+                    if p.get("type") == "event_resolution" and p.get("side") == side), None)
+    if pending is None or args.get("card_id", pending["card_id"]) != pending["card_id"]:
+        raise IllegalAction("NO_PENDING_EVENT", "No matching immediate Event is pending.", "3.1.3")
+    cid = pending["card_id"]
+    effect_args = args.get("effect_args", {})
+    if not isinstance(effect_args, dict):
+        raise IllegalAction("MALFORMED", "effect_args must be an object.", "3.1.3")
+    if ce.immediate_event_options(state, cid, side) == []:
+        result = {"applied": False, "reason": "No eligible effect or target."}
+    else:
+        result = ce.apply_event_effect(state, cid, side, effect_args, rng)
+        if result.get("manual") or not result.get("applied"):
+            raise IllegalAction("EVENT_UNRESOLVED", result.get("note") or result.get("reason") or "Event needs a valid choice.", "3.1.3")
+    state["pending"].remove(pending)
+    state["decks"][side]["aow_discard"].append(cid)
+    notes = _continue_aow_draw(state, rng)
+    return {"state_changes": {"resolved_event": cid, "effect": result, "deployment": notes},
+            "rule_citation": "3.1.3"}
 
 
 # =====================================================================
@@ -425,7 +451,8 @@ def _apply_pay_action(state, side: str, args) -> dict[str, Any]:
     if from_lord["status"] not in ("mustered", "on_calendar"):
         raise IllegalAction("LORD_OFF_MAP", f"{from_lid} cannot pay (status={from_lord['status']}).", "3.2")
     # 3.2.1: payer and target must be at the SAME Locale (if both on map).
-    if from_lord.get("location") and target_lord.get("location") and from_lord["location"] != target_lord["location"]:
+    if from_lid != target_lid and (not from_lord.get("location")
+            or from_lord.get("location") != target_lord.get("location")):
         raise IllegalAction(
             "PAY_DIFFERENT_LOCALES",
             f"Pay requires payer and target at same Locale; "
@@ -460,8 +487,8 @@ def _apply_pay_action(state, side: str, args) -> dict[str, Any]:
         )
 
     # Apply: spend asset, shift Service marker right.
-    from_lord["assets"][asset] -= cost
     new_box = _shift_service_right(state, target_lid, boxes)
+    from_lord["assets"][asset] -= cost
 
     return {
         "state_changes": {
@@ -703,6 +730,8 @@ def _place_service(state, lid, box) -> None:
     for b in state["calendar"]["boxes"].values():
         if lid in b.get("services", []):
             b["services"].remove(lid)
+    for edge in ("off_left_service", "off_right_service"):
+        state["calendar"][edge] = [x for x in state["calendar"].get(edge, []) if x != lid]
     state["lords"][lid]["service_box"] = box
     if box is not None:
         _box(state, box)["services"].append(lid)
@@ -714,6 +743,8 @@ def _place_cylinder(state, lid, box) -> None:
     for b in state["calendar"]["boxes"].values():
         if lid in b.get("cylinders", []):
             b["cylinders"].remove(lid)
+    for edge in ("off_left", "off_right"):
+        state["calendar"][edge] = [x for x in state["calendar"].get(edge, []) if x != lid]
     state["lords"][lid]["calendar_box"] = box
     if box is not None:
         _box(state, box)["cylinders"].append(lid)
@@ -779,23 +810,37 @@ def _h_cmd_resolve_revolt(state, side, args, rng) -> dict[str, Any]:
     if res.get("exiles_required"):
         state.setdefault("pending_exiles", []).append(res["exiles_required"])
     drained = _revolt.drain_revolts(state)
+    if state.get("aow_resolution"):
+        drained["aow_deployment"] = _continue_aow_draw(state, rng)
     return {"state_changes": {"resolved_revolt": res.get("switch") or res.get("status"),
                               **drained}, "rule_citation": "1.4.2"}
 
 
 def _h_cmd_resolve_exiles(state, side, args, rng) -> dict[str, Any]:
-    """Apply the head pending Exiles slides (1.4.4) chosen by the losing side."""
+    """Spend some/all of the head Exiles entitlement; [] declines the remainder."""
     pend = state.get("pending_exiles", [])
-    head = next((e for e in pend if e["side"] == side), None)
+    head = pend[0] if pend and pend[0].get("side") == side else None
     if head is None:
         raise IllegalAction("NO_PENDING_EXILES", f"No Exiles awaiting {side}.", "1.4.4")
     slides = args.get("slides", [])
+    if not isinstance(slides, list) or any(not isinstance(sl, dict) for sl in slides):
+        raise IllegalAction("BAD_SLIDES", "slides must be a list of marker choices.", "1.4.4")
     if len(slides) > head["count"]:
-        raise IllegalAction("TOO_MANY_SLIDES",
-                            f"Exiles allows at most {head['count']} slides.", "1.4.4")
-    result = _revolt.apply_exiles(state, side, slides)
-    pend.remove(head)
-    return {"state_changes": {"exiles": result}, "rule_citation": "1.4.4"}
+        raise IllegalAction("TOO_MANY_SLIDES", f"Exiles allows at most {head['count']} slides.", "1.4.4")
+    try:
+        result = _revolt.apply_exiles(state, side, slides)
+    except ValueError as exc:
+        raise IllegalAction("BAD_SLIDES", str(exc), "1.4.4") from exc
+    head["count"] -= len(slides)
+    head["candidates"] = _revolt.legal_exiles_targets(state, side)
+    remaining = head["count"]
+    if not slides or remaining == 0 or not head["candidates"]:
+        pend.remove(head)
+        remaining = 0
+    changes = {"exiles": result, "remaining_shifts": remaining}
+    if state.get("aow_resolution"):
+        changes["aow_deployment"] = _continue_aow_draw(state, rng)
+    return {"state_changes": changes, "rule_citation": "1.4.4"}
 
 
 def _add_treachery_to_enemy(state, for_lord_id: str, enemy_side: str) -> str | None:
@@ -1076,47 +1121,49 @@ def _h_levy_muster_transport(state, side, args, rng) -> dict[str, Any]:
 
 
 def _h_levy_muster_capability(state, side, args, rng) -> dict[str, Any]:
-    """3.4.4 Levy Capability. 1 action -> draw 1 random Capability from
-    the side's AoW deck for the side or for this Lord.
+    """3.4.4: levy a Capability for its printed scope and eligible mat.
 
-    Phase 2 records the deployment; Phase 4 enforces per-card eligibility
-    rules (Coats of Arms, mat limits, etc.).
-
-    args:
-      lord_id:   Lord using Lordship (must be Mustered)
-      scope:     "this_lord" or "side_wide" (defaults to side_wide)
+    card_id selects a card from the deck. For legacy callers omitting it,
+    draw an unbiased random card; explicit scope must match the printed card.
     """
     _require_step(state, "3.4")
     lid = args.get("lord_id")
-    scope = args.get("scope", "side_wide")
     lord = _require_lord(state, lid, side)
     if lord["status"] != "mustered":
         raise IllegalAction("LORD_NOT_ON_MAP", f"{lid} is not Mustered.", "3.4")
     deck = state["decks"][side]["aow_deck"]
     if not deck:
-        raise IllegalAction("EMPTY_DECK", "No AoW cards left to draw.", "3.4.4")
-    _consume_lordship(state, lid)  # CONF-018: after validation
-    r = rng.roll("levy_cap_index")
-    idx = (r.value - 1) % len(deck)
-    cid = deck.pop(idx)
+        raise IllegalAction("EMPTY_DECK", "No AoW cards left to levy.", "3.4.4")
+    cid = args.get("card_id")
+    if cid is None:
+        cid = deck[rng.randbelow(len(deck), "levy_cap_index")]
+    if not isinstance(cid, str) or cid not in deck:
+        raise IllegalAction("CARD_NOT_AVAILABLE", f"{cid!r} is not in the AoW deck.", "3.4.4")
     card = cd.AOW_CARDS_BY_ID[cid]
+    scope = "this_lord" if _capability_is_this_lord(cid) else "side_wide"
+    restriction = _CAP_PLACEMENT_ELIGIBLE.get(cid)
+    if scope == "side_wide" and restriction is not None and lid not in restriction:
+        raise IllegalAction("CAPABILITY_INELIGIBLE", f"{lid} cannot Levy {cid}.", "3.4.4")
+    if args.get("scope", scope) != scope:
+        raise IllegalAction("CAPABILITY_SCOPE", f"{cid} is a {scope} Capability.", "3.4.4")
+    target_id = args.get("target_lord_id", lid)
+    target = _require_lord(state, target_id, side)
+    if target_id != lid and (not lord.get("commander") or target.get("comune_of") != lid):
+        raise IllegalAction("INELIGIBLE_LORD", "Only a Commander may levy for his own Comune.", "3.4.4")
+    if scope == "this_lord":
+        if len(target.get("capabilities", [])) >= 2:
+            raise IllegalAction("THIS_LORD_LIMIT", f"{target_id} already has 2 Capabilities.", "3.4.4")
+        if target_id not in _capability_eligible_mustered(state, cid, side):
+            raise IllegalAction("INELIGIBLE_LORD", f"{target_id} cannot hold {cid}.", "3.4.4")
+    _consume_lordship(state, lid)
+    deck.remove(cid)
     record = {"id": cid, "name": card["capability_name"], "side": side, "scope": scope}
     if scope == "this_lord":
-        if len(lord.get("capabilities", [])) >= 2:
-            raise IllegalAction(
-                "THIS_LORD_LIMIT",
-                f"{lid} already has 2 'This Lord' Capabilities (max).",
-                "3.4.4",
-            )
-        record["lord_id"] = lid
-        lord.setdefault("capabilities", []).append(cid)
+        record["lord_id"] = target_id
+        target.setdefault("capabilities", []).append(cid)
     else:
         state.setdefault("capabilities_in_play", []).append(record)
-    return {
-        "state_changes": {"drew": cid, "deployed": record},
-        "rolls": [{"context": r.context, "value": r.value}],
-        "rule_citation": "3.4.4",
-    }
+    return {"state_changes": {"drew": cid, "deployed": record}, "rule_citation": "3.4.4"}
 
 
 def _h_levy_muster_done(state, side, args, rng) -> dict[str, Any]:
@@ -1154,8 +1201,8 @@ def _require_step(state, expected: str) -> None:
 
 
 def _require_lord(state, lord_id: str, side: str) -> dict[str, Any]:
-    if not lord_id:
-        raise IllegalAction("MISSING_LORD_ID", "Action missing lord_id arg.")
+    if not isinstance(lord_id, str) or not lord_id:
+        raise IllegalAction("MISSING_LORD_ID", "Action requires a string lord_id arg.")
     lord = state["lords"].get(lord_id)
     if lord is None:
         raise IllegalAction("UNKNOWN_LORD", f"No Lord with id {lord_id!r}.")
@@ -1202,13 +1249,13 @@ def _h_levy_place_capability(state, side, args, rng) -> dict[str, Any]:
         state["lords"][target].setdefault("capabilities", []).append(cid)
         outcome = {"card_id": cid, "placed": target}
     state["pending"].remove(pend)
-    if not _aow_placements_pending(state, side):
-        _advance_after_aow(state)
-    return {"state_changes": {"capability_placement": outcome}, "rule_citation": "3.1.2"}
+    notes = _continue_aow_draw(state, rng)
+    return {"state_changes": {"capability_placement": outcome, "deployment": notes}, "rule_citation": "3.1.2"}
 
 
 _HANDLERS = {
     "levy_aow_draw":           _h_levy_aow_draw,
+    "levy_resolve_event":      _h_levy_resolve_event,
     "levy_place_capability":   _h_levy_place_capability,
     "levy_pay":                _h_levy_pay,
     "levy_pay_done":           _h_levy_pay_done,
@@ -1309,6 +1356,9 @@ def _h_plan_add_card(state, side, args, rng) -> dict[str, Any]:
         raise IllegalAction("MISSING_CARD_ID",
                             "plan_add_card requires a non-empty string card_id.", "4.1.1")
     stack = state["plan_stacks"][side]
+    season = sd.SEASON_BY_BOX.get(state["meta"]["turn"], "winter")
+    if len(stack) >= sd.PLAN_SIZE_BY_SEASON[season]:
+        raise IllegalAction("PLAN_FULL", "Plan already contains this Season's full allotment.", "4.1.2")
     # Validate card type and availability.
     if cid == cd_PASS_CARD_ID():
         # Pass card — unlimited supply.
@@ -1361,6 +1411,11 @@ def _h_command_reveal(state, side, args, rng) -> dict[str, Any]:
     from .flow import current_campaign_step
     if current_campaign_step(state) != "command_phase":
         raise IllegalAction("WRONG_STEP", "command_reveal valid only in command_phase.", "4.2")
+    if state.get("current_card") is not None or state.get("current_lord_id") is not None:
+        raise IllegalAction("CARD_IN_PROGRESS", "Finish the current activation before revealing another card.", "4.2")
+    if (state.get("pending") or state.get("pending_fpd")
+            or state.get("pending_revolts") or state.get("pending_exiles")):
+        raise IllegalAction("PENDING_DECISION", "Resolve pending decisions before revealing another card.", "4.2 / 4.8")
     stack = state["plan_stacks"][side]
     if not stack:
         # Both stacks empty: advance to end_campaign.
@@ -1373,6 +1428,7 @@ def _h_command_reveal(state, side, args, rng) -> dict[str, Any]:
         return {"state_changes": {"side_empty_passes": side}, "rule_citation": "4.2"}
     cid = stack.pop(0)
     state["current_card"] = cid
+    state["card_actions_started"] = False
 
     # Decide if Lord acts (Command card with on-map Lord) or card lapses.
     if cid == "PASS":
@@ -1413,6 +1469,7 @@ def _h_command_reveal(state, side, args, rng) -> dict[str, Any]:
                 if loc and _is_friendly_locale(state, loc, side):
                     via_francigena_bonus = 1
         state["current_lord_id"] = lord_id
+        lord.setdefault("flags", {}).pop("first_march_used_this_card", None)
         state["actions_remaining"] = rating + astrologers_bonus + via_francigena_bonus
         state["card_action_consumed_by_entire_card"] = False
         return {
@@ -1489,6 +1546,12 @@ def _h_cmd_end_card(state, side, args, rng) -> dict[str, Any]:
 # =====================================================================
 # Simple Command actions (4.6, 4.7.1, 4.7.2, 4.7.3, 4.7.4, 4.7.7)
 # =====================================================================
+def _require_entire_card(state) -> None:
+    """Entire-card commands cannot follow any command, including a free March."""
+    if state.get("card_actions_started"):
+        raise IllegalAction("ENTIRE_CARD_REQUIRED", "This command requires an unused Command card.", "4.2 / 4.7")
+
+
 def _h_cmd_tax(state, side, args, rng) -> dict[str, Any]:
     """4.7.4 TAX (entire-card): Unbesieged Lord at one of his Seats gains
     +1 Coin (Podestà: +2). Uses the ENTIRE Command card.
@@ -1496,6 +1559,7 @@ def _h_cmd_tax(state, side, args, rng) -> dict[str, Any]:
     SMOKE-Inferno-029: S23 Taglia ('This Campaign no Guelph Tax') blocks
     Guelph Tax actions per the card text.
     """
+    _require_entire_card(state)
     lid = _require_active_lord(state, side, args.get("lord_id"))
     lord = state["lords"][lid]
     # S23 Taglia This Campaign block
@@ -1724,28 +1788,8 @@ def _h_cmd_ravage(state, side, args, rng) -> dict[str, Any]:
     }, state, side, citation="4.7.2")
 
 
-def _h_cmd_supply(state, side, args, rng) -> dict[str, Any]:
-    """4.6 SUPPLY (1 action): add Provender from a Source via Transport.
-
-    Phase v1.5 full implementation:
-      - Source = Active Lord's OWN SEAT at unruined Stronghold/Outpost
-        (or Pisa-with-Ships at a Port).
-      - Route = unbroken chain of Locales/Ways from Lord to Source. May
-        not include any Locale with Enemy Stronghold/Lord UNLESS that
-        Stronghold/Lord is Besieged or Bypassed. Ruins/Ravaged do not block.
-      - Transport = >=1 Cart per Provender per intervening Way. At own
-        Seat or via Ships at Port: no Carts needed.
-      - Max from each Stronghold Seat = Stronghold Size; Outpost = 1;
-        Ship-Port = 1 per Ship (Pisa only, non-Winter).
-      - Stores & Well Water (F1/S1) Capability: up to 4 Provender per
-        Seat; allows Supply while Besieged at own Seat.
-
-    args:
-      lord_id:     Active Lord
-      source:      Locale name for Source (default: Active Lord's Locale
-                   if his own Seat, else first eligible)
-      provender:   Amount to add (default: max allowed by Source + Transport)
-    """
+def _supply_preview(state, side, args) -> dict[str, Any]:
+    """Validate Supply and calculate its yield without changing state (4.6)."""
     lid = _require_active_lord(state, side, args.get("lord_id"))
     lord = state["lords"][lid]
     loc_name = lord.get("location")
@@ -1774,12 +1818,16 @@ def _h_cmd_supply(state, side, args, rng) -> dict[str, Any]:
     source_loc = state["locales"].get(source)
     if not source_loc:
         raise IllegalAction("UNKNOWN_SOURCE", f"Source {source} not found.", "4.6.1")
-    if source_loc.get("ruins") and source_loc["type"] != "outpost":
+    from .battle import _lord_has_capability
+    if (source_loc.get("ruins") and source_loc["type"] != "outpost"
+            and not _lord_has_capability(state, lid, "Stores & Well Water")):
         raise IllegalAction("SOURCE_RUINED", "Ruined Stronghold Seat cannot be a Source.", "4.6.1")
 
     # Find the route from lord_loc to source (BFS), with route restrictions
     from .battle import _lord_has_capability
-    way_count = _find_supply_route_distance(state, loc_name, source, side)
+    stores_at_seat = (loc_name == source and source in lord.get("seats", [])
+                      and _lord_has_capability(state, lid, "Stores & Well Water"))
+    way_count = 0 if stores_at_seat else _find_supply_route_distance(state, loc_name, source, side)
     if way_count is None:
         raise IllegalAction(
             "NO_SUPPLY_ROUTE",
@@ -1790,7 +1838,7 @@ def _h_cmd_supply(state, side, args, rng) -> dict[str, Any]:
     # SMOKE-Inferno-026: Stores & Well Water allows Supply while Besieged at own Seat.
     at_own_seat = (loc_name == source) and (source in lord.get("seats", []))
     cur_loc = state["locales"][loc_name]
-    if cur_loc.get("siege") and not (
+    if lord.get("flags", {}).get("in_stronghold") and cur_loc.get("siege") and not (
         at_own_seat and _lord_has_capability(state, lid, "Stores & Well Water")
     ):
         raise IllegalAction(
@@ -1809,7 +1857,7 @@ def _h_cmd_supply(state, side, args, rng) -> dict[str, Any]:
         max_from_source = size_map.get(source_loc["type"], 1)
 
     # Transport requirement: 1 Cart per Provender per Way (no Carts at own Seat or Pisa-Ships-Port)
-    carts_avail = lord["assets"].get("Cart", 0)
+    carts_avail = _share_available(state, lid, "Cart")
     requested = _int_arg(args, "provender", max_from_source)
     requested = max(1, min(requested, max_from_source))
     if way_count == 0:
@@ -1834,12 +1882,17 @@ def _h_cmd_supply(state, side, args, rng) -> dict[str, Any]:
                 f"Need {way_count} Carts per Provender; {lid} has {carts_avail}.",
                 "4.6.1",
             )
-    lord["assets"]["Provender"] = min(lord["assets"].get("Provender", 0) + requested, 16)
+    return {"supply_added": requested, "from": source,
+            "way_count": way_count, "carts_required": carts_needed}
+
+
+def _h_cmd_supply(state, side, args, rng) -> dict[str, Any]:
+    """4.6: Supply from a legal Source using own or Shared Transport."""
+    payload = _supply_preview(state, side, args)
+    lord = state["lords"][state["current_lord_id"]]
+    lord["assets"]["Provender"] = min(lord["assets"].get("Provender", 0) + payload["supply_added"], 16)
     state["actions_remaining"] -= 1
-    return _maybe_end_card({
-        "supply_added": requested, "from": source,
-        "way_count": way_count, "carts_required": carts_needed,
-    }, state, side, citation="4.6.2")
+    return _maybe_end_card(payload, state, side, citation="4.6.2")
 
 
 def _find_supply_route_distance(state, src: str, target: str, side: str) -> int | None:
@@ -1847,8 +1900,6 @@ def _find_supply_route_distance(state, src: str, target: str, side: str) -> int 
     un-Bypassed enemy Strongholds or enemy Lords. Returns # of Ways
     crossed (= len(path) - 1), or None if unreachable.
     """
-    if src == target:
-        return 0
     from collections import deque
     enemy = "ghibelline" if side == "guelph" else "guelph"
 
@@ -1859,7 +1910,8 @@ def _find_supply_route_distance(state, src: str, target: str, side: str) -> int 
             olord = state["lords"].get(oid, {})
             if olord.get("side") == enemy and olord.get("status") == "mustered":
                 # Allowed if Besieged or Bypassed
-                if olord.get("flags", {}).get("in_stronghold"):
+                if (olord.get("flags", {}).get("in_stronghold")
+                        and any(m.get("side") == side for m in loc.get("siege", []))):
                     continue
                 if loc.get("bypass"):
                     continue
@@ -1872,6 +1924,10 @@ def _find_supply_route_distance(state, src: str, target: str, side: str) -> int 
                 return False
         return True
 
+    if not passable(src) or not passable(target):
+        return None
+    if src == target:
+        return 0
     queue = deque([(src, 0)])
     seen = {src}
     while queue:
@@ -1879,11 +1935,10 @@ def _find_supply_route_distance(state, src: str, target: str, side: str) -> int 
         for nbr, _w in sd.adjacent_to(cur):
             if nbr in seen:
                 continue
-            if nbr == target:
-                # Target itself doesn't need passable (it's the Source).
-                return d + 1
             if not passable(nbr):
                 continue
+            if nbr == target:
+                return d + 1
             seen.add(nbr)
             queue.append((nbr, d + 1))
     return None
@@ -1899,6 +1954,7 @@ def _h_cmd_sail(state, side, args, rng) -> dict[str, Any]:
         places a Siege marker (Besiege).
       - May NOT Sail to a Port with an Unbesieged Enemy Lord.
     """
+    _require_entire_card(state)
     lid = _require_active_lord(state, side, args.get("lord_id"))
     lord = state["lords"][lid]
     if lord["name"] != "Pisa Podestà":
@@ -2009,6 +2065,8 @@ def _h_cmd_pass(state, side, args, rng) -> dict[str, Any]:
     """4.7.7 PASS — burn 1 (or all remaining) actions doing nothing."""
     _require_active_lord(state, side, args.get("lord_id"))
     n = _int_arg(args, "count", 1)
+    if n < 1:
+        raise IllegalAction("BAD_AMOUNT", "Pass count must be positive.", "4.7.7")
     n = min(n, state["actions_remaining"] or 0)
     state["actions_remaining"] = max(0, (state["actions_remaining"] or 0) - n)
     return _maybe_end_card({"passed_actions": n}, state, side, citation="4.7.7")
@@ -2107,22 +2165,33 @@ def _run_fpd(state) -> dict[str, Any]:
 
 
 def _fpd_legal_pays(state, side: str) -> list[dict[str, Any]]:
-    """Legal FPD Pay moves for `side` (4.8.2 -> 3.2). For deadlock-free
-    enumeration we surface the self-Coin Pay (a Lord paying 1 box of its own
-    Service) for each eligible Lord; the handler still accepts any valid 3.2
-    Pay the consumer supplies (cross-Lord, Loot, multi-box)."""
-    pays: list[dict[str, Any]] = []
-    for lid, lord in state["lords"].items():
-        if lord.get("side") != side:
+    """All one-box Coin/Loot payments, including co-located payers (3.2).
+
+    Repetition of these moves supports multi-box payments; the handler also
+    accepts a larger amount in a single action. The Pay window must not be
+    skipped merely because a Lord lacks its own Coin.
+    """
+    pays = []
+    own = {lid: lord for lid, lord in state["lords"].items()
+           if lord.get("side") == side
+           and lord.get("status") in ("mustered", "on_calendar")}
+    for target_id, target in own.items():
+        if target.get("service_box") is None:
             continue
-        if lord.get("status") not in ("mustered", "on_calendar"):
-            continue
-        if lord.get("service_box") is None:
-            continue  # no Service marker on the Calendar to shift
-        rate = 2 if lord.get("podesta") else 1
-        if lord.get("assets", {}).get("Coin", 0) >= rate:
-            pays.append({"from_lord_id": lid, "target_lord_id": lid,
-                         "asset": "Coin", "amount": 1})
+        rate = 2 if target.get("podesta") else 1
+        for payer_id, payer in own.items():
+            if payer_id != target_id and (not payer.get("location")
+                    or payer.get("location") != target.get("location")):
+                continue
+            loc = state["locales"].get(payer.get("location"))
+            for asset in ("Coin", "Loot"):
+                if payer.get("assets", {}).get(asset, 0) < rate:
+                    continue
+                if asset == "Loot" and (not loc or loc.get("siege")
+                                       or not _is_friendly_locale(state, loc, side)):
+                    continue
+                pays.append({"from_lord_id": payer_id, "target_lord_id": target_id,
+                             "asset": asset, "amount": 1})
     return pays
 
 
@@ -2143,9 +2212,12 @@ def _fpd_run_disband(state, summary: dict[str, Any]) -> None:
                 continue
             svc = lord.get("service_box")
             if svc is None:
-                _disband_beyond_service_limit(state, lid)
-                summary["disband"].append({"lord_id": lid, "kind": "beyond_via_off_left"})
-                beyond_lids.append(lid)
+                if lid in state["calendar"].get("off_left_service", []):
+                    _disband_beyond_service_limit(state, lid)
+                    summary["disband"].append({"lord_id": lid, "kind": "beyond_via_off_left"})
+                    beyond_lids.append(lid)
+                # Off-right Service is extended, not expired. An absent marker
+                # without an off-left placement is not evidence of expiration.
                 continue
             if svc < levy_box:
                 _disband_beyond_service_limit(state, lid)
@@ -2234,6 +2306,7 @@ def _is_friendly_stronghold(state, locale, side) -> bool:
 def _maybe_end_card(payload: dict, state, side, citation: str) -> dict[str, Any]:
     """If actions_remaining <= 0 (or entire-card consumed), finish; else
     return the action result without ending the card."""
+    state["card_actions_started"] = True
     if state.get("card_action_consumed_by_entire_card") or (state.get("actions_remaining") or 0) <= 0:
         return _finish_card_with(payload, state, side, reason="actions_exhausted", citation=citation)
     return {"state_changes": payload, "rule_citation": citation}
@@ -2244,6 +2317,7 @@ def _finish_card_with(payload: dict, state, side, reason: str, citation: str) ->
     state["current_lord_id"] = None
     state["actions_remaining"] = None
     state["card_action_consumed_by_entire_card"] = False
+    state["card_actions_started"] = False
     fpd = _run_fpd(state)
     _flip_active_side(state)
     return {
@@ -2264,6 +2338,7 @@ def _h_cmd_guastatori_pass(state, side, args, rng) -> dict[str, Any]:
     """F2/S2 GUASTATORI (besieged): a Besieged Lord with Guastatori may Pass
     (4.7.7, doing nothing else) to remove ALL Enemy Siege markers at his Locale
     and place Bypass on the Enemy Lords there. SMOKE-Inferno-063."""
+    _require_entire_card(state)
     lid = _require_active_lord(state, side, args.get("lord_id"))
     lord = state["lords"][lid]
     from .battle import _lord_has_capability
@@ -2297,6 +2372,7 @@ def _h_cmd_war_engineers_reduce(state, side, args, rng) -> dict[str, Any]:
     """F5/S5 WAR ENGINEERS (besieged): a Besieged Lord may devote his ENTIRE
     Command card to remove all but ONE Enemy Siege marker at his Locale.
     SMOKE-Inferno-063."""
+    _require_entire_card(state)
     lid = _require_active_lord(state, side, args.get("lord_id"))
     lord = state["lords"][lid]
     from .battle import _lord_has_capability
@@ -2321,6 +2397,7 @@ def _h_cmd_la_cavallata(state, side, args, rng) -> dict[str, Any]:
     """F18/S18 LA CAVALLATA Capability: spend 1 Provender (own or Shared) and use
     the ENTIRE Command card to Ravage an ADJACENT Locale that has no Unbesieged
     Enemy Lord. SMOKE-Inferno-062. args: lord_id, target_locale."""
+    _require_entire_card(state)
     lid = _require_active_lord(state, side, args.get("lord_id"))
     lord = state["lords"][lid]
     from .battle import _lord_has_capability
@@ -2362,6 +2439,7 @@ def _h_cmd_costruttori(state, side, args, rng) -> dict[str, Any]:
     """F26/S26 COSTRUTTORI Capability: spend 1 Coin + 3 Provender (own or Shared)
     and use the ENTIRE Command card to remove a Ruins marker at the Lord's
     current Locale. SMOKE-Inferno-062."""
+    _require_entire_card(state)
     lid = _require_active_lord(state, side, args.get("lord_id"))
     lord = state["lords"][lid]
     from .battle import _lord_has_capability
@@ -2488,6 +2566,9 @@ def _h_cmd_march(state, side, args, rng) -> dict[str, Any]:
     if cur_loc_name is None:
         raise IllegalAction("NO_LOCATION", f"{lid} has no map Locale.", "4.3")
 
+    if lord.get("flags", {}).get("in_stronghold") and state["locales"][cur_loc_name].get("siege"):
+        raise IllegalAction("BESIEGED", "A Besieged Lord cannot leave by ordinary March.", "4.3 / 4.5.3")
+
     # SMOKE-Inferno-039: Scenario C 'Maremma War' — Ghibelline Lords
     # may not cross the dashed line until Guelphs place a Siege or Ravage marker.
     if state["meta"]["scenario"] == "C" and side == "ghibelline":
@@ -2513,7 +2594,12 @@ def _h_cmd_march(state, side, args, rng) -> dict[str, Any]:
     # Phase v1.5: resolve Group March participants (4.3.1) — include
     # explicit with_lords + auto-pair Lieutenant/Lower Lord.
     group = [lid]
-    requested = list(args.get("with_lords", []) or [])
+    requested = args.get("with_lords", [])
+    if not isinstance(requested, list) or any(not isinstance(x, str) for x in requested):
+        raise IllegalAction("GROUP_INVALID", "with_lords must be a list of Lord IDs.", "4.3.1")
+    lower = lord.get("flags", {}).get("has_lower_lord")
+    if any(x not in state["lords"] for x in requested):
+        raise IllegalAction("GROUP_INVALID", "Unknown Lord in March group.", "4.3.1")
     for olid in requested:
         if olid != lid and olid in state["lords"]:
             ol = state["lords"][olid]
@@ -2528,6 +2614,8 @@ def _h_cmd_march(state, side, args, rng) -> dict[str, Any]:
                     f"{olid} not eligible for Group March (not same Locale or not Mustered).",
                     "4.3.1",
                 )
+    if any(x != lid and x != lower for x in requested) and not lord.get("commander"):
+        raise IllegalAction("GROUP_AUTHORITY", "Only a Commander may lead other Lords; a Lieutenant may lead his Lower Lord.", "4.3.1 / 4.1.3")
     # Auto-pair Lieutenant + Lower Lord (4.1.3)
     for member_id in list(group):
         m = state["lords"][member_id]
@@ -2541,6 +2629,11 @@ def _h_cmd_march(state, side, args, rng) -> dict[str, Any]:
             ul = state["lords"].get(upper)
             if ul and ul.get("location") == cur_loc_name:
                 group.append(upper)
+    for member_id in group:
+        member = state["lords"][member_id]
+        if (member.get("flags", {}).get("in_stronghold")
+                and state["locales"][cur_loc_name].get("siege")):
+            raise IllegalAction("BESIEGED", f"{member_id} cannot March out of a Siege.", "4.3 / 4.5.3")
     # SMOKE-Inferno-008: validate way_type matches Lord's actual adjacency.
     adjacencies = sd.adjacent_to(cur_loc_name)
     way_type = args.get("way_type")
@@ -2609,6 +2702,7 @@ def _h_cmd_march(state, side, args, rng) -> dict[str, Any]:
         )
     # Mark first-March-used-this-card
     flags["first_march_used_this_card"] = True
+    state["card_actions_started"] = True
 
     # Move all group members
     src = state["locales"][cur_loc_name]
@@ -3403,6 +3497,7 @@ def _h_cmd_siege(state, side, args, rng) -> dict[str, Any]:
     SMOKE-Inferno-040: Scenario C 'Maremma War' — Grosseto with 2 Siege
     markers and no Besieged Lord inside Surrenders AT ONCE (no roll).
     """
+    _require_entire_card(state)
     lid = _require_active_lord(state, side, args.get("lord_id"))
     lord = state["lords"][lid]
     locale_name = lord.get("location")
@@ -4732,11 +4827,15 @@ def _h_play_event(state, side, args, rng) -> dict[str, Any]:
         raise IllegalAction("NO_PLAY_WINDOW",
                             f"Held Event {cid} requires an open "
                             f"{_HOLD_EVENT_WINDOW.get(cid)} window.", "3.1.3")
-    held.remove(cid)
-    state["decks"][side]["aow_discard"].append(cid)
     from . import card_effects as ce
     effect_args = args.get("effect_args", {})
+    if not isinstance(effect_args, dict):
+        raise IllegalAction("MALFORMED", "effect_args must be a JSON object.", "3.1.3")
     effect_result = ce.apply_event_effect(state, cid, side, effect_args, rng)
+    if effect_result.get("manual") or not effect_result.get("applied"):
+        raise IllegalAction("EVENT_UNRESOLVED", effect_result.get("note") or effect_result.get("reason") or "Event needs a valid choice.", "3.1.3")
+    held.remove(cid)
+    state["decks"][side]["aow_discard"].append(cid)
     return {
         "state_changes": {"played": cid, "effect": effect_result},
         "rule_citation": "3.1.3 / per-card",

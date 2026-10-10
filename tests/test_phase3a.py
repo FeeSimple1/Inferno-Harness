@@ -196,6 +196,8 @@ class TestCommandPhase:
             step = s["meta"].get("campaign_step")
             if step != "command_phase":
                 break
+            from tests._helpers import _finish_pending_choices
+            _finish_pending_choices(s)
             dispatch(s, {"action": "command_reveal", "side": current_side(s)})
         # Exited command_phase one way or another (next Levy or end_campaign).
         assert s["meta"].get("campaign_step") != "command_phase" \

@@ -50,6 +50,31 @@ def hide_for_side(state: dict[str, Any], visible_side: str,
         n = len(s["plan_stacks"][opp])
         s["plan_stacks"][opp] = [f"<facedown:{i+1}>" for i in range(n)]
 
+    # Plans remain secret in the transcript too. Draw history can identify
+    # held Events, and RNG seeds would allow reconstructing future draws.
+    for entry in s.get("history", []):
+        # Resolving a public Event/Exiles/placement may also resume a private
+        # draw queue. Those continuation notes can reveal a newly Held card,
+        # even in an action owned by the OTHER side (Exiles). Public effects
+        # remain visible; hands already show their owner's private draws.
+        changes = entry.get("state_changes")
+        if isinstance(changes, dict) and entry.get("action") != "levy_aow_draw":
+            changes.pop("deployment", None)
+            changes.pop("aow_deployment", None)
+        if entry.get("side") == opp and entry.get("action") in (
+                "plan_add_card", "levy_aow_draw"):
+            entry["args"] = {}
+            entry["state_changes"] = {"hidden": True}
+            entry["rolls"] = []
+        elif hidden_mats and entry.get("side") == opp:
+            entry["args"] = {}
+            entry["state_changes"] = {"hidden_mats": True}
+    s.get("meta", {}).pop("rng_seed", None)
+    s.get("meta", {}).pop("rng_advance", None)
+    # Unresolved draw queues may contain the opponent's as-yet-unresolved cards.
+    if s.get("aow_resolution", {}).get("side") == opp:
+        s.pop("aow_resolution", None)
+
     # 1.5.2 Hidden Mats option: redact Lord mat contents (Forces,
     # Vassals readiness, Assets) for the opposing side. Lord names,
     # locations, and ratings remain visible — those are public.
