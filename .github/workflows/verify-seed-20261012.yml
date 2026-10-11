@@ -36,6 +36,11 @@ jobs:
           git apply /tmp/inferno-repairs/01-long-scenario.patch
           git apply --check /tmp/inferno-repairs/02-seed-20261012.patch
           git apply /tmp/inferno-repairs/02-seed-20261012.patch
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('tests/test_seed_20261012_fixes.py')
+          path.write_text(path.read_text().rstrip() + '\n')
+          PY
           git diff --check
           git diff --stat | tee /tmp/inferno-results/changes-before-tests.txt
 
@@ -102,6 +107,7 @@ jobs:
           git diff --stat 60da72b8265e4d5e797d56499dec88046a852853 HEAD | tee /tmp/inferno-results/final-changes.txt
 
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: scenario-f-endurance-verification
           path: /tmp/inferno-results
