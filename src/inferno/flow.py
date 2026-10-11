@@ -73,6 +73,9 @@ def advance_to_next_side_or_step(state: dict[str, Any]) -> None:
         for lord in state["lords"].values():
             lord.get("flags", {}).pop("lordship_bonus_pending", None)
             lord.get("flags", {}).pop("lordship_bonus_segment", None)
+        # A War or Treasurers permission is valid only in the Levy granting it.
+        state.pop("war_declared_this_levy", None)
+        state["meta"].pop("cta_extra_muster_lord", None)
         # End of Levy: enter Campaign at the capability-discard step.
         state["meta"]["phase"] = "campaign"
         state["meta"]["levy_step"] = None

@@ -214,7 +214,10 @@ def legal_exiles_targets(state: dict, side: str) -> list[dict[str, Any]]:
         if lord.get("service_box") is not None:
             out.append({"lord_id": lid, "kind": "service",
                         "box": lord["service_box"], "direction": "right"})
-    return out
+    # JSON save/load can reorder the Lords mapping.  Exiles is a surfaced
+    # player choice, so its candidate palette must be canonical rather than
+    # dependent on insertion order.
+    return sorted(out, key=lambda x: (x["lord_id"], x["kind"], x["box"]))
 
 
 # ----------------------------------------------------------------------

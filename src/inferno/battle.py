@@ -23,6 +23,7 @@ Per BRIEF "Engine / Operator Split":
 
 from __future__ import annotations
 
+import copy
 import math
 from dataclasses import dataclass, field
 from typing import Any, Callable
@@ -57,7 +58,11 @@ class BattleDecisionContext:
                info: dict[str, Any] | None = None) -> Any:
         if not options:
             raise ValueError(f"No options for decision {decision_type!r}")
-        info = info or {}
+        # Choice-point metadata often contains the live Battle position maps.
+        # Preserve a snapshot for callbacks and the returned trace; retaining
+        # the mutable dictionaries lets later rounds rewrite earlier history.
+        info = copy.deepcopy(info or {})
+        options_snapshot = copy.deepcopy(list(options))
         choice: Any
         if self.scripted:
             d = self.scripted.pop(0)
@@ -83,7 +88,8 @@ class BattleDecisionContext:
         elif self.callback is not None:
             choice = self.callback({
                 "type": decision_type, "side": side,
-                "options": list(options), "info": info,
+                "options": copy.deepcopy(options_snapshot),
+                "info": copy.deepcopy(info),
             })
             if choice not in options:
                 raise ScriptedDecisionError(
@@ -93,7 +99,9 @@ class BattleDecisionContext:
             choice = options[0]  # leftmost fallback
         self.trace.append({
             "type": decision_type, "side": side,
-            "choice": choice, "options": list(options), "info": info,
+            "choice": copy.deepcopy(choice),
+            "options": options_snapshot,
+            "info": info,
         })
         return choice
 
@@ -106,7 +114,8 @@ class BattleDecisionContext:
         falls back to `default`; with neither, `default` is used. This keeps
         existing scripted tests and self-play byte-identical while exposing the
         decision (CROSS_PROJECT_LESSONS 8.4)."""
-        info = info or {}
+        info = copy.deepcopy(info or {})
+        options_snapshot = copy.deepcopy(list(options))
         choice = default
         if self.scripted and isinstance(self.scripted[0], dict) and \
                 self.scripted[0].get("type") == decision_type and \
@@ -119,7 +128,8 @@ class BattleDecisionContext:
             try:
                 c = self.callback({
                     "type": decision_type, "side": side,
-                    "options": list(options), "info": info, "optional": True,
+                    "options": copy.deepcopy(options_snapshot),
+                    "info": copy.deepcopy(info), "optional": True,
                 })
             except Exception:
                 c = None
@@ -127,8 +137,9 @@ class BattleDecisionContext:
                 choice = c
         if choice != default:
             self.trace.append({
-                "type": decision_type, "side": side, "choice": choice,
-                "options": list(options), "info": info, "optional": True,
+                "type": decision_type, "side": side,
+                "choice": copy.deepcopy(choice),
+                "options": options_snapshot, "info": info, "optional": True,
             })
         return choice
 

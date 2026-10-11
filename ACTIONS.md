@@ -229,3 +229,36 @@ Muster action limits include printed Lordship, applicable Capability bonuses,
 and Event grants. Segment-only Held Event grants expire after that segment;
 This-Levy grants remain for Call to Arms and expire before Campaign. The menu
 uses the same allowance calculation as the action handler.
+
+## Call to Arms: usable Allies Muster and safe Comune lifecycle
+
+`cta_allies` with `mode: "extra_muster"` starts a one-Lord Muster segment; it
+no longer silently ends that player's Call to Arms. `target_lord_id` must name
+a Mustered Lord eligible to Muster at his current location under 3.4. The
+Commander is eligible; his Comune cannot conduct an independent segment.
+
+While this segment is open, the same player submits ordinary
+`levy_muster_lord`, `levy_muster_vassal`, `levy_muster_transport`, or
+`levy_muster_capability` actions, using the selected Lord as the mustering Lord.
+Normal costs, Lordship allowance, and recipient restrictions apply. The selected
+Lord's allowance is fresh for this extra segment. `levy_muster_done` ends it,
+including when the player chooses not to spend the entire allowance. A second
+Allies selection or Call to Arms declaration cannot bypass the open segment.
+The legal menu supplies the corresponding choices, and saving/loading preserves
+the pending segment.
+
+`cta_gather_march` automatically moves the Commander's mustered Comune with
+him. It does not require the caller to name that compulsory companion, and the
+Comune cannot be moved independently by that action.
+
+`cta_comune_setup` distinguishes a fresh mat from an already Mustered Comune.
+Its `muster_special_vassals` argument is a list of distinct Special Vassal names;
+already Mustered names do not add their Forces again. Newly chosen eligible
+vassals add only their own Forces. Omitting the list fills any missing minimum
+requirements without restoring casualties or spent Assets. A captured Carroccio
+cannot be reintroduced. The menu enumerates valid reinforcement selections.
+
+Commander disbanding clears his Comune too; the Comune can subsequently be set
+up once at the Leading City. See `LONG_SCENARIO_FIXES.md` for the related saved
+position regressions, corrected Sack scoring, terminal Game End behavior, and
+canonical serialization of Call to Arms permissions.
