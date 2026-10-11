@@ -348,13 +348,15 @@ def _enum_disband(state, side) -> list[dict[str, Any]]:
     return moves
 
 
-def _enum_muster(state, side) -> list[dict[str, Any]]:
+def _enum_muster(state, side, only_lord=None) -> list[dict[str, Any]]:
     moves: list[dict[str, Any]] = []
     own_mustered = _own_lords(state, side, status="mustered")
     own_on_calendar = _own_lords(state, side, status="on_calendar")
     levy_box = state["calendar"]["levy_box"]
 
     for lid, lord in own_mustered.items():
+        if only_lord is not None and lid != only_lord:
+            continue
         # SMOKE-Inferno-028: newly-Mustered Lords cannot act this segment (3.4.1).
         if lord.get("flags", {}).get("just_mustered_this_segment"):
             continue
@@ -411,7 +413,7 @@ def _enum_muster(state, side) -> list[dict[str, Any]]:
                 continue
             targets = [lid]
             if scope == "this_lord" and lord.get("commander"):
-                targets += [t for t, v in own_mustered.items() if v.get("comune_of") == lid]
+                targets += [t for t, v in own_mustered.items() if v.get("comune_of") in (lid, lord.get("name"))]
             for target_id in targets:
                 if scope == "this_lord" and target_id not in _a._capability_eligible_mustered(state, cid, side):
                     continue
@@ -461,6 +463,12 @@ def _enum_cta(state, side) -> list[dict[str, Any]]:
         return moves
 
     sub = meta.get("cta_substep")
+    if sub == "allies" and meta.get("cta_extra_muster_lord"):
+        target = meta["cta_extra_muster_lord"]
+        if not _a._allies_muster_eligible(state, target):
+            return [{"action": "levy_muster_done", "side": side, "args": {},
+                     "description": "Finish the Allies Muster segment.", "rule_citation": "3.5.4"}]
+        return _enum_muster(state, side, only_lord=target)
     skip = {
         "action": "cta_step_skip", "side": side, "args": {},
         "description": f"{side} skips the CtA {sub} sub-step (3.5).",
@@ -469,22 +477,26 @@ def _enum_cta(state, side) -> list[dict[str, Any]]:
 
     if sub == "gather":
         leading = _a.LEADING_CITY[side]
-        for lid, lord in state["lords"].items():
+        for lid, lord in sorted(state["lords"].items()):
             if lord.get("side") != side or lord.get("status") != "mustered":
                 continue
             cur = lord.get("location")
             if not cur:
                 continue
-            d0 = _a._bfs_distance(cur, leading)
             for nbr, way in sd.adjacent_to(cur):
-                if _a._bfs_distance(nbr, leading) >= d0:
-                    continue  # Gather must end closer to the Leading City
-                if _a._cta_gather_dest_legal(state, side, nbr) is not None:
-                    continue  # enemy Lord / un-Ruined enemy Stronghold blocks it
+                args = {"lord_id": lid, "destination": nbr, "way_type": way}
+                try:
+                    preview = _a._cta_gather_preview(state, side, args)
+                except _a.IllegalAction:
+                    continue
                 moves.append({
                     "action": "cta_gather_march", "side": side,
-                    "args": {"lord_id": lid, "destination": nbr, "way_type": way},
-                    "description": f"Gather: {lid} marches {cur}->{nbr} (closer to {leading}).",
+                    "args": args,
+                    "description": (
+                        f"Gather: {lid} marches {cur}->{nbr} (closer to {leading}); "
+                        f"cost {preview['cost']}, "
+                        f"{preview['allowance'] - preview['spent_before']} Command available."
+                    ),
                     "rule_citation": "3.5.1",
                 })
         moves.append(skip)
@@ -508,20 +520,39 @@ def _enum_cta(state, side) -> list[dict[str, Any]]:
         return moves
 
     if sub == "comune":
-        moves.append({
-            "action": "cta_comune_setup", "side": side, "args": {},
-            "description": "Comune setup (Carroccio + a Sestiere/Terzo) (3.5.3).",
-            "rule_citation": "3.5.3",
-        })
+        from itertools import combinations
+        comune = state["lords"][_a.COMUNE_LORD[side]]
+        enemy = "ghibelline" if side == "guelph" else "guelph"
+        captured = bool(state.get("captured_carroccio_for_side", {}).get(enemy, 0))
+        vassals = (comune["vassals"] if comune["status"] == "mustered"
+                   else sd.LORDS[comune["name"]].get("vassals", []))
+        available = [v["name"] for v in vassals if v.get("special")
+                     and not v.get("on_mat") and not (captured and v["name"] == "Carroccio")]
+        candidates = [{}]  # documented minimum/default (no-op on an existing mat)
+        candidates += [{"muster_special_vassals": list(group)}
+                       for n in range(1, len(available)+1) for group in combinations(available, n)]
+        for args in candidates:
+            try:
+                preview = _a._comune_setup_preview(state, side, args)
+            except _a.IllegalAction:
+                continue
+            if preview.get("skip"):
+                continue
+            moves.append({
+                "action": "cta_comune_setup", "side": side, "args": args,
+                "description": "Comune: " + ("muster " + ", ".join(preview["added"])
+                                 if preview["added"] else "keep the existing mat unchanged") + ".",
+                "rule_citation": "3.5.3",
+            })
         moves.append(skip)
         return moves
 
     if sub == "allies":
         cmd_id = _a.COMMANDER_LORD[side]
         for lid, lord in state["lords"].items():
-            if lord.get("side") != side or lid == cmd_id or lord.get("commander"):
+            if lord.get("side") != side or lord.get("comune_of"):
                 continue
-            if lord.get("status") == "on_calendar":
+            if lord.get("status") == "on_calendar" and not lord.get("commander"):
                 # CONF-031: mirror the handler's Ready gate ("otherwise per
                 # 3.4.1"): cylinder at/left of the Levy marker, or the
                 # Emergency Army waiver (Enemy Lords at a Podestà's Main Seat).
@@ -543,7 +574,7 @@ def _enum_cta(state, side) -> list[dict[str, Any]]:
                         "description": f"Allies: auto-Muster {lid} at {seat} (3.5.4).",
                         "rule_citation": "3.5.4",
                     })
-            elif lord.get("status") == "mustered":
+            elif _a._allies_muster_eligible(state, lid):
                 moves.append({
                     "action": "cta_allies", "side": side,
                     "args": {"mode": "extra_muster", "target_lord_id": lid},
