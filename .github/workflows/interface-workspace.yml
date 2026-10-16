@@ -1,0 +1,24 @@
+name: Inferno interface workspace
+on:
+  push:
+    branches: [fix/seed-20261012-and-interface-20261016]
+    paths: [.github/workflows/interface-workspace.yml]
+permissions:
+  contents: read
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - run: |
+          git archive --format=tar HEAD > /tmp/source.tar
+          git log -12 --oneline > /tmp/recent-commits.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: inferno-interface-source
+          path: |
+            /tmp/source.tar
+            /tmp/recent-commits.txt
+          retention-days: 7
