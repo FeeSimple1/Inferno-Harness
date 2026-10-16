@@ -38,7 +38,7 @@ def main(argv=None):
             view=PlayerView(state,side)
             base=compact(view.overview())
             memory=StrategicMemory()
-            none=compact({**view.overview(),'prior_strategy':memory.read(side)})
+            none=compact(view.overview()) # An empty notebook transmits no metadata.
             memory.stage(side,EXAMPLE_NOTE,view.version)
             memory.commit(state)
             with_note=compact({**view.overview(),'prior_strategy':memory.read(side)})
