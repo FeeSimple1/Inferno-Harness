@@ -1,0 +1,244 @@
+{
+  "method": "Deterministic real games; full chosen-category pages plus relevant full Lord/board records and first-use action/card references; all requests counted.",
+  "tokenizer": "cl100k_base",
+  "tokenizer_package": "0.14.0",
+  "python_version": "3.12.15",
+  "limitations": [
+    "Not a live LLM behavior or quality evaluation.",
+    "The legacy prompt omitted information and within-combat choices; it is NOT a correctness-equivalent baseline.",
+    "Equivalent-information controls include the same essential facts, all additional fact/reference reads, and every tactical choice. Formatted and compact full-menu controls are separate.",
+    "The deterministic measurement policy caches static references after first use per faction. A fresh-context model may need additional repeated reads; this is not a live-provider measurement.",
+    "Exhaustively paging the menu can cost more than one full-menu payload.",
+    "Output savings are not provider billing savings; conversation resends, system prompts and caching differ."
+  ],
+  "runs": [
+    {
+      "scenario": "A",
+      "seed": 11,
+      "policy": "smoke",
+      "actions": 125,
+      "final_turn": 2,
+      "winner": null,
+      "vp": {
+        "guelph": 4.0,
+        "ghibelline": 4.0
+      },
+      "lookups": 206,
+      "tactical_decisions": 4,
+      "covered_menu_entries": 834,
+      "factions": {
+        "guelph": 72,
+        "ghibelline": 53
+      },
+      "correctness": "All direct/interface results, final states and post-action invariants matched.",
+      "totals": {
+        "legacy_documented": {
+          "chars": 372914,
+          "utf8_bytes": 373543,
+          "tokens": 131104
+        },
+        "same_essential_full_menu": {
+          "chars": 923626,
+          "utf8_bytes": 926368,
+          "tokens": 286174
+        },
+        "equivalent_information_full_menu": {
+          "chars": 1116799,
+          "utf8_bytes": 1119673,
+          "tokens": 338914
+        },
+        "equivalent_information_compact_full_menu": {
+          "chars": 1068834,
+          "utf8_bytes": 1071708,
+          "tokens": 316525
+        },
+        "new_output_including_lookups": {
+          "chars": 1077263,
+          "utf8_bytes": 1080137,
+          "tokens": 322380
+        },
+        "new_requests_and_selections": {
+          "chars": 28913,
+          "utf8_bytes": 28913,
+          "tokens": 10792
+        },
+        "exhaustive_menu_pages_only": {
+          "chars": 234196,
+          "utf8_bytes": 234200,
+          "tokens": 75851
+        }
+      },
+      "savings": {
+        "chars": {
+          "legacy_documented": -188.87706012646345,
+          "equivalent_information_full_menu": 3.540117783056751,
+          "equivalent_information_compact_full_menu": -0.7886163800926882
+        },
+        "utf8_bytes": {
+          "legacy_documented": -189.16001638365597,
+          "equivalent_information_full_menu": 3.5310309349247504,
+          "equivalent_information_compact_full_menu": -0.7865015470631898
+        },
+        "tokens": {
+          "legacy_documented": -145.89638760068345,
+          "equivalent_information_full_menu": 4.878523755288954,
+          "equivalent_information_compact_full_menu": -1.849774899297052
+        }
+      }
+    },
+    {
+      "scenario": "C",
+      "seed": 11,
+      "policy": "smoke",
+      "actions": 223,
+      "final_turn": 8,
+      "winner": "guelph",
+      "vp": {
+        "guelph": 10.0,
+        "ghibelline": 4.5
+      },
+      "lookups": 368,
+      "tactical_decisions": 0,
+      "covered_menu_entries": 1613,
+      "factions": {
+        "guelph": 104,
+        "ghibelline": 119
+      },
+      "correctness": "All direct/interface results, final states and post-action invariants matched.",
+      "totals": {
+        "legacy_documented": {
+          "chars": 813473,
+          "utf8_bytes": 814486,
+          "tokens": 289424
+        },
+        "same_essential_full_menu": {
+          "chars": 2001742,
+          "utf8_bytes": 2008130,
+          "tokens": 627667
+        },
+        "equivalent_information_full_menu": {
+          "chars": 2350199,
+          "utf8_bytes": 2356798,
+          "tokens": 726429
+        },
+        "equivalent_information_compact_full_menu": {
+          "chars": 2252702,
+          "utf8_bytes": 2259301,
+          "tokens": 681905
+        },
+        "new_output_including_lookups": {
+          "chars": 2261862,
+          "utf8_bytes": 2268453,
+          "tokens": 691228
+        },
+        "new_requests_and_selections": {
+          "chars": 51838,
+          "utf8_bytes": 51838,
+          "tokens": 19791
+        },
+        "exhaustive_menu_pages_only": {
+          "chars": 473445,
+          "utf8_bytes": 473467,
+          "tokens": 152973
+        }
+      },
+      "savings": {
+        "chars": {
+          "legacy_documented": -178.05003976776118,
+          "equivalent_information_full_menu": 3.758702986427953,
+          "equivalent_information_compact_full_menu": -0.406622802305856
+        },
+        "utf8_bytes": {
+          "legacy_documented": -178.51344283388545,
+          "equivalent_information_full_menu": 3.748518116529287,
+          "equivalent_information_compact_full_menu": -0.4050810405519245
+        },
+        "tokens": {
+          "legacy_documented": -138.82884626015812,
+          "equivalent_information_full_menu": 4.845759186376098,
+          "equivalent_information_compact_full_menu": -1.3671992432963576
+        }
+      }
+    },
+    {
+      "scenario": "F",
+      "seed": 20261012,
+      "policy": "endurance",
+      "actions": 1580,
+      "final_turn": 14,
+      "winner": "guelph",
+      "vp": {
+        "guelph": 8.0,
+        "ghibelline": 0.0
+      },
+      "lookups": 2891,
+      "tactical_decisions": 56,
+      "covered_menu_entries": 26421,
+      "factions": {
+        "guelph": 801,
+        "ghibelline": 779
+      },
+      "correctness": "All direct/interface results, final states and post-action invariants matched.",
+      "totals": {
+        "legacy_documented": {
+          "chars": 11828244,
+          "utf8_bytes": 11858053,
+          "tokens": 4141448
+        },
+        "same_essential_full_menu": {
+          "chars": 23343463,
+          "utf8_bytes": 23432570,
+          "tokens": 7503040
+        },
+        "equivalent_information_full_menu": {
+          "chars": 25838878,
+          "utf8_bytes": 25929073,
+          "tokens": 8269331
+        },
+        "equivalent_information_compact_full_menu": {
+          "chars": 23896355,
+          "utf8_bytes": 23986550,
+          "tokens": 7436466
+        },
+        "new_output_including_lookups": {
+          "chars": 19167508,
+          "utf8_bytes": 19238099,
+          "tokens": 5985042
+        },
+        "new_requests_and_selections": {
+          "chars": 369508,
+          "utf8_bytes": 369508,
+          "tokens": 133672
+        },
+        "exhaustive_menu_pages_only": {
+          "chars": 8738081,
+          "utf8_bytes": 8758027,
+          "tokens": 2867999
+        }
+      },
+      "savings": {
+        "chars": {
+          "legacy_documented": -62.04863545256592,
+          "equivalent_information_full_menu": 25.8191164492514,
+          "equivalent_information_compact_full_menu": 19.788988739077574
+        },
+        "utf8_bytes": {
+          "legacy_documented": -62.236574587750624,
+          "equivalent_information_full_menu": 25.804910187109275,
+          "equivalent_information_compact_full_menu": 19.796306680202026
+        },
+        "tokens": {
+          "legacy_documented": -44.51568630102323,
+          "equivalent_information_full_menu": 27.62362517596647,
+          "equivalent_information_compact_full_menu": 19.517657984316738
+        }
+      }
+    }
+  ],
+  "pytest": {
+    "tests": 1083,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  }
+}

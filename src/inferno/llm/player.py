@@ -1,9 +1,8 @@
-"""play_with_callback: 3-strike retry + safe phase-appropriate fallback.
+"""Trusted legacy in-process automation with retry/fallback.
 
-Per CROSS_PROJECT_LESSONS §5: "If the LLM proposes three illegal moves
-in a row, fall through to a deterministic no-op move (advance_step /
-cmd_pass / end_card / legate_skip depending on phase). Don't deadlock;
-don't crash; don't let the whole game stall on one hallucination."
+This helper exposes raw state and can choose fallback moves. It is NOT the
+model-facing interface. Use PlayerView / play_with_interface for complete,
+perspective-safe discovery and explicit player decisions without fallback.
 """
 
 from __future__ import annotations
@@ -54,7 +53,7 @@ def play_with_callback(
     callback: Callable[[dict[str, Any], list[dict[str, Any]]], dict[str, Any]],
     max_strikes: int = 3,
 ) -> ActionResult:
-    """Drive one action via an LLM callback with retry+fallback.
+    """Drive one trusted automation action with retry+fallback (not the model boundary).
 
     args:
       state:    full state (mutated in place by dispatch)

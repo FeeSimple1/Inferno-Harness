@@ -1,23 +1,7 @@
-"""LLM-play harness — beyond BRIEF, per CROSS_PROJECT_LESSONS §5.
+"""Loss-aware, perspective-safe model interface.
 
-Provides the integration layer between the rules engine and a human-
-language model that will play one or both sides.
-
-Components:
-  filter.py        — Hidden-info filter (strip opposing hand / plan /
-                     held events / set-aside Treachery / Calendar
-                     cylinder secrets from the state seen by side S).
-  briefing.py      — Curated ~3 KB briefing builder for system prompt:
-                     game state, current phase, recent history, on-
-                     demand card-text lookups, strategy hints.
-  player.py        — play_with_callback(prompt -> action_json):
-                     3-strike retry with safe phase-appropriate fallback
-                     so a hallucinating LLM never deadlocks the game.
-  critique.py      — Post-game self-critique helper: hands the
-                     transcript back with "what would you do differently?"
-
-These are deliberately framework-agnostic: the user wires the
-callback to Claude, GPT, or any other model.
+Default: PlayerView / play_with_interface. Legacy play_with_callback is only
+for trusted in-process automation; do not send its raw state/menu to a model.
 """
 from __future__ import annotations
 
@@ -34,3 +18,11 @@ __all__ = [
     "FallbackUsed",
     "build_self_critique_prompt",
 ]
+
+from .interface import PlayerView, DecisionView, play_with_interface, selection_session
+from .menu import ActionCatalog, submit_selection
+from .briefing import build_briefing_document, render_briefing
+from .protocol import state_version
+
+__all__ += ["PlayerView", "DecisionView", "play_with_interface", "ActionCatalog",
+            "submit_selection", "selection_session", "build_briefing_document", "render_briefing", "state_version"]

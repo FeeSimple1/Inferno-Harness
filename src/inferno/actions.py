@@ -32,6 +32,7 @@ from .flow import (
     mark_first_levy_aow_drawn,
 )
 from .rng import HarnessRNG
+from .visibility import combat_view_scope
 
 
 class IllegalAction(Exception):
@@ -3331,6 +3332,7 @@ def _withdraw_capacity(state, battle_locale) -> int:
     return sd.STRONGHOLDS.get(loc.get("type"), {}).get("size", 0)
 
 
+@combat_view_scope("attackers", "defenders")
 def _apply_post_battle(state, result, attackers: list[str], defenders: list[str],
                       battle_locale: str | None = None,
                       decisions: list[dict] | None = None,

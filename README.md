@@ -134,8 +134,16 @@ scripts/
 ## Working with the harness as an LLM
 
 See [`LLM_PLAY_GUIDE.md`](LLM_PLAY_GUIDE.md) for the recommended
-integration pattern: hidden-info filter, briefing builder, 3-strike
-retry + safe fallback, post-game self-critique.
+integration pattern: structured soft-budget briefings, exhaustive action categories,
+filtered whole-record pagination and state-bound selections. Player callbacks use
+`PlayerView` / `play_with_interface`; interrupted or stale selections never become
+automatic strategic choices. Tactical elections go to their actual faction.
+
+Use `briefing`, `legal-moves`, `query`, `inspect` and `choose` for interactive play.
+Full visible card text, parameters, history, resources and board records remain
+retrievable; no legal choice is removed to save tokens. See the guide for CLI
+combat continuations and `benchmarks/interface_output.py` for measured output
+including extra lookups. Legacy raw-state helpers are trusted-operator APIs only.
 
 ## Authoring discipline
 

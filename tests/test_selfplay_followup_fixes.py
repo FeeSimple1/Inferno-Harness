@@ -313,7 +313,10 @@ def test_briefing_always_shows_own_hand_but_not_enemy_hand(side, cid, enemy_id, 
     assert f'{cid}: Surprise' in text
     assert enemy_id not in text
     assert 'Your Held Events' in text
-    assert len(text) <= 3500
+    assert len(text) > 3500
+    assert "soft target" in text
+    assert "Acting player:" in text
+    assert "Available kinds of action" in text
     assert s == before
 
 
