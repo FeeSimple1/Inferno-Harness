@@ -75,13 +75,16 @@ if it measurably improves decision quality relative to cost.
 
 ## Prompt overhead baseline
 
-`benchmarks/strategy_memory_overhead.py` compares the same player overview
-without a notebook, with an empty notebook, and with the published 305-character
-example note, for both factions in Scenarios A, C and F. On this development
-machine the example increased the current overview by **606 characters for
-Guelph and 610 for Ghibelline**; an empty notebook sends nothing.
-The stateless A/B control also receives **no notebook-writing instruction**, so
-its behavior is not penalized by an option it cannot use. This is **additional** model input, not a saving. The CI measurement supplies
-actual named-tokenizer counts when `tiktoken` is installed. The provider A/B
-runner counts all note-bearing requests and any note content returned by the
-model; no claimed benefit is hidden behind character-only accounting.
+`benchmarks/strategy_memory_overhead.py` now measures **the complete system
+prompt plus the initial user overview**, tokenized as separate payloads. It
+compares the notebook disabled, enabled but empty, and enabled with the
+published 305-character example note for both factions across A, C and F.
+The example adds **606–610 characters to the user overview alone**; the
+conditional notebook system instructions add a further fixed overhead.
+Together these add **1,302–1,306 characters to the full input** on the
+measured initial positions. An empty notebook sends no prior-note *state*
+payload, but still incurs the conditional notebook system instructions.
+The A/B control receives no note-writing instruction. These are additional
+inputs, not token savings. When available, named-tokenizer measurements count
+both fields separately, while real provider A/B trials also meter notebook
+output and subsequent requests. Strategic improvement remains unproven.
