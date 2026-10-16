@@ -69,3 +69,11 @@ probing and dropping moves could conceal choices or use future dice. A rejected
 concrete menu entry is a bug to record, not a reason to hide it from the player.
 Distinguish structural invariant checks from full rules correctness, and output
 counts from correctness. Preserve exact reproduction states and action sequences.
+
+For the *live* `examples/play_with_claude.py` driver, optional side-private
+strategic continuity persists model-authored plans between otherwise stateless
+model calls without granting any extra game information or legal-action filter.
+Pass `--strategy-journal PATH` alongside `--save PATH` to persist it, and
+`--resume PATH --strategy-journal PATH` to resume the exact same campaign.
+Use `--no-strategy-memory` as the stateless control for comparative testing.
+See `STRATEGIC_OPTIMIZATION.md`; no superiority or token savings are presumed.
