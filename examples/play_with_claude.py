@@ -50,16 +50,18 @@ Conditional templates check hidden target eligibility at submission; they do
 not disclose opponents' secret mats. Combat elections likewise offer all options
 on demand and identify the owner; do not replace them with automatic defaults.
 
-Strategic continuity is OPTIONAL: on a selection (or permitted yield) include
-"strategy_note":"CONCISE CURRENT PLAN". State the objective, approach,
-remaining constraints, likely enemy response and contingency in your own words.
+"""
+
+STRATEGY_PROMPT = """
+Strategic continuity: on a selection (or permitted yield), optionally include
+"strategy_note":"CONCISE CURRENT PLAN". Summarize the objective, approach,
+remaining constraints, plausible enemy response, and contingency in your words.
 Use "strategy_note":"" to clear an obsolete plan. It is your hypothesis,
 NOT a rule, legal menu, new action, or substitute for current verified facts.
-The host stores it only for your own faction, and only after the entire action
-(including all other players' combat decisions) succeeds. Do not reveal your
-opponent's private planning. It will be available at your next decision,
-without replaying the entire conversation. Every legal action remains available
-regardless of this note. Never replace a needed rules lookup with a guess.
+The host stores it only for your faction after the whole action succeeds.
+It will be available at your next decision without replaying old conversations.
+Every legal action remains available regardless of the note. Never replace a
+needed rules lookup with a guess. Avoid verbose repetition; update when useful.
 """
 
 
@@ -95,13 +97,16 @@ def make_claude_callback(model: str, *, response_tokens: int = 4096,
         if strategic_memory is not None:
             # Only the current perspective gets its own previous plans. Do
             # not modify PlayerView or expose another faction's notebook.
-            overview_data['prior_strategy'] = strategic_memory.read(view.side)
+            previous = strategic_memory.read(view.side)
+            if previous['note'] is not None:
+                overview_data['prior_strategy'] = previous
         overview = json.dumps(overview_data, ensure_ascii=False, separators=(',', ':'))
         messages = [{'role':'user', 'content':overview}]
         while True:
             response = client.messages.create(
                 model=model, max_tokens=response_tokens,
-                system=SYSTEM_PROMPT.format(side=view.side), messages=messages)
+                system=(SYSTEM_PROMPT.format(side=view.side) + (STRATEGY_PROMPT if strategic_memory is not None else '')),
+                messages=messages)
             text = ''.join(b.text for b in response.content if getattr(b,'type',None)=='text')
             if meter is not None:
                 meter.append({'side':view.side, 'notebook_enabled':strategic_memory is not None,
