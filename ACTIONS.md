@@ -262,3 +262,39 @@ Commander disbanding clears his Comune too; the Comune can subsequently be set
 up once at the Leading City. See `LONG_SCENARIO_FIXES.md` for the related saved
 position regressions, corrected Sack scoring, terminal Game End behavior, and
 canonical serialization of Call to Arms permissions.
+
+
+## Model-facing discovery and execution
+
+Use `PlayerView` and `play_with_interface`, or CLI `briefing`, `legal-moves`,
+`query`, `inspect`, `choose`. The default prompt is a complete essential briefing
+and exhaustive category overview, not an unsolicited full action list. Briefing
+and page character budgets are soft; whole decisions/descriptions/parameters
+are never sliced. Abbreviated or deferred sections advertise exact retrieval.
+
+`request=actions` supports category, lord, card, exact dotted-field `where`,
+caller-selected page size, cursor and optional character target. No strategic
+ranking, preview-based pruning or first-N menu restriction is added. Each entry
+preserves full action metadata. `request=inspect` provides complete visible
+records and printed card references; `action_reference` exposes handler/helper
+parameter grammar. Defaults do not limit legal argument values: an ID selection
+may supply complete `args`, validated by the unchanged authoritative handler.
+
+IDs and cursors bind the accepted-action revision, visible position, perspective
+and query filters; tactical IDs additionally bind the context/option set and
+parent action. Stale selections are rejected before dice, history or resources
+change. The host must also bind requests to the correct game/player; IDs are not
+a substitute for authentication. Hidden-mat target templates avoid leaking
+secret eligibility while retaining every legal instantiation.
+
+Every synchronous combat election is routed to its actual owner. Failed model
+responses pause instead of silently selecting fallback actions. CLI `choose`
+returns `awaiting_decision` with an unchanged save and a versioned continuation
+when a tactical election is reached. Send that response only to its named
+faction; use `--decision-query` for every page, and append explicit choices via
+`--decisions-json` until the whole action commits.
+
+Missing saves now produce `STATE_NOT_FOUND`, not an invented placeholder game.
+Raw `dispatch`, `do`, `play-event`, saves and legacy `play_with_callback` remain
+trusted-operator APIs. Never pass their unfiltered state/results to a model.
+See `LLM_PLAY_GUIDE.md` and `examples/play_with_claude.py` for the current callback.

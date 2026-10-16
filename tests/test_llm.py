@@ -87,10 +87,13 @@ class TestBriefing:
         b = build_briefing(s, "guelph")
         assert "VP" in b
 
-    def test_briefing_within_budget(self):
+    def test_briefing_soft_budget_preserves_essential_sections(self):
         s = load_scenario("F", seed=1)
         b = build_briefing(s, "guelph", max_chars=3500)
-        assert len(b) <= 3500
+        assert len(b) > 3500
+        assert "returned intact" in b
+        assert "Available kinds of action" in b
+        assert "Your Held Events" in b
 
     def test_briefing_recent_history(self):
         s = load_scenario("A", seed=1)
@@ -170,13 +173,13 @@ class TestExampleClient:
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
         from inferno.scenarios import load_scenario
-        from inferno.llm import play_with_callback
+        from inferno.llm import play_with_interface
         cb = mod.make_stub_callback()
         s = load_scenario("A", seed=42)
         for _ in range(300):
             if s["meta"].get("phase") == "victory":
                 break
-            play_with_callback(s, cb, max_strikes=3)
+            play_with_interface(s, cb, max_strikes=3)
         assert s["meta"]["phase"] == "victory"
 
     def test_parse_action_strips_fences(self):

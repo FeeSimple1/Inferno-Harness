@@ -29,6 +29,7 @@ from dataclasses import dataclass, field
 from typing import Any, Callable
 
 from . import static_data as sd
+from .visibility import combat_view_scope
 
 
 # =====================================================================
@@ -124,6 +125,10 @@ class BattleDecisionContext:
             c = d.get("choice")
             if c in options:
                 choice = c
+            else:
+                from .visibility import player_choice_required
+                if player_choice_required():
+                    raise ScriptedDecisionError('Invalid scripted optional election; no default was chosen.')
         elif self.callback is not None:
             try:
                 c = self.callback({
@@ -131,6 +136,10 @@ class BattleDecisionContext:
                     "options": copy.deepcopy(options_snapshot),
                     "info": copy.deepcopy(info), "optional": True,
                 })
+            except ScriptedDecisionError:
+                # A player interface explicitly requires a valid choice. Do
+                # not turn an interrupted/truncated answer into an election.
+                raise
             except Exception:
                 c = None
             if c in options:
@@ -1120,6 +1129,7 @@ def _resolve_relief_substep(state, step, relief_front, relief_reserve,
 # =====================================================================
 # Top-level Battle resolution
 # =====================================================================
+@combat_view_scope("attacker_ids", "defender_ids")
 def resolve_battle(state, attacker_ids: list[str], defender_ids: list[str],
                    active_id: str, locale_name: str,
                    approach_way_type: str | None = None,
@@ -1423,6 +1433,7 @@ def _garrison_for(stronghold_type: str, state=None, defender_side=None) -> dict[
     return g
 
 
+@combat_view_scope("attackers", "defenders")
 def resolve_storm(state, attackers: list[str], defenders: list[str],
                   active_id: str, locale_name: str,
                   scripted_decisions: list[dict] | None = None,
@@ -1674,6 +1685,7 @@ def resolve_storm(state, attackers: list[str], defenders: list[str],
     }
 
 
+@combat_view_scope("sallying", "besiegers")
 def resolve_sally(state, sallying: list[str], besiegers: list[str],
                   active_id: str, locale_name: str,
                   scripted_decisions: list[dict] | None = None,

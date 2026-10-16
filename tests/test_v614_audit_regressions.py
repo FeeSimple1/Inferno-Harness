@@ -399,21 +399,28 @@ def test_exiles_cylinder_can_leave_box_one_and_bad_batch_is_atomic():
 
 
 def test_claude_driver_uses_pending_pay_owner(monkeypatch):
+    from inferno.llm import PlayerView
     captured = {}
+    s = command()
+    s["pending_fpd"] = {"step": "pay", "side": "ghibelline", "summary": {"feed": [], "disband": []}}
+    view = PlayerView(s)
+    entry = view.query({"request": "actions", "category": "cmd_fpd_pay_done"})["records"][0]
     def create(**kwargs):
         captured.update(kwargs)
-        return SimpleNamespace(content=[SimpleNamespace(type="text", text=json.dumps(
-            {"action": "cmd_fpd_pay_done", "side": "ghibelline", "args": {}}))])
+        return SimpleNamespace(stop_reason="end_turn", content=[SimpleNamespace(type="text", text=json.dumps(
+            {"action_id": entry["action_id"], "state_version": view.version}))])
     monkeypatch.setitem(sys.modules, "anthropic", SimpleNamespace(Anthropic=lambda: SimpleNamespace(messages=SimpleNamespace(create=create))))
     spec = spec_from_file_location("inferno_example_audit", Path(__file__).resolve().parents[1] / "examples/play_with_claude.py")
     module = module_from_spec(spec)
     spec.loader.exec_module(module)
-    s = command()
-    s["pending_fpd"] = {"step": "pay", "side": "ghibelline", "summary": {"feed": [], "disband": []}}
     callback = module.make_claude_callback("test-no-network")
-    callback(s, enumerate_legal(s))
+    selection = callback(view)
+    assert view.resolve(selection)["side"] == "ghibelline"
     assert "ghibelline" in captured["system"]
-    assert "side: GHIBELLINE" in captured["messages"][0]["content"]
+    overview = json.loads(captured["messages"][0]["content"])
+    assert overview["perspective"] == overview["acting_player"] == "ghibelline"
+    assert "Inferno — GHIBELLINE" in overview["briefing"]
+    assert "legal_moves" not in overview
 
 
 @pytest.mark.parametrize("box", [None, 10])

@@ -102,7 +102,6 @@ def test_legal_moves_for_loaded_scenario():
     assert moves[0]["action"] == "levy_aow_draw"
 
 
-# ----------------------------------------------------------------- CLI end-to-end
 def _run_cli(args: list[str], cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [sys.executable, "-m", "inferno.cli", *args],
@@ -140,12 +139,13 @@ def test_cli_new_writes_state_file(tmp_path: Path):
     assert state["meta"]["scenario"] == "A"
 
 
-def test_cli_state_summary_on_synthetic_stub(tmp_path: Path):
-    """Phase 0 helper synthesizes a stub state when file is missing — keeps
-    the CLI exercisable end-to-end before the loader exists."""
-    r = _run_cli(["state", str(tmp_path / "missing.state.json"), "--mode", "summary"])
-    assert r.returncode == 0
-    assert "Scenario" in r.stdout or "scenario" in r.stdout.lower()
+def test_cli_missing_state_rejects_without_fabricating_a_game(tmp_path: Path):
+    state_file = tmp_path / "missing.state.json"
+    for command in ("state", "pending", "history", "briefing", "legal-moves"):
+        r = _run_cli([command, str(state_file)])
+        assert r.returncode == 1
+        assert json.loads(r.stdout)["error"] == "STATE_NOT_FOUND"
+        assert not state_file.exists()
 
 
 def test_cli_legal_moves_against_real_state(tmp_path: Path):
@@ -155,18 +155,21 @@ def test_cli_legal_moves_against_real_state(tmp_path: Path):
     r = _run_cli(["legal-moves", str(out)])
     assert r.returncode == 0
     moves = json.loads(r.stdout)
-    assert moves[0]["action"] == "levy_aow_draw"
+    assert moves["categories"][0]["category"] == "levy_aow_draw"
+    page = json.loads(_run_cli(["legal-moves", str(out), "--page"]).stdout)
+    assert page["records"][0]["move"]["action"] == "levy_aow_draw"
 
 
 def test_cli_pending_history_empty(tmp_path: Path):
-    state_file = tmp_path / "missing.state.json"
+    state_file = tmp_path / "empty.state.json"
+    assert _run_cli(["new", "A", "--seed", "1", "--out", str(state_file)]).returncode == 0
     r = _run_cli(["pending", str(state_file)])
     assert r.returncode == 0
-    assert json.loads(r.stdout) == []
-
+    page = json.loads(r.stdout)
+    assert all(not record["value"] for record in page["records"])
     r = _run_cli(["history", str(state_file)])
     assert r.returncode == 0
-    assert json.loads(r.stdout) == []
+    assert json.loads(r.stdout)["records"] == []
 
 
 def test_cli_save_round_trips(tmp_path: Path):

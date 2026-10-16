@@ -36,8 +36,20 @@ def hide_for_side(state: dict[str, Any], visible_side: str,
     """
     if visible_side not in ("guelph", "ghibelline"):
         raise ValueError(f"Unknown side: {visible_side!r}")
+    prior_side = state.get("_filtered_for")
+    if prior_side is not None and prior_side != visible_side:
+        raise ValueError("Cannot change perspective using an already-filtered state.")
+    hidden_mats = bool(hidden_mats or state.get("meta", {}).get("hidden_mats")
+                       or state.get("_hidden_mats"))
+    if prior_side == visible_side and bool(state.get("_hidden_mats")) == hidden_mats:
+        return copy.deepcopy(state)
     opp = "ghibelline" if visible_side == "guelph" else "guelph"
-    s = copy.deepcopy(state)
+    # Operator callbacks/scripts are not player-visible game state. In
+    # particular, an opponent's prepared combat choices must not be exposed
+    # by the focused snapshot endpoint.
+    private_channels = {"battle_callback", "approach_battle_decisions",
+                        "approach_post_battle_decisions"}
+    s = copy.deepcopy({k: v for k, v in state.items() if k not in private_channels})
 
     # Redact opposing deck secrets
     if opp in s.get("decks", {}):
@@ -71,16 +83,38 @@ def hide_for_side(state: dict[str, Any], visible_side: str,
             entry["state_changes"] = {"hidden_mats": True}
     s.get("meta", {}).pop("rng_seed", None)
     s.get("meta", {}).pop("rng_advance", None)
-    # Unresolved draw queues may contain the opponent's as-yet-unresolved cards.
-    if s.get("aow_resolution", {}).get("side") == opp:
-        s.pop("aow_resolution", None)
+    s.get("meta", {}).pop("post_battle_withdraw", None)
+    # A not-yet-resolved card is not a revealed card, even for its future owner.
+    resolution = s.get("aow_resolution")
+    if isinstance(resolution, dict):
+        if resolution.get("side") == opp:
+            s.pop("aow_resolution", None)
+        else:
+            for key in ("remaining", "queue"):
+                if isinstance(resolution.get(key), list):
+                    resolution[key] = ["<unrevealed>" for _ in resolution[key]]
+    for entry in s.get("history", []):
+        if entry.get("side") == opp:
+            for key in ("scripted_decisions", "post_battle_decisions"):
+                entry.get("args", {}).pop(key, None)
+    # Pending choices must be complete for their owner, but do not disclose
+    # private choice payloads to the other player. Approach geometry is public.
+    for i, pending in enumerate(s.get("pending", []) or []):
+        if pending.get("side") not in (None, visible_side):
+            public = {"type": pending.get("type"), "side": pending["side"], "waiting": True}
+            if pending.get("type") == "approach_response":
+                public["info"] = {k: v for k, v in pending.get("info", {}).items()
+                                  if k in ("lord_id", "locale", "approached_from", "approached_via")}
+            s["pending"][i] = public
 
     # 1.5.2 Hidden Mats option: redact Lord mat contents (Forces,
     # Vassals readiness, Assets) for the opposing side. Lord names,
     # locations, and ratings remain visible — those are public.
     if hidden_mats:
+        from ..visibility import combat_visibility
+        revealed = combat_visibility(state).get("lords", set())
         for lid, lord in s.get("lords", {}).items():
-            if lord.get("side") == opp and lord.get("status") in ("mustered", "on_calendar"):
+            if lord.get("side") == opp and lid not in revealed:
                 # Public: name, side, status, location, calendar_box, service_box, ratings, podesta, commander
                 # Hidden: forces, assets, vassals (readiness), capabilities, routed_units, flags
                 lord["forces"] = {"<hidden_force_count>": sum(lord.get("forces", {}).values())}

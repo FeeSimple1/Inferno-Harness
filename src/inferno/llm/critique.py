@@ -13,6 +13,10 @@ from typing import Any
 def build_self_critique_prompt(state: dict[str, Any], side: str,
                                max_history: int = 80) -> str:
     """Build a self-critique prompt for the post-game model call."""
+    from .filter import hide_for_side
+    state = hide_for_side(state, side)
+    if type(max_history) is not int or max_history < 1:
+        raise ValueError("max_history must be positive")
     history = state.get("history", [])[-max_history:]
     vp = state.get("vp", {})
     winner = state["meta"].get("winner")
@@ -25,6 +29,8 @@ def build_self_critique_prompt(state: dict[str, Any], side: str,
         f"Ghibelline={vp.get('ghibelline', 0)}.",
         "",
         f"## Last {len(history)} actions (chronological)",
+        f"Earlier {max(len(state.get('history', [])) - len(history), 0)} records are deferred; "
+        "use PlayerView.query(request=inspect, section=history) to retrieve complete pages.",
         "",
     ]
     for h in history:

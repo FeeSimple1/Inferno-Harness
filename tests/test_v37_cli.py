@@ -62,10 +62,12 @@ def test_load_reports_meta(state_file, capsys):
     assert "scenario=A" in capsys.readouterr().out
 
 
-def test_load_missing_file_uses_stub(tmp_path, capsys):
-    # Non-existent path -> synthetic stub, still returns 0.
-    assert cli.main(["load", str(tmp_path / "nope.json")]) == 0
-    assert "<unset>" in capsys.readouterr().out
+def test_load_missing_file_rejects_without_synthetic_state(tmp_path, capsys):
+    path = tmp_path / "nope.json"
+    assert cli.main(["load", str(path)]) == 1
+    error = json.loads(capsys.readouterr().out)
+    assert error["error"] == "STATE_NOT_FOUND" and error["state_changed"] is False
+    assert not path.exists()
 
 
 def test_save_pretty_prints(state_file, tmp_path):
@@ -92,14 +94,15 @@ def test_state_render_modes(state_file, capsys, extra):
 def test_legal_moves_outputs_json(state_file, capsys):
     assert cli.main(["legal-moves", str(state_file)]) == 0
     data = json.loads(capsys.readouterr().out)
-    assert isinstance(data, list) and len(data) >= 1
+    assert data["categories"] and data["total"] >= 1
+    assert "state_version" in data
 
 
 def test_pending_and_history(state_file, capsys):
     assert cli.main(["pending", str(state_file)]) == 0
-    assert isinstance(json.loads(capsys.readouterr().out), list)
+    assert "records" in json.loads(capsys.readouterr().out)
     assert cli.main(["history", str(state_file), "-n", "5"]) == 0
-    assert isinstance(json.loads(capsys.readouterr().out), list)
+    assert "records" in json.loads(capsys.readouterr().out)
 
 
 # ----------------------------------------------------------- do (success + errors)

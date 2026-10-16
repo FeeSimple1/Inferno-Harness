@@ -1,64 +1,71 @@
-# Running the Inferno Harness in ChatGPT (or any external LLM/agent)
+# Running Inferno with ChatGPT or another external player
 
-This harness is **self-contained and dependency-free to play** — pure Python
-stdlib, no `pip install` required. (Third-party packages are needed only to run
-the *test suite*.) It is designed to be driven by an LLM to self-play and to
-surface engine bugs.
+Python 3.11 or newer is required. Game mechanics and the player interface use the
+standard library. From the repository root use `PYTHONPATH=src`; install the
+optional development dependencies only for the full test suite.
 
-## Environment
-- **Python 3.11** (the package targets >=3.11; it also runs on 3.10).
-- From the project root, always run with `PYTHONPATH=src`.
-- **No install / no dependencies needed to play.** Do NOT run `pip install -e .`.
-- To run the *test suite* only: `pip install pytest hypothesis` then
-  `PYTHONPATH=src python -m pytest -q` (expect all green).
+## Player interface
 
-## Fastest path: the bug-hunt driver
-A ready-to-run, stdlib-only self-play driver is included:
+Use `PlayerView` / `play_with_interface`, not an unfiltered state or the entire
+legal list. The acting faction can differ from `meta.active_player` during Pay,
+Exiles, Approach reactions or combat. Route each view to its named perspective.
 
-    PYTHONPATH=src python selfplay_bughunt.py F --seed 11 --max-steps 8000
-
-It plays a full game of the longest scenario (F) via the **validated** action
-palette, asserts the always-on invariant battery after every step, and prints a
-structured ANOMALY report. To hunt bugs with your own judgment, edit the
-`choose(state, moves, rng)` function to make the decisions yourself.
-
-## Driving it yourself (library API)
 ```python
-import sys; sys.path.insert(0, "src")
 from inferno.scenarios import load_scenario
-from inferno.legal_moves import enumerate_legal_validated   # validated palette
-from inferno.actions import dispatch
+from inferno.llm import play_with_interface
 from inferno.invariants import check_all_invariants
-from inferno.llm.briefing import build_briefing             # ~3KB text view
 
-s = load_scenario("F", seed=11, hidden_mats=True)           # longest scenario, hidden info
-while s["meta"]["phase"] != "victory":
-    pal = enumerate_legal_validated(s)        # {"moves","dropped","unvalidated"}
-    # pal["dropped"] = over-enumeration diagnostics (a bug if non-empty)
-    briefing = build_briefing(s, s["meta"]["active_player"])   # show this to the model
-    move = your_pick(pal["moves"])            # choose ONE move dict verbatim
-    dispatch(s, {k: move[k] for k in ("action","side","args") if k in move})
-    check_all_invariants(s)                   # raises AssertionError on a defect
+state = load_scenario("F", seed=42, hidden_mats=True)
+# model_callback(view) sends view.overview(); answers any number of view.query
+# requests, then returns a state-bound action_id/state_version selection.
+while state["meta"]["phase"] != "victory":
+    play_with_interface(state, model_callback)
+    check_all_invariants(state)
 ```
-Rules of engagement: pick ONLY from `pal["moves"]` (never invent actions/args);
-resolve every pending decision the same way; if `pal["moves"]` is empty and the
-phase isn't `victory`, that's a **deadlock** (a bug).
 
-## CLI alternative (shell-driven)
-`PYTHONPATH=src python -m inferno.cli new F --seed 11 --out g.json`, then loop
-`legal-moves` -> `briefing --side <side> --hidden-mats` -> `do '<move json>'` ->
-`pending`. See `LLM_PLAY_GUIDE.md`.
+The 3,500-character briefing target is soft. Essential sections and complete
+pending decisions are never cut. Explicitly abbreviated/deferred data remain
+available through focused `inspect` requests, including all own cards, visible
+mats, board records, Calendar information and history. `snapshot` retrieves the
+whole filtered state. Every legal-menu entry is reachable through unranked
+category pages. Templates and optional handler parameters are not limited to
+printed default arguments. Follow `next_cursor` until null to inspect all pages.
 
-## What counts as a bug (log it, with reproduction)
-- `enumerate_legal_validated` returns anything in `dropped` (menu offered a move
-  the executor rejects — over-enumeration).
-- `dispatch` raises on a move the palette offered.
-- `check_all_invariants` raises (VP cap, non-negative forces, lord/locale
-  consistency, **no co-located enemies**, **AoW card conservation = 26/side**, …).
-- A deadlock (no legal moves, not `victory`).
-- Any behavior contradicting `reference/*.txt` (Rules of Play + Errata are
-  authoritative — quote the rule).
+See **LLM_PLAY_GUIDE.md** for the complete protocol, privacy rules and
+`examples/play_with_claude.py` for a working provider callback. Use `--stub`
+explicitly for its offline deterministic test policy; absence of credentials
+never silently changes the player to a stub.
 
-Distinguish **harness bugs** (mistakes in your own driver, e.g. indexing a Lord
-with `location = None`) from **engine bugs** (a real engine function misbehaving
-on input the engine produced). Only the latter count.
+## Shell-driven play
+
+```sh
+PYTHONPATH=src python -m inferno.cli new F --seed 42 --hidden-mats --out game.json
+PYTHONPATH=src python -m inferno.cli briefing game.json --side guelph
+PYTHONPATH=src python -m inferno.cli legal-moves game.json --side guelph
+PYTHONPATH=src python -m inferno.cli query game.json '{"request":"actions","page_size":12}' --side guelph
+PYTHONPATH=src python -m inferno.cli inspect game.json card_reference --keys F3 --side guelph
+PYTHONPATH=src python -m inferno.cli choose game.json '{"action_id":"ID","state_version":"VERSION"}' --side guelph
+```
+
+IDs and cursors expire when the position/revision changes. Rejected selections
+never alter the save. A `choose` that reaches a tactical election returns an
+owner-filtered `awaiting_decision` packet and leaves the save unchanged. Inspect
+and extend its `--decisions-json` prefix as documented; the complete action commits
+only when all choices have explicit answers. There is no strategic fallback.
+Never send the save file or explicit operator `state --raw` / `do` output to a
+model. Native library dispatch is for trusted engine tests, not a privacy boundary.
+
+## Bug hunting is separate from player choice
+
+```sh
+PYTHONPATH=src python selfplay_bughunt.py F --seed 11 --max-steps 8000
+PYTHONPATH=src python -m pytest -q
+PYTHONPATH=src python benchmarks/interface_output.py --out benchmark.json
+```
+
+The legacy smoke driver uses execution probes to diagnose over-enumeration. The
+new player interface deliberately does **not** use that validated/probed palette:
+probing and dropping moves could conceal choices or use future dice. A rejected
+concrete menu entry is a bug to record, not a reason to hide it from the player.
+Distinguish structural invariant checks from full rules correctness, and output
+counts from correctness. Preserve exact reproduction states and action sequences.
