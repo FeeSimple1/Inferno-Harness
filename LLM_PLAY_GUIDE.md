@@ -223,3 +223,20 @@ cost more when a player reads every entry. Model/provider context resends, syste
 prompts and cache accounting can also change billing; unique emitted output
 savings are not a promise of lower API charges. No live-model quality claim is
 made by deterministic-policy measurement.
+
+## Optional strategic continuity in the documented live driver
+
+The live example supplies a faction-private, **model-authored and unverified**
+`prior_strategy` field. A model may return `strategy_note` with its selection
+or permitted reaction yield. The trusted host commits the note only after the
+whole action succeeds and never inserts it into the engine, opponent views or
+legal catalog. Clear an obsolete note with `"strategy_note":""`. The note is
+not a substitute for current rules, board facts, or focused lookups. It may
+be longer than the briefing soft target; it is not truncated.
+
+For an uninterrupted process, this operates in memory automatically. To save
+and resume: `--save game.json --strategy-journal strategy.json`, then
+`--resume game.json --strategy-journal strategy.json`. Journals are accepted
+only for their exact corresponding game save, and must be kept host-private.
+Use `--no-strategy-memory` for the old stateless callback. A/B crossover and
+usage reporting are described in `STRATEGIC_OPTIMIZATION.md`.

@@ -26,3 +26,6 @@ from .protocol import state_version
 
 __all__ += ["PlayerView", "DecisionView", "play_with_interface", "ActionCatalog",
             "submit_selection", "selection_session", "build_briefing_document", "render_briefing", "state_version"]
+
+from .strategic_memory import StrategicMemory
+__all__ += ["StrategicMemory"]
