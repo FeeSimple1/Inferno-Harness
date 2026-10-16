@@ -25,11 +25,13 @@ class MockProvider:
     """No network: record exactly what one faction's model is allowed to see."""
     def __init__(self, *, stop='end_turn', override=None):
         self.prompts=[]
+        self.system_prompts=[]
         self.stop=stop
         self.override=override
     def messages_create(self, **kwargs):
         overview=json.loads(kwargs['messages'][0]['content'])
         self.prompts.append(overview)
+        self.system_prompts.append(kwargs['system'])
         choice=self.override(overview) if self.override else overview['selection']
         if choice.get('action_id') == '<ID from an action page>':
             raise AssertionError('Test must supply a concrete action ID.')
@@ -121,7 +123,8 @@ def test_provider_note_is_host_metadata_only_and_effects_identical(monkeypatch):
     assert s==t and actual==expected
     assert memory.read('guelph')['note']=='Approach Cortona cautiously.'
     assert not any('strategy_note' in str(h) for h in s['history'])
-    assert 'prior_strategy' in provider.prompts[0]
+    assert 'prior_strategy' not in provider.prompts[0]
+    assert 'strategy_note' in provider.system_prompts[0]
 
 
 @pytest.mark.parametrize('hidden_mats',[False,True])
@@ -181,3 +184,13 @@ def test_paired_stub_trial_stays_mechanically_identical_with_factions_swapped():
     assert a['vp']==b['vp'] and a['winner']==b['winner']
     assert a['accepted_actions']==b['accepted_actions']
     assert a['notebook_chars']==b['notebook_chars']==0
+
+
+def test_stateless_ab_control_has_no_note_instruction_or_payload(monkeypatch):
+    s=load_scenario('A',seed=42);v=PlayerView(s,'guelph');sel=_action(v)
+    provider=MockProvider(override=lambda _:sel)
+    _patch_provider(monkeypatch,provider)
+    assert make_claude_callback('mock',strategic_memory=None)(v)==sel
+    assert 'prior_strategy' not in provider.prompts[0]
+    assert 'strategy_note' not in provider.system_prompts[0]
+    assert 'strategy_note' not in str(provider.prompts[0])
