@@ -79,8 +79,9 @@ if it measurably improves decision quality relative to cost.
 without a notebook, with an empty notebook, and with the published 305-character
 example note, for both factions in Scenarios A, C and F. On this development
 machine the example increased the current overview by **606 characters for
-Guelph and 610 for Ghibelline**; empty-notebook framing also has a cost.
-This is **additional** model input, not a saving. The CI measurement supplies
+Guelph and 610 for Ghibelline**; an empty notebook sends nothing.
+The stateless A/B control also receives **no notebook-writing instruction**, so
+its behavior is not penalized by an option it cannot use. This is **additional** model input, not a saving. The CI measurement supplies
 actual named-tokenizer counts when `tiktoken` is installed. The provider A/B
 runner counts all note-bearing requests and any note content returned by the
 model; no claimed benefit is hidden behind character-only accounting.
