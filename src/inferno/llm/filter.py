@@ -119,6 +119,10 @@ def hide_for_side(state: dict[str, Any], visible_side: str,
                 # Hidden: forces, assets, vassals (readiness), capabilities, routed_units, flags
                 lord["forces"] = {"<hidden_force_count>": sum(lord.get("forces", {}).values())}
                 lord["assets"] = {"<hidden>": True}
+                if s["meta"].get("advanced_vassal_service"):
+                    lord["public_vassal_service"] = [
+                        {"name": v["name"], "service_box": v["service_box"]}
+                        for v in lord.get("vassals", []) if v.get("service_box") is not None]
                 lord["vassals"] = [{"<hidden_vassal_count>": len(lord.get("vassals", []))}]
                 lord["capabilities"] = [f"<hidden:{len(lord.get('capabilities', []))}>"]
                 lord["routed_units"] = {"<hidden>": True}

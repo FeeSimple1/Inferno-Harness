@@ -32,6 +32,7 @@ from typing import Any, Callable
 
 from . import card_data as cd
 from . import static_data as sd
+from .vassals import has_service
 
 
 # Effect handlers keyed by card id. Event-half registrations.
@@ -117,25 +118,10 @@ def _shift_cylinder_left(state, lord_id: str, boxes: int = 1) -> int | None:
 
 
 def _shift_service_right(state, lord_id: str, boxes: int = 1) -> int | None:
-    lord = state["lords"].get(lord_id)
-    if lord is None:
+    from .vassals import shift_service
+    if lord_id not in state["lords"]:
         return None
-    cur = lord.get("service_box")
-    if cur is None:
-        return None
-    cal_boxes = state["calendar"]["boxes"]
-    if str(cur) in cal_boxes and lord_id in cal_boxes[str(cur)]["services"]:
-        cal_boxes[str(cur)]["services"].remove(lord_id)
-    new = cur + boxes
-    if new > 16:
-        state["calendar"]["off_right_service"].append(lord_id)
-        lord["service_box"] = None
-        return None
-    lord["service_box"] = new
-    cal_boxes.setdefault(str(new),
-        {"cylinders": [], "services": [], "victory": [], "markers": []})
-    cal_boxes[str(new)]["services"].append(lord_id)
-    return new
+    return shift_service(state, lord_id, boxes)
 
 
 def _shift_cylinder_right(state, lord_id: str, boxes: int = 1) -> int | None:
@@ -164,27 +150,10 @@ def _shift_cylinder_right(state, lord_id: str, boxes: int = 1) -> int | None:
 
 
 def _shift_service_left(state, lord_id: str, boxes: int = 1) -> int | None:
-    """Shift a Lord's Service marker `boxes` boxes LEFT. Returns the new box
-    (None if it falls off the left edge into off_left_service)."""
-    lord = state["lords"].get(lord_id)
-    if lord is None:
+    from .vassals import shift_service
+    if lord_id not in state["lords"]:
         return None
-    cur = lord.get("service_box")
-    if cur is None:
-        return None
-    cal_boxes = state["calendar"]["boxes"]
-    if str(cur) in cal_boxes and lord_id in cal_boxes[str(cur)]["services"]:
-        cal_boxes[str(cur)]["services"].remove(lord_id)
-    new = cur - boxes
-    if new < 1:
-        state["calendar"].setdefault("off_left_service", []).append(lord_id)
-        lord["service_box"] = None
-        return None
-    lord["service_box"] = new
-    cal_boxes.setdefault(str(new),
-        {"cylinders": [], "services": [], "victory": [], "markers": []})
-    cal_boxes[str(new)]["services"].append(lord_id)
-    return new
+    return shift_service(state, lord_id, -boxes)
 
 
 def _shift_cylinder_to_box(state, lord_id: str, target_box: int) -> int | None:
@@ -244,7 +213,7 @@ def _favorable_shift(state, lord_id: str, boxes: int) -> dict[str, Any]:
     cylinder track, else Service RIGHT. Returns a small log dict."""
     if state["lords"].get(lord_id, {}).get("calendar_box") is not None:
         return {"cylinder_to": _shift_cylinder_left(state, lord_id, boxes)}
-    elif state["lords"].get(lord_id, {}).get("service_box") is not None:
+    elif has_service(state, lord_id):
         return {"service_to": _shift_service_right(state, lord_id, boxes)}
     return {"no_marker": True}
 
@@ -466,7 +435,7 @@ def F9_event(state, side, args, rng):
         # Try cylinder left first; if no cylinder on calendar, try Service right.
         if state["lords"][lid].get("calendar_box") is not None:
             shifts[lid] = {"cylinder_to": _shift_cylinder_left(state, lid, boxes=1)}
-        elif state["lords"][lid].get("service_box") is not None:
+        elif has_service(state, lid):
             shifts[lid] = {"service_to": _shift_service_right(state, lid, boxes=1)}
     return {"applied": True, "mode": "shift", "shifts": shifts}
 
@@ -599,7 +568,7 @@ def F13_event(state, side, args, rng):
     for lid in ("firenze", "arezzo", "lucca"):
         if state["lords"][lid].get("calendar_box") is not None:
             shifts[lid] = {"cylinder_to": _shift_cylinder_left(state, lid, boxes=1)}
-        elif state["lords"][lid].get("service_box") is not None:
+        elif has_service(state, lid):
             shifts[lid] = {"service_to": _shift_service_right(state, lid, boxes=1)}
     return {"applied": True, "shifts": shifts}
 
@@ -622,7 +591,7 @@ def F14_event(state, side, args, rng):
     if args.get("mode") != "service" and prov.get("calendar_box") is not None:
         new = _shift_cylinder_right(state, "provenzano", boxes=2)
         return {"applied": True, "cylinder_to": new}
-    if prov.get("service_box") is not None:
+    if has_service(state, "provenzano"):
         new = _shift_service_left(state, "provenzano", boxes=2)
         return {"applied": True, "service_to": new}
     return {"applied": False, "reason": "Provenzano has no Calendar marker"}
@@ -685,7 +654,7 @@ def F17_event(state, side, args, rng):
         target = args.get("target", "guido_guerra")
         if target not in ("guido_guerra", "orvieto"):
             return _manual("F17", "target must be 'guido_guerra' or 'orvieto'.")
-        if state["lords"][target].get("service_box") is None:
+        if not has_service(state, target):
             return {"applied": False,
                     "reason": f"{target} has no Service marker on the Calendar."}
         new = _shift_service_right(state, target, boxes=2)
@@ -776,20 +745,8 @@ def F18_event(state, side, args, rng):
                     {"cylinders": [], "services": [], "victory": [], "markers": []})
                 cal_boxes[str(new_box)]["cylinders"].append("santa_fiora")
             return {"applied": True, "cylinder_to": sf["calendar_box"]}
-        elif sf.get("service_box") is not None:
-            cur = sf["service_box"]
-            new_box = max(cur - 2, 0)
-            cal_boxes = state["calendar"]["boxes"]
-            if str(cur) in cal_boxes and "santa_fiora" in cal_boxes[str(cur)]["services"]:
-                cal_boxes[str(cur)]["services"].remove("santa_fiora")
-            if new_box < 1:
-                state["calendar"]["off_left_service"].append("santa_fiora")
-                sf["service_box"] = None
-            else:
-                sf["service_box"] = new_box
-                cal_boxes.setdefault(str(new_box),
-                    {"cylinders": [], "services": [], "victory": [], "markers": []})
-                cal_boxes[str(new_box)]["services"].append("santa_fiora")
+        elif has_service(state, "santa_fiora"):
+            _shift_service_left(state, "santa_fiora", 2)
             return {"applied": True, "service_to": sf["service_box"]}
         return {"applied": False, "reason": "Santa Fiora has no Calendar marker"}
     # Default: auto Treachery flag
@@ -836,7 +793,7 @@ def F19_event(state, side, args, rng):
                     {"cylinders": [], "services": [], "victory": [], "markers": []})
                 cal_boxes[str(new_box)]["cylinders"].append("pisa")
             return {"applied": True, "cylinder_to": pisa["calendar_box"]}
-        elif pisa.get("service_box") is not None:
+        elif has_service(state, "pisa"):
             return {"applied": True, "service_to": _shift_service_right(state, "pisa", -2)}
         return {"applied": False, "reason": "Pisa has no Calendar marker"}
     state.setdefault("active_events", {}).setdefault("this_levy", []).append({
@@ -917,7 +874,7 @@ def F21_event(state, side, args, rng):
         return {"applied": False, "reason": "target must be firenze or arezzo"}
     if state["lords"][target].get("calendar_box") is not None:
         return {"applied": True, "target": target, "cylinder_to": _shift_cylinder_left(state, target, boxes=2)}
-    elif state["lords"][target].get("service_box") is not None:
+    elif has_service(state, target):
         return {"applied": True, "target": target, "service_to": _shift_service_right(state, target, boxes=2)}
     return {"applied": False, "reason": f"{target} has no Calendar marker to shift"}
 
@@ -961,20 +918,8 @@ def F22_event(state, side, args, rng):
                     {"cylinders": [], "services": [], "victory": [], "markers": []})
                 cal_boxes[str(new_box)]["cylinders"].append(target_lid)
             return {"applied": True, "shifted_cylinder_to": target["calendar_box"]}
-        elif target.get("service_box") is not None:
-            cur = target["service_box"]
-            cal_boxes = state["calendar"]["boxes"]
-            if str(cur) in cal_boxes and target_lid in cal_boxes[str(cur)]["services"]:
-                cal_boxes[str(cur)]["services"].remove(target_lid)
-            new_box = cur - 1
-            if new_box < 1:
-                state["calendar"]["off_left_service"].append(target_lid)
-                target["service_box"] = None
-            else:
-                target["service_box"] = new_box
-                cal_boxes.setdefault(str(new_box),
-                    {"cylinders": [], "services": [], "victory": [], "markers": []})
-                cal_boxes[str(new_box)]["services"].append(target_lid)
+        elif has_service(state, target_lid):
+            _shift_service_left(state, target_lid, 1)
             return {"applied": True, "shifted_service_to": target["service_box"]}
         else:
             return {"applied": False, "reason": "Target has no Calendar marker to shift."}
@@ -1239,7 +1184,7 @@ def S9_event(state, side, args, rng):
     def _adverse(lid, boxes):
         if state["lords"][lid].get("calendar_box") is not None:
             return {"cylinder_to": _shift_cylinder_right(state, lid, boxes)}
-        elif state["lords"][lid].get("service_box") is not None:
+        elif has_service(state, lid):
             return {"service_to": _shift_service_left(state, lid, boxes)}
         return {"no_marker": True}
 
@@ -1251,7 +1196,7 @@ def S9_event(state, side, args, rng):
     if not targets:
         targets = [lid for lid, l in state["lords"].items()
                    if l.get("side") == "guelph"
-                   and (l.get("calendar_box") is not None or l.get("service_box") is not None)][:2]
+                   and (l.get("calendar_box") is not None or has_service(state, lid))][:2]
     shifts = {}
     for lid in targets[:2]:
         if state["lords"].get(lid, {}).get("side") != "guelph":
@@ -1284,7 +1229,7 @@ def S10_event(state, side, args, rng):
             continue
         if state["lords"][t].get("calendar_box") is not None:
             shifts[t] = {"cylinder_to": _shift_cylinder_left(state, t, 1)}
-        elif state["lords"][t].get("service_box") is not None:
+        elif has_service(state, t):
             shifts[t] = {"service_to": _shift_service_right(state, t, 1)}
     return {"applied": True, "shifts": shifts}
 
@@ -1387,7 +1332,7 @@ def S15_event(state, side, args, rng):
     if state["lords"][target].get("calendar_box") is not None:
         return {"applied": True, "mode": "shift", "target": target,
                 "cylinder_to": _shift_cylinder_left(state, target, boxes=2)}
-    elif state["lords"][target].get("service_box") is not None:
+    elif has_service(state, target):
         return {"applied": True, "mode": "shift", "target": target,
                 "service_to": _shift_service_right(state, target, boxes=2)}
     return {"applied": False, "reason": f"{target} has no Calendar marker to shift"}
@@ -1638,7 +1583,7 @@ def S21_event(state, side, args, rng):
         return {"applied": True, "lordship_bonus_for": target, "bonus": 3}
     if state["lords"][target].get("calendar_box") is not None:
         return {"applied": True, "cylinder_to": _shift_cylinder_left(state, target, 2)}
-    elif state["lords"][target].get("service_box") is not None:
+    elif has_service(state, target):
         return {"applied": True, "service_to": _shift_service_right(state, target, 2)}
     return {"applied": False, "reason": f"{target} has no Calendar marker"}
 
@@ -1697,7 +1642,7 @@ def S25_event(state, side, args, rng):
         if not targets:
             targets = [lid for lid, l in state["lords"].items()
                        if l.get("side") == "ghibelline"
-                       and (l.get("calendar_box") is not None or l.get("service_box") is not None)][:3]
+                       and (l.get("calendar_box") is not None or has_service(state, lid))][:3]
         log["shifted"] = {lid: _favorable_shift(state, lid, 1) for lid in targets[:3]}
     state["war_declared_this_levy"] = sorted(set(state.get("war_declared_this_levy", [])) | {"ghibelline"})
     return {"applied": True, **log}
@@ -1780,7 +1725,7 @@ def immediate_event_options(state, card_id: str, side: str) -> list[dict] | None
         for lid, lord in state["lords"].items():
             if lord.get("forces", {}).get("Ritter", 0) <= 0:
                 continue
-            if lord.get("calendar_box") is not None or lord.get("service_box") is not None:
+            if lord.get("calendar_box") is not None or has_service(state, lid):
                 options.append({"target_lord_id": lid, "mode": "shift"})
             assets = {a: n for a, n in lord.get("assets", {}).items() if isinstance(n, int) and n > 0}
             need = min(3, sum(assets.values()))
@@ -1793,7 +1738,7 @@ def immediate_event_options(state, card_id: str, side: str) -> list[dict] | None
         return options
     if card_id == "F17":
         options = [{"mode": "service", "target": t} for t in ("guido_guerra", "orvieto")
-                   if state["lords"][t].get("service_box") is not None]
+                   if has_service(state, t)]
         eligible = [t for t in ("guido_guerra", "orvieto")
                     if state["lords"][t].get("calendar_box") is not None
                     and state["lords"][t]["calendar_box"] > state["calendar"]["levy_box"]]

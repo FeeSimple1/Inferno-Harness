@@ -2086,20 +2086,8 @@ def service_shift_for_retreated(state, lord_id: str, conceded_with_carroccio: bo
         r = rng_caller(f"retreat_shift_{lord_id}")
         r_val = r.value
         shift = 1 if r_val <= 2 else (2 if r_val <= 4 else 3)
-    lord = state["lords"][lord_id]
-    cur = lord.get("service_box")
-    if cur is not None:
-        boxes = state["calendar"]["boxes"]
-        if str(cur) in boxes and lord_id in boxes[str(cur)]["services"]:
-            boxes[str(cur)]["services"].remove(lord_id)
-        new = cur - shift
-        if new < 1:
-            state["calendar"]["off_left_service"].append(lord_id)
-            lord["service_box"] = None
-        else:
-            lord["service_box"] = new
-            boxes.setdefault(str(new), {"cylinders": [], "services": [], "victory": [], "markers": []})
-            boxes[str(new)]["services"].append(lord_id)
+    from .vassals import shift_service
+    shift_service(state, lord_id, -shift)
     return {"lord_id": lord_id, "die": r_val, "shift_left": shift}
 
 

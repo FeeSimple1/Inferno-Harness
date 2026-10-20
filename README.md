@@ -14,6 +14,9 @@ exposes a structured interface (`new`, `state`, `legal-moves`, `do`,
 This is a private project. See [`BRIEF.md`](BRIEF.md) for the
 authoring spec.
 
+The [Vassal component audit](VASSAL_AUDIT.md) records the October 2026
+cross-check, confirmed corrections, module discrepancies, and saved-game limits.
+
 ## Status — v6.13
 
 CI: hosted GitHub Actions (`.github/workflows/ci.yml`) runs the full suite +

@@ -83,9 +83,11 @@ def main():
     ap.add_argument("scenario", choices=["A","B","C","D","E","F"])
     ap.add_argument("--seed", type=int, default=11)
     ap.add_argument("--max-steps", type=int, default=8000)
+    ap.add_argument("--advanced-vassal-service", action="store_true")
     a = ap.parse_args()
 
-    s = load_scenario(a.scenario, seed=a.seed, hidden_mats=True)
+    s = load_scenario(a.scenario, seed=a.seed, hidden_mats=True,
+                      advanced_vassal_service=a.advanced_vassal_service)
     rng = random.Random(a.seed)
     steps = 0
     while s["meta"].get("phase") != "victory" and steps < a.max_steps:

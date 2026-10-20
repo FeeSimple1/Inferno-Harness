@@ -255,7 +255,7 @@ def _init_vassals_for(lord_data: dict[str, Any]) -> list[VassalState]:
             on_mat=not v.get("special", False),
             ready=not v.get("special", False),
             # Advanced Vassal Service marker box (3.4.2). Initially None; set to
-            # Lord-Service+SR by the loader when advanced_vassal_service is on.
+            # current turn + Service rating on Muster (3.4.2 advanced rule).
             service_box=None,
         )
         vassals_out.append(vassal)

@@ -27,6 +27,7 @@ from typing import Any
 
 from . import static_data as sd
 from . import card_data as cd
+from .vassals import has_service
 from .flow import current_campaign_step, current_side, current_step
 
 
@@ -282,7 +283,7 @@ def _enum_pay(state, side) -> list[dict[str, Any]]:
             for tlid, t in same_loc:
                 rate = 2 if t.get("podesta") else 1
                 max_boxes = from_lord["assets"]["Coin"] // rate
-                if max_boxes >= 1 and t.get("service_box") is not None:
+                if max_boxes >= 1 and has_service(state, tlid):
                     moves.append({
                         "action": "levy_pay",
                         "side": side,
@@ -296,7 +297,7 @@ def _enum_pay(state, side) -> list[dict[str, Any]]:
             # SMOKE-Inferno-060: Loot Pay needs a Friendly, unbesieged Locale (3.2.2).
             if loc and not loc.get("siege") and _is_friendly_locale_quiet(state, loc, side):
                 for tlid, t in own_mustered.items():
-                    if t.get("location") == from_lord.get("location") and t.get("service_box") is not None:
+                    if t.get("location") == from_lord.get("location") and has_service(state, tlid):
                         rate = 2 if t.get("podesta") else 1
                         if from_lord["assets"]["Loot"] >= rate:
                             moves.append({
@@ -334,17 +335,28 @@ def _enum_disband(state, side) -> list[dict[str, Any]]:
         elif svc <= levy_box:
             disbandable.append(lid)
     moves: list[dict[str, Any]] = []
+    expired_vassals = False
+    if state["meta"].get("advanced_vassal_service"):
+        from .vassals import is_mustered
+        for lid, lord in state["lords"].items():
+            if lord.get("side") == side and lord.get("status") == "mustered":
+                if any(is_mustered(v) and not v.get("turncoat") and v.get("name") != "Carroccio"
+                       and v.get("service_box") is not None and v["service_box"] <= levy_box
+                       for v in lord.get("vassals", [])):
+                    disbandable.append(lid)
+                    expired_vassals = True
     if disbandable:
         moves.append({
             "action": "levy_disband", "side": side,
             "description": f"Auto-process all Disbandable Lords for {side}: {disbandable}",
             "rule_citation": "3.3.1 / 3.3.2 (Errata)",
         })
-    moves.append({
-        "action": "levy_disband_done", "side": side,
-        "description": "End Disband segment for this side.",
-        "rule_citation": "3.3",
-    })
+    if not expired_vassals:
+        moves.append({
+            "action": "levy_disband_done", "side": side,
+            "description": "End Disband segment for this side.",
+            "rule_citation": "3.3",
+        })
     return moves
 
 
@@ -360,6 +372,17 @@ def _enum_muster(state, side, only_lord=None) -> list[dict[str, Any]]:
         # SMOKE-Inferno-028: newly-Mustered Lords cannot act this segment (3.4.1).
         if lord.get("flags", {}).get("just_mustered_this_segment"):
             continue
+        from . import actions as _a, vassals as vs
+        if not _a._allies_muster_eligible(state, lid):
+            continue
+        # Altopascio is free, including after all Lordship is spent.
+        tau = next((v for v in lord.get("vassals", []) if v["name"] == "Altopascio"), None)
+        if ((tau and tau.get("ready")) or vs.tau_available(state, lid)) and vs.friendly_seat(
+                state, tau or vs.new_tau(), side):
+            moves.append({"action": "levy_muster_vassal", "side": side,
+                          "args": {"lord_id": lid, "vassal": "Altopascio"},
+                          "description": f"{lid} Musters Altopascio for 0 Lordship.",
+                          "rule_citation": "3.4.2 / F22"})
         # Lordship gate (3.4): skip Lords who have used all their Lordship.
         from .actions import _lordship_limit
         used = lord.get("flags", {}).get("lordship_used", 0)
@@ -385,13 +408,22 @@ def _enum_muster(state, side, only_lord=None) -> list[dict[str, Any]]:
                         "rule_citation": "3.4.1",
                     })
         for v in lord.get("vassals", []):
-            if v.get("ready") and not v.get("special"):
+            if v.get("ready") and not v.get("special") and vs.friendly_seat(state, v, side):
                 moves.append({
                     "action": "levy_muster_vassal", "side": side,
                     "args": {"lord_id": lid, "vassal": v["name"]},
                     "description": f"{lid} Musters {v['name']}.",
                     "rule_citation": "3.4.2",
                 })
+        if lid == _a.COMMANDER_LORD.get(side) and lord.get("location") == _a.LEADING_CITY[side]:
+            comune = state["lords"].get(_a.COMUNE_LORD[side], {})
+            if comune.get("status") == "mustered":
+                for v in comune.get("vassals", []):
+                    if v.get("ready") and not v.get("on_mat") and v.get("name") != "Carroccio":
+                        moves.append({"action": "levy_muster_vassal", "side": side,
+                                      "args": {"lord_id": lid, "vassal": v["name"]},
+                                      "description": f"{lid} attempts to Muster {v['name']}.",
+                                      "rule_citation": "3.4.2"})
         moves.append({
             "action": "levy_muster_transport", "side": side,
             "args": {"lord_id": lid, "kind": "Cart"},
