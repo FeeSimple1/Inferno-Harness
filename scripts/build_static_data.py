@@ -24,7 +24,7 @@ UNITS = {
     "Light Horse": {"cat":"horse","battle_strikes":0.5,"storm_strikes_attacker":0.5,"storm_strikes_defender":0.5,"archery":0,  "archery_kind":None,       "protection":[1],       "notes":""},
     "Men-at-Arms": {"cat":"foot", "battle_strikes":1,  "storm_strikes_attacker":1,  "storm_strikes_defender":1,  "archery":0.5,"archery_kind":"crossbow", "protection":[1,2,3],   "notes":"Half-Crossbow only when Garrison or Balestre Grosse in play."},
     "Armigieri":   {"cat":"foot", "battle_strikes":1,  "storm_strikes_attacker":1,  "storm_strikes_defender":1,  "archery":1,  "archery_kind":"crossbow", "protection":[1,2],     "notes":"Full Crossbow only when Garrison or Balestrieri in play. Palvasari card modifies."},
-    "Militia":     {"cat":"foot", "battle_strikes":1,  "storm_strikes_attacker":1,  "storm_strikes_defender":1,  "archery":1,  "archery_kind":"archery",  "protection":[1],       "notes":"Archery only as Garrison or with Arcieri / Luceria capability."},
+    "Militia":     {"cat":"foot", "battle_strikes":0.5,"storm_strikes_attacker":0.5,"storm_strikes_defender":0.5,  "archery":1,  "archery_kind":"archery",  "protection":[1],       "notes":"Archery only as Garrison or with Arcieri / Luceria capability."},
     "Villici":     {"cat":"foot", "battle_strikes":0.5,"storm_strikes_attacker":0.5,"storm_strikes_defender":0.5,"archery":0,  "archery_kind":None,       "protection":[],        "notes":"No armor. Automatically eliminated if hit."},
 }
 
@@ -231,7 +231,7 @@ LORDS = {
     "Pisa Podestà": {
         "side":"ghibelline","podesta":True,"commander":False,
         "seats":["Pisa","Pontedera","Castiglione della Pescaia"],
-        "ratings":{"F":3,"S":3,"L":3,"C":2},
+        "ratings":{"F":3,"S":3,"L":2,"C":2},
         "forces":{"Cavalieri":1,"Men-at-Arms":2,"Militia":2},
         "assets":{"Coin":2,"Cart":2,"Ship":2,"Provender":2},
         "vassals":[
@@ -388,7 +388,7 @@ LORDS = {
         "side":"guelph","podesta":True,"commander":False,
         "alt_names":["Lucca"],
         "seats":["Lucca","Altopascio"],
-        "ratings":{"F":4,"S":2,"L":2,"C":2},
+        "ratings":{"F":4,"S":3,"L":2,"C":2},
         "forces":{"Cavalieri":1,"Men-at-Arms":1,"Militia":1},
         "assets":{"Coin":2,"Cart":2,"Provender":2},
         "vassals":[
@@ -415,6 +415,7 @@ LORDS = {
 
 ALTOPASCIO_VASSAL = {
     "name":"Altopascio","special":True,"side":"guelph","seat":"Altopascio",
+    "service_rating":2,
     "forces":{"Cavalieri":1},
     "muster_when":"F22 Tau Company in play",
     "musterable_by":["Firenze Podestà","Lucca Podestà"],

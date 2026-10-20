@@ -95,9 +95,9 @@ UNITS = {
     },
     "Militia": {
         "cat": "foot",
-        "battle_strikes": 1,
-        "storm_strikes_attacker": 1,
-        "storm_strikes_defender": 1,
+        "battle_strikes": 0.5,
+        "storm_strikes_attacker": 0.5,
+        "storm_strikes_defender": 0.5,
         "archery": 1,
         "archery_kind": "archery",
         "protection": [
@@ -1020,7 +1020,7 @@ LORDS = {
         "ratings": {
             "F": 3,
             "S": 3,
-            "L": 3,
+            "L": 2,
             "C": 2
         },
         "forces": {
@@ -1668,7 +1668,7 @@ LORDS = {
         ],
         "ratings": {
             "F": 4,
-            "S": 2,
+            "S": 3,
             "L": 2,
             "C": 2
         },
@@ -1797,6 +1797,7 @@ LORDS = {
 }
 
 ALTOPASCIO_VASSAL = {
+    "service_rating": 2,
     "name": "Altopascio",
     "special": True,
     "side": "guelph",
