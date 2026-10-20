@@ -312,3 +312,52 @@ def test_advanced_comune_vassals_follow_commander_except_carroccio():
     V.shift_service(s, "firenze", -1)
     assert comune["vassals"][0]["service_box"] is None
     assert comune["vassals"][1]["service_box"] == 2
+
+
+def test_commander_and_comune_retreat_do_not_double_shift_vassals():
+    """1.5.1 / 3.4.2: Comune Vassals follow the one Commander Service marker."""
+    s = muster_state(advanced=True)
+    comune = s["lords"]["firenze_comune"]
+    comune.update(status="mustered", location="Firenze",
+                  vassals=_init_vassals_for(sd.LORDS["Firenze Comune"]))
+    v = comune["vassals"][1]
+    v.update(on_mat=True, ready=False)
+    V.start_service(s, v)
+    for lid in ("firenze", "firenze_comune"):
+        B.service_shift_for_retreated(s, lid, conceded_with_carroccio=True, rng_caller=None)
+    assert v["service_box"] == 2
+
+
+def test_retreat_clears_bypassing_at_previous_locale(monkeypatch):
+    """4.3.6 / 4.4.5: Retreat leaves a bypassed Stronghold behind."""
+    s = load_scenario("B", 3)
+    for lid in ("guido_guerra", "siena"):
+        for loc in s["locales"].values():
+            if lid in loc["lords_present"]:
+                loc["lords_present"].remove(lid)
+        A._place_cylinder(s, lid, None)
+        A._place_service(s, lid, 8)
+        s["lords"][lid].update(status="mustered", location="Asciano",
+                              forces=copy.deepcopy(sd.LORDS[sd.LORD_NAMES[lid]]["forces"]))
+        s["locales"]["Asciano"]["lords_present"].append(lid)
+    lord = s["lords"]["guido_guerra"]
+    lord["flags"]["bypassing"] = "Asciano"
+    monkeypatch.setattr(A, "_retreat_destination", lambda *a, **k: "San Quirico")
+    monkeypatch.setattr(A, "_retreat_candidates", lambda *a, **k: ["San Quirico"])
+    A._apply_post_battle(s, {"loser": "attacker", "conceded": None, "removed_lords": []},
+                         ["guido_guerra"], ["siena"], battle_locale="Asciano")
+    assert lord["location"] == "San Quirico"
+    assert not lord["flags"].get("bypassing")
+
+
+def test_avoid_clears_bypassing_at_previous_locale():
+    """4.3.4 / 4.3.6: Avoid also leaves the old Bypass behind."""
+    from tests.test_v56_fable_followups import _approach
+    s = _approach()
+    s["lords"]["siena"]["flags"]["bypassing"] = "Figline"
+    s["locales"]["Figline"]["bypass"] = [{"side": "ghibelline", "color": "gold", "count": 1}]
+    A.dispatch(s, {"action": "approach_response", "side": "ghibelline",
+                   "args": {"lord_id": "siena", "choice": "avoid", "destination": "San Giovanni"}})
+    assert s["lords"]["siena"]["location"] == "San Giovanni"
+    assert not s["lords"]["siena"]["flags"].get("bypassing")
+    assert not s["locales"]["Figline"]["bypass"]

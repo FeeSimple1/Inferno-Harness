@@ -71,6 +71,10 @@ def shift_service(state, lid, delta):
             cur = 0
         elif lid in cal.get("off_right_service", []):
             cur = 17
+    # A Comune has no separate Lord Service marker. Its Vassals already
+    # follow the Commander; processing its Retreat must not shift them twice.
+    if cur is None:
+        return None
     if state.get("meta", {}).get("advanced_vassal_service"):
         # A Comune's Vassals follow the Commander's Service shifts (1.5.1).
         owners = [lord] + [l for l in state["lords"].values()
@@ -80,8 +84,6 @@ def shift_service(state, lid, delta):
                 if (is_mustered(v) and v.get("service_box") is not None
                         and not v.get("turncoat") and v.get("name") != "Carroccio"):
                     v["service_box"] = shifted_box(v["service_box"], delta)
-    if cur is None:
-        return None
     new = shifted_box(cur, delta)
     from .actions import _place_service
     _place_service(state, lid, new if 1 <= new <= 16 else None)

@@ -3007,6 +3007,8 @@ def _h_approach_response(state, side, args, rng) -> dict[str, Any]:
         target_loc.setdefault("lords_present", []).append(lid)
         lord["location"] = dest_name
         lord.setdefault("flags", {})["moved_fought"] = True
+        lord["flags"].pop("bypassing", None)
+        _sweep_freed_stronghold(state, locale_name)
 
     elif choice == "withdraw":
         # 4.3.4 WITHDRAW: into a Friendly Stronghold at this Locale.
@@ -3524,6 +3526,7 @@ def _apply_post_battle(state, result, attackers: list[str], defenders: list[str]
                 if lid in bl.get("lords_present", []):
                     bl["lords_present"].remove(lid)
             lord["location"] = dest
+            lord["flags"].pop("bypassing", None)  # 4.3.6: left the bypassed Stronghold.
             state["locales"][dest].setdefault("lords_present", []).append(lid)
             _any_retreat_off = True
             # Service shift deferred: CONF-028 (RoP 4.4.3 EXCEPTION) is

@@ -45,6 +45,7 @@ No artwork or module saved games are redistributed in this repository.
 | Comune subdivisions inaccessible after setup | 3.4.2 allows a Commander inside the Leading City to attempt a Ready Sestiere/Terzo on his in-play Comune. Unselected subdivisions started not Ready and were absent from the menu. | Correct readiness and menu exposure; advanced clocks follow the Commander. |
 | Commander/Comune overcharged for Feed | 1.5.1 explicitly counts both mats as one Lord for Feed; separate calculations could require two provisions for six total units. | Combined Force count and provisions, with one Service penalty for an unfed army. |
 | Public advanced Service hidden from opponent | 3.4.2 explicitly reveals these Calendar markers even with Hidden Mats. | Public Vassal names/Service boxes retained in filtered state and briefing. |
+| Avoid/Retreat retained an obsolete Bypass flag | The broader CI robustness run reached a Lord at San Quirico still flagged as bypassing Asciano after Avoid (Scenario B, seed 3, probe 400). Investigation also reproduced the same defect on Retreat. | Both paths clear the previous Locale's Bypass state under 4.3.4/4.3.6/4.4.5 and sweep freed Strongholds. |
 
 Regression coverage is in `tests/test_vassal_module_audit.py`. A pre-existing
 Garrison test expected the incorrect Militia value and is corrected. The
@@ -66,7 +67,7 @@ two documented Scenario D setup exceptions.
 ## Verification
 
 - Baseline suite: **1,094 passed** before changes.
-- Final suite: **1,121 passed**, including **27 new regression cases**.
+- Final suite: **1,124 passed**, including **30 new regression cases**.
 - Component extractor: **291 comparisons**, zero unexplained differences;
   two documented Scenario D setup exceptions.
 - Standard self-play A–F, seed 11: all reached the victory phase with
@@ -74,6 +75,9 @@ two documented Scenario D setup exceptions.
 - Advanced Vassal Service self-play A and F, seed 11: both reached the
   victory phase with **zero detected anomalies** (408 actions).
 - Card-effect integration fuzz: **52 cards × 6 seeds**, zero anomalies.
+- Adversarial-input robustness fuzz: **6 scenarios × 3 seeds**, **12,575
+  probes** (11,025 clean rejections; 1,550 accepted), zero anomalies after
+  correcting the Avoid/Retreat Bypass cleanup.
 - Illegal-state injection fuzz: **2 seeds, 400-step cap, probes every 60**,
   zero anomalies. All applicable injected corruptions were detected;
   `c_inside_at_ruins` did not arise in these runs.
