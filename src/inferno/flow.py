@@ -76,6 +76,8 @@ def advance_to_next_side_or_step(state: dict[str, Any]) -> None:
         # A War or Treasurers permission is valid only in the Levy granting it.
         state.pop("war_declared_this_levy", None)
         state["meta"].pop("cta_extra_muster_lord", None)
+        from .vassals import ready_after_levy
+        ready_after_levy(state)
         # End of Levy: enter Campaign at the capability-discard step.
         state["meta"]["phase"] = "campaign"
         state["meta"]["levy_step"] = None

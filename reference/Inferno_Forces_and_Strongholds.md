@@ -16,7 +16,7 @@ Men-at-Arms - men at arms have half Crossbow archery (remember that this also al
 
 Armigieri - Armigieri have a full Crossbow archery (remember that this also allows them to choose their target), but only when they are the Garrison in a storm or when Balestrieri is in play.  The Palvasari card substantially changes their capabilities.  In all other circumstances, they have one strike.  Armigieri armor protects them on 1-2, or 1-4 if Palvasari is in play.
 
-Militia - Militia have one non-Crossbow archery strike (this does NOT allow them to choose their target), if they are in in the Garrison or the Arcieri card is in play for them.  If Luceria is in play instead of Arcieri, then they have a strike and a half of archery.  In all other circumstances, they have one strike.  Militia armor protects them on 1.
+Militia - Militia have one non-Crossbow archery strike (this does NOT allow them to choose their target), if they are in in the Garrison or the Arcieri card is in play for them.  If Luceria is in play instead of Arcieri, then they have a strike and a half of archery.  Militia have a half melee strike in Battle and Storm, including when they also have Archery.  Militia armor protects them on 1.
 
 Villici - Villici have a half strike in all circumstances.  They have no armor and are automatically eliminated if hit.
 

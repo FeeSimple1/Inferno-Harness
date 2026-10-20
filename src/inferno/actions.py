@@ -23,6 +23,7 @@ from typing import Any
 
 from . import card_data as cd
 from . import static_data as sd
+from . import vassals as vs
 from . import revolt as _revolt
 from .flow import (
     advance_to_next_side_or_step,
@@ -563,18 +564,14 @@ def _shift_service_right(state, lord_id: str, boxes: int) -> int | str:
     """Shift the Service marker right by `boxes`. Returns the new box (int)
     or 'off_right_service' if it falls off the right edge."""
     lord = state["lords"][lord_id]
-    cur = lord.get("service_box")
-    if cur is None:
-        # Marker is somewhere off-Calendar (e.g., off_right_service);
-        # Phase 1+ keeps that as a sentinel; Phase 2's Pay step rules don't allow shifting an off-Calendar marker.
-        raise IllegalAction("SHIFT_OFF_CAL", f"{lord_id} has no Service marker on Calendar.", "3.2")
-    target = cur + boxes
-    if target > 16:
-        _place_service(state, lord_id, None)
-        state["calendar"]["off_right_service"].append(lord_id)
-        return "off_right_service"
-    _place_service(state, lord_id, target)
-    return target
+    if (lord.get("service_box") is None and
+            not any(lord_id in state["calendar"].get(edge, [])
+                    for edge in ("off_left_service", "off_right_service"))):
+        raise IllegalAction("SHIFT_OFF_CAL", f"{lord_id} has no Service marker.", "3.2")
+    new = vs.shift_service(state, lord_id, boxes)
+    if new is not None:
+        return new
+    return "off_left_service" if lord_id in state["calendar"]["off_left_service"] else "off_right_service"
 
 
 # =====================================================================
@@ -610,7 +607,6 @@ def _h_levy_disband(state, side, args, rng) -> dict[str, Any]:
     enemy_side = "ghibelline" if side == "guelph" else "guelph"
 
     off_left_set = set(state["calendar"].get("off_left_service") or [])
-    advanced_vs = state["meta"].get("advanced_vassal_service", False)
     vassal_disbands = []
     for lid, lord in state["lords"].items():
         if lord["side"] != side:
@@ -628,14 +624,6 @@ def _h_levy_disband(state, side, args, rng) -> dict[str, Any]:
             disbanded_beyond.append(lid)
         elif svc == levy_box:
             disbanded_at.append(lid)
-        # SMOKE-Inferno-034: Advanced Vassal Service — per-Vassal Disband.
-        if advanced_vs:
-            for v in lord.get("vassals", []):
-                if v.get("turncoat"):
-                    continue  # Turncoats immune (4.7.6 Tip)
-                vsvc = v.get("service_box")
-                if vsvc is not None and vsvc <= levy_box and v.get("on_mat"):
-                    vassal_disbands.append((lid, v["name"]))
 
     revolt_rolls = []
     treachery_added = []
@@ -659,20 +647,11 @@ def _h_levy_disband(state, side, args, rng) -> dict[str, Any]:
 
     for lid in disbanded_at:
         _disband_at_service_limit(state, lid, levy_box)
-    # Vassal Disbands (advanced vassal service)
-    for lid, vname in vassal_disbands:
-        lord = state["lords"][lid]
-        # Remove vassal from mat, return Forces to pool, mark not on_mat.
-        for v in lord["vassals"]:
-            if v["name"] == vname:
-                for u, c in v.get("forces", {}).items():
-                    lord["forces"][u] = max(0, lord["forces"].get(u, 0) - c)
-                    if lord["forces"][u] == 0:
-                        lord["forces"].pop(u, None)
-                v["on_mat"] = False
-                v["ready"] = False
-                v["service_box"] = None
-                break
+    vassal_disbands, empty_lords = vs.disband_expired(state, side)
+    if empty_lords:
+        extra = _trigger_disband_revolt_and_treachery(state, empty_lords, rng, "vassal_disband")
+        revolt_rolls.extend(extra["revolt_rolls"])
+        treachery_added.extend(extra["treachery_added"])
 
     return {
         "state_changes": {
@@ -689,6 +668,14 @@ def _h_levy_disband(state, side, args, rng) -> dict[str, Any]:
 def _h_levy_disband_done(state, side, args, rng) -> dict[str, Any]:
     """End this side's Disband segment."""
     _require_step(state, "3.3")
+    if state["meta"].get("advanced_vassal_service"):
+        for lord in state["lords"].values():
+            if lord.get("side") == side and lord.get("status") == "mustered":
+                if any(vs.is_mustered(v) and not v.get("turncoat") and v.get("name") != "Carroccio"
+                       and v.get("service_box") is not None
+                       and v["service_box"] <= state["calendar"]["levy_box"]
+                       for v in lord.get("vassals", [])):
+                    raise IllegalAction("VASSAL_DISBAND_REQUIRED", "Resolve expired Vassals first.", "3.4.2")
     advance_to_next_side_or_step(state)
     return {"state_changes": {"step": "disband_done"}, "rule_citation": "3.3"}
 
@@ -1060,9 +1047,10 @@ def _h_levy_muster_vassal(state, side, args, rng) -> dict[str, Any]:
     Muster a Vassal of his (slide Service marker into Forces area; add
     Vassal Forces).
 
-    Special Vassals (Carroccio/Sestieri/Terzi) Muster only via CtA
-    (3.5.3) — this handler rejects them. Phase 2 omits the Vassal Seat
-    Friendly check (Phase 3+ handles allegiance/siege checks).
+    Ordinary Vassal Seats must be Friendly (even if Ravaged, Ruined,
+    Besieged or Bypassed). Tau Company enables the set-aside Altopascio.
+    A Commander inside his Leading City can roll for a Ready subdivision
+    on his already-Mustered Comune mat; Carroccio remains CtA-only.
 
     args:
       lord_id:   Mustering Lord
@@ -1074,12 +1062,19 @@ def _h_levy_muster_vassal(state, side, args, rng) -> dict[str, Any]:
     lord = _require_lord(state, lid, side)
     if lord["status"] != "mustered":
         raise IllegalAction("LORD_NOT_ON_MAP", f"{lid} is not Mustered.", "3.4")
+    if not _allies_muster_eligible(state, lid):
+        raise IllegalAction("MUSTER_NOT_ELIGIBLE", "Lord cannot Muster here.", "3.4")
+    if lord.get("flags", {}).get("just_mustered_this_segment"):
+        raise IllegalAction("JUST_MUSTERED", "Newly Mustered Lord cannot Levy yet.", "3.4.1")
     # CONF-018: locate and fully validate the Vassal BEFORE consuming any
     # Lordship — the prior code consumed Lordship here (top of the handler), so a
     # rejected Muster (unknown/not-ready/CtA-only Vassal) leaked a consumed
     # Lordship action (validate-then-mutate violation, same class as bug #9).
     from .battle import _lord_has_capability
     target = next((v for v in lord["vassals"] if v["name"] == vname), None)
+    new_tau = target is None and vname == "Altopascio" and vs.tau_available(state, lid)
+    if new_tau:
+        target = vs.new_tau()
     # CONF-001 / SMOKE-Inferno-073: a Commander INSIDE his Leading City may
     # also Muster a Ready Sestiere/Terzo on the in-play Comune mat via a regular
     # Levy action, rolling the vassal's Muster die (<= musters; higher wastes
@@ -1094,7 +1089,7 @@ def _h_levy_muster_vassal(state, side, args, rng) -> dict[str, Any]:
     if target is None:
         raise IllegalAction("UNKNOWN_VASSAL", f"{lid} has no Vassal named {vname!r}.", "3.4.2")
 
-    if target.get("special"):
+    if target.get("special") and vname != "Altopascio":
         if target.get("on_mat"):
             raise IllegalAction("VASSAL_ALREADY_MUSTERED", f"{vname} is already on the Comune mat.", "3.4.2")
         if vname == "Carroccio":
@@ -1108,6 +1103,10 @@ def _h_levy_muster_vassal(state, side, args, rng) -> dict[str, Any]:
             raise IllegalAction("NOT_IN_LEADING_CITY",
                                 f"Commander must be inside {LEADING_CITY.get(side)} to Muster "
                                 f"a Comune {vname}.", "3.4.2")
+        loc = state["locales"][LEADING_CITY[side]]
+        if (lord.get("flags", {}).get("bypassing") or
+                (loc.get("siege") and not lord.get("flags", {}).get("in_stronghold"))):
+            raise IllegalAction("COMMANDER_NOT_INSIDE", "Commander must be inside his Leading City.", "3.4.2")
         if not target.get("ready"):
             raise IllegalAction("VASSAL_NOT_READY", f"{vname} is not Ready.", "3.4.2")
         # CONF-018: consume Lordship only after validation (a wasted die roll
@@ -1121,6 +1120,7 @@ def _h_levy_muster_vassal(state, side, args, rng) -> dict[str, Any]:
                     "rolls": [{"context": r.context, "value": r.value}], "rule_citation": "3.4.2"}
         target["ready"] = False
         target["on_mat"] = True
+        vs.start_service(state, target)
         for unit, count in target.get("forces", {}).items():
             comune_mat["forces"][unit] = comune_mat["forces"].get(unit, 0) + count
         return {"state_changes": {"lord_id": lid, "comune_vassal": vname, "die": r.value,
@@ -1130,12 +1130,18 @@ def _h_levy_muster_vassal(state, side, args, rng) -> dict[str, Any]:
 
     if not target.get("ready"):
         raise IllegalAction("VASSAL_NOT_READY", f"{vname} is not Ready.", "3.4.2")
-    # CONF-018: consume Lordship only after validation. SMOKE-066: Altopascio via
-    # Tau Company costs 0 Lordship.
-    if not (vname == "Altopascio" and _lord_has_capability(state, lid, "Tau Company")):
+    if not vs.friendly_seat(state, target, side):
+        raise IllegalAction("VASSAL_SEAT_NOT_FRIENDLY", "Vassal needs a Friendly Seat.", "3.4.2")
+    if vname == "Altopascio":
+        if lid not in ("firenze", "lucca") or not _lord_has_capability(state, lid, "Tau Company"):
+            raise IllegalAction("TAU_COMPANY_REQUIRED", "Altopascio requires Tau Company and Firenze or Lucca.", "3.4.2")
+    else:
         _consume_lordship(state, lid)
-    # Slide marker into Forces (Ready -> not Ready); add Forces.
+    if new_tau:
+        lord["vassals"].append(target)
     target["ready"] = False
+    target["on_mat"] = True
+    vs.start_service(state, target)
     for unit, count in target.get("forces", {}).items():
         lord["forces"][unit] = lord["forces"].get(unit, 0) + count
     return {
@@ -1372,8 +1378,15 @@ def _h_campaign_discard_capability(state, side, args, rng) -> dict[str, Any]:
             state["capabilities_in_play"].pop(i)
             # Discard returns to AoW deck per 1.9.1 / Reset semantics; in-play -> aow_deck.
             state["decks"][side]["aow_deck"].append(cid)
+            changes = {"discarded": cid}
+            if cid == "F22":
+                removed, empty = vs.discard_tau(state)
+                changes["altopascio_disbanded"] = removed
+                if empty:
+                    changes["lord_disband_consequences"] = _trigger_disband_revolt_and_treachery(
+                        state, empty, rng, "tau_discard")
             return {
-                "state_changes": {"discarded": cid},
+                "state_changes": changes,
                 "rule_citation": "4.0 STEP A",
             }
     raise IllegalAction(
@@ -2174,16 +2187,26 @@ def _run_fpd(state) -> dict[str, Any]:
         l = min(rem, lrd["assets"].get("Loot", 0))
         lrd["assets"]["Loot"] = lrd["assets"].get("Loot", 0) - l
         return p + l
-    feeders = sorted(
-        ((lid, lord) for lid, lord in state["lords"].items()
-         if lord.get("flags", {}).get("moved_fought")),
-        key=lambda pair: pair[0],
-    )
+    # 1.5.1: Commander and Comune are one Lord for Feed. Count both
+    # mats together, consume their provisions, and shift Service only once.
+    feeding_ids = set()
+    for lid, lord in state["lords"].items():
+        if lord.get("flags", {}).get("moved_fought"):
+            commander = lord.get("comune_of")
+            lid = next((cid for cid, c in state["lords"].items()
+                        if commander and commander in (cid, c.get("name"))), lid)
+            feeding_ids.add(lid)
+    feeders = [(lid, state["lords"][lid]) for lid in sorted(feeding_ids)]
     residual = {}
     for lid, lord in feeders:
-        units = sum(lord.get("forces", {}).values())
+        mats = [lord] + [c for c in state["lords"].values()
+                         if c.get("status") == "mustered" and c.get("comune_of")
+                         and c["comune_of"] in (lid, lord.get("name"))]
+        units = sum(sum(mat.get("forces", {}).values()) for mat in mats)
         need = 0 if units == 0 else (1 if units <= 6 else 2 if units <= 12 else 3)
-        paid = _deduct_own(lord, need)
+        paid = 0
+        for mat in mats:
+            paid += _deduct_own(mat, need - paid)
         residual[lid] = {"units": units, "need": need, "short": need - paid}
     for lid, lord in feeders:
         info = residual[lid]
@@ -2208,14 +2231,7 @@ def _run_fpd(state) -> dict[str, Any]:
             summary["feed"].append({"lord_id": lid, "units": info["units"],
                                     "need": info["need"], "fed": True})
         else:
-            cur = lord.get("service_box")
-            if cur is not None:
-                new = cur - 1
-                if new < 1:
-                    _place_service(state, lid, None)
-                    state["calendar"]["off_left_service"].append(lid)
-                else:
-                    _place_service(state, lid, new)
+            vs.shift_service(state, lid, -1)
             summary["feed"].append({"lord_id": lid, "units": info["units"],
                                     "need": info["need"], "fed": False, "service_shift": -1})
 
@@ -2248,7 +2264,7 @@ def _fpd_legal_pays(state, side: str) -> list[dict[str, Any]]:
            if lord.get("side") == side
            and lord.get("status") in ("mustered", "on_calendar")}
     for target_id, target in own.items():
-        if target.get("service_box") is None:
+        if not vs.has_service(state, target_id):
             continue
         rate = 2 if target.get("podesta") else 1
         for payer_id, payer in own.items():
@@ -2298,6 +2314,10 @@ def _fpd_run_disband(state, summary: dict[str, Any]) -> None:
             elif svc == levy_box:
                 _disband_at_service_limit(state, lid, levy_box)
                 summary["disband"].append({"lord_id": lid, "kind": "at"})
+    for side in ("guelph", "ghibelline"):
+        removed, empty = vs.disband_expired(state, side)
+        summary.setdefault("vassal_disbands", []).extend(removed)
+        beyond_lids.extend(empty)
     # 3.3.1 Revolt & Treachery for Beyond-Service Disbands (4.8.2 Errata). Uses a
     # state-seeded RNG and updates rng_advance for replay determinism (this path
     # is reached without a handler rng — mirrors the post-Battle helper).
@@ -2987,6 +3007,8 @@ def _h_approach_response(state, side, args, rng) -> dict[str, Any]:
         target_loc.setdefault("lords_present", []).append(lid)
         lord["location"] = dest_name
         lord.setdefault("flags", {})["moved_fought"] = True
+        lord["flags"].pop("bypassing", None)
+        _sweep_freed_stronghold(state, locale_name)
 
     elif choice == "withdraw":
         # 4.3.4 WITHDRAW: into a Friendly Stronghold at this Locale.
@@ -3504,6 +3526,7 @@ def _apply_post_battle(state, result, attackers: list[str], defenders: list[str]
                 if lid in bl.get("lords_present", []):
                     bl["lords_present"].remove(lid)
             lord["location"] = dest
+            lord["flags"].pop("bypassing", None)  # 4.3.6: left the bypassed Stronghold.
             state["locales"][dest].setdefault("lords_present", []).append(lid)
             _any_retreat_off = True
             # Service shift deferred: CONF-028 (RoP 4.4.3 EXCEPTION) is
@@ -4325,6 +4348,7 @@ def _h_cmd_treachery_bribe(state, side, args, rng) -> dict[str, Any]:
                 lord["forces"][unit] = lord["forces"].get(unit, 0) + count
             target_vassal["turncoat"] = True
             target_vassal["ready"] = False
+            target_vassal["service_box"] = None  # 4.7.6: Turncoats ignore Service.
             lord.setdefault("vassals", []).append(target_vassal)
             if sum(target_lord.get("forces", {}).values()) == 0:
                 _disband_beyond_service_limit(state, target_lord_id)
@@ -4334,6 +4358,7 @@ def _h_cmd_treachery_bribe(state, side, args, rng) -> dict[str, Any]:
             v_copy["turncoat"] = True
             v_copy["on_mat"] = True
             v_copy["ready"] = False
+            v_copy["service_box"] = None
             lord.setdefault("vassals", []).append(v_copy)
             for unit, count in v_copy.get("forces", {}).items():
                 lord["forces"][unit] = lord["forces"].get(unit, 0) + count
@@ -5595,6 +5620,9 @@ def _comune_setup_preview(state, side, args) -> dict[str, Any]:
     from .scenarios import _init_vassals_for
     base = sd.LORDS[comune["name"]]
     vassals = copy.deepcopy(comune["vassals"]) if existing else _init_vassals_for(base)
+    if not existing:
+        for v in vassals:
+            v["ready"] = True
     enemy = "ghibelline" if side == "guelph" else "guelph"
     captured = bool(state.get("captured_carroccio_for_side", {}).get(enemy, 0))
     if captured:
@@ -5623,8 +5651,11 @@ def _comune_setup_preview(state, side, args) -> dict[str, Any]:
     forces = copy.deepcopy(comune["forces"] if existing else base.get("forces", {}))
     for v in vassals:
         if v["name"] in requested and not v.get("on_mat"):
+            if v.get("unready"):
+                raise IllegalAction("VASSAL_NOT_READY", "Vassal Disbanded before this Muster.", "3.4.2")
             v["on_mat"] = True
             v["ready"] = False
+            vs.start_service(state, v)
             for unit, count in v.get("forces", {}).items():
                 forces[unit] = forces.get(unit, 0) + count
             added.append(v["name"])

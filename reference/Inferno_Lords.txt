@@ -28,7 +28,7 @@ PISA PODESTÀ
 ------------
 Side:     Ghibelline
 Seats:    Pisa, Pontedera, Castiglione della Pescaia
-Ratings:  F:3 / S:3 / L:3 / C:2
+Ratings:  F:3 / S:3 / L:2 / C:2
 Forces:   1 Cavalieri, 2 Men-at-Arms, 2 Militia
 Assets:   Coin x2, Cart x2, Ship x2, Provender x2
 Notes:    Podestà. Only Lord with Ships (enables Sail per 4.7.3 and Supply
@@ -272,7 +272,7 @@ LUCCA PODESTÀ
 -------------
 Side:     Guelph
 Seats:    Lucca, Altopascio
-Ratings:  F:4 / S:2 / L:2 / C:2
+Ratings:  F:4 / S:3 / L:2 / C:2
 Forces:   1 Cavalieri, 1 Man-at-Arms, 1 Militia
 Assets:   Coin x2, Cart x2, Provender x2
 Notes:    Podestà.
@@ -327,6 +327,7 @@ ALTOPASCIO (Tau Company)
 Side:     Guelph (Firenze OR Lucca)
 Type:     Special Vassal, set aside at start
 Seat:     Altopascio (must be Friendly to Muster)
+Service:  2 (printed Special Vassal marker)
 Forces:   1 Cavalieri
 Notes:    Activated only when Tau Company Capability (F22) is in play.
           Tau Company gives Firenze and Lucca Lordship +1 each (every Muster

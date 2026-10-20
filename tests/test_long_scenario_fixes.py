@@ -169,6 +169,9 @@ def test_current_war_event_still_allows_call_to_arms(cid, side):
 # F-LONG-03: no manual VP repair after the real Surprise/Sack action.
 def test_actual_sack_score_matches_removed_allegiance_and_new_ruins():
     s = saved('before_242_sack_score.json')
+    # The corrected half-hit Militia changes this historical combat's rolls.
+    # Keep the saved position, using a deterministic stream that reaches Sack.
+    s['meta'].update(rng_seed=1, rng_advance=0)
     A.dispatch(s, act('play_event', card_id='F3'))
     assert not s['locales']['Poggio Bonizio']['current_allegiance']
     assert s['vp'] == {'guelph': 4.0, 'ghibelline': 2.5}

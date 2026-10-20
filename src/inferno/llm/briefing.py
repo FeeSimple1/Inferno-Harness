@@ -316,6 +316,8 @@ def build_briefing_document(state: dict[str, Any], side: str, max_chars: int | N
         if l.get('status') != 'mustered':
             continue
         groups = {}
+        for public in l.get('public_vassal_service', []):
+            vassals.append(f"{lid}: {public['name']} — public Service={public['service_box']}.")
         for v in l.get('vassals', []):
             if '<hidden_vassal_count>' in v:
                 vassals.append(lid + ': ' + compact(v))

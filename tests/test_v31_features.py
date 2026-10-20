@@ -80,5 +80,5 @@ class TestStormArchery:
         g = _garrison_for("castle")  # 1 MaA, 1 Militia, 1 Cavalieri
         # archery: MaA 0.5 + Militia 1.0 + Cavalieri 0 = 1.5
         assert B._garrison_strike(g, "def_archery") == 1.5
-        # melee (defender storm strikes): MaA 1 + Militia 1 + Cavalieri 1 = 3
-        assert B._garrison_strike(g, "def_all_melee") == 3.0
+        # Printed Forces table: MaA 1 + Militia 0.5 + Cavalieri 1 = 2.5.
+        assert B._garrison_strike(g, "def_all_melee") == 2.5

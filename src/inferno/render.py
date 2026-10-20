@@ -196,6 +196,7 @@ def render_lord(state: dict[str, Any], lord_id: str) -> str:
             lines.append(
                 f"    [{mark}] {v['name']:30s} @ {seat_str:30s} SR:{v.get('service_rating','-')} "
                 f"[{_fmt_forces(v.get('forces', {}))}]"
+                + (f" Service@{v['service_box']}" if v.get("service_box") is not None else "")
             )
     capabilities = l.get("capabilities", [])
     if capabilities:
