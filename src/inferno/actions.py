@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import copy
 from collections import Counter
+from contextvars import ContextVar
 from typing import Any
 
 from . import card_data as cd
@@ -33,7 +34,10 @@ from .flow import (
     mark_first_levy_aow_drawn,
 )
 from .rng import HarnessRNG
-from .visibility import combat_view_scope
+from .visibility import combat_view_scope, friars_active
+
+
+_FEED_CONTEXT = ContextVar("inferno_feed_decisions", default=None)
 
 
 class IllegalAction(Exception):
@@ -165,13 +169,21 @@ def dispatch(state: dict[str, Any], action: dict[str, Any]) -> dict[str, Any]:
     # Every rejection is atomic, not just combat decision errors. History is
     # append-only and is written below only after a successful handler, so do
     # not deepcopy the growing transcript for every action (quadratic cost).
-    from .battle import ScriptedDecisionError
+    from .battle import BattleDecisionContext, ScriptedDecisionError
+    feed_script = args.get("feed_decisions", [])
+    if not isinstance(feed_script, list) or not all(isinstance(d, dict) for d in feed_script):
+        raise IllegalAction("BAD_DECISION", "feed_decisions must be an array of decisions.", "4.8.1")
+    feed_context = BattleDecisionContext(scripted=copy.deepcopy(feed_script),
+                                         callback=state.get("battle_callback"))
     _history = state.get("history")
     _snapshot = copy.deepcopy({k: v for k, v in state.items() if k != "history"})
     if _history is not None:
         _snapshot["history"] = _history
+    feed_token = _FEED_CONTEXT.set(feed_context)
     try:
         result = handler(state, side, args, rng)
+        if feed_context.scripted:
+            raise ScriptedDecisionError("The action finished with unused Feed decisions.")
     except Exception as exc:
         if _snapshot is not None:
             state.clear()
@@ -180,6 +192,8 @@ def dispatch(state: dict[str, Any], action: dict[str, Any]) -> dict[str, Any]:
             raise IllegalAction("BAD_DECISION", str(exc),
                                 citation="ACTIONS.md decision channels") from exc
         raise
+    finally:
+        _FEED_CONTEXT.reset(feed_token)
     _check_campaign_victory(state)  # 5.2 sudden-death
     rolls_consumed = rng.advance_count - rolls_before
     state["meta"]["rng_advance"] = state["meta"].get("rng_advance", 0) + rolls_consumed
@@ -1477,9 +1491,14 @@ def _h_plan_done(state, side, args, rng) -> dict[str, Any]:
             f"{side}'s Plan has {actual_size} cards; Season {season!r} requires {target_size} (turn {state['meta']['turn']}).",
             "4.1.2",
         )
+    shuffled = side == "guelph" and friars_active(state)
+    if shuffled:
+        rng.shuffle(state["plan_stacks"][side], "friars_plan_shuffle")
+        state["meta"]["friars_plan_shuffled_turn"] = state["meta"]["turn"]
     advance_campaign_side_or_step(state)
     return {
-        "state_changes": {"plan_size": actual_size, "season": season},
+        "state_changes": {"plan_size": actual_size, "season": season,
+                          **({"plan_shuffled": True} if shuffled else {})},
         "rule_citation": "4.1.2",
     }
 
@@ -1498,6 +1517,12 @@ def _h_command_reveal(state, side, args, rng) -> dict[str, Any]:
             or state.get("pending_revolts") or state.get("pending_exiles")):
         raise IllegalAction("PENDING_DECISION", "Resolve pending decisions before revealing another card.", "4.2 / 4.8")
     stack = state["plan_stacks"][side]
+    # Saves from before IF-5 may already contain a completed, ordered S14 Plan.
+    # Shuffle it once before the first reveal, then resume normal revelation.
+    if (side == "guelph" and stack and friars_active(state)
+            and state["meta"].get("friars_plan_shuffled_turn") != state["meta"]["turn"]):
+        rng.shuffle(stack, "friars_plan_shuffle")
+        state["meta"]["friars_plan_shuffled_turn"] = state["meta"]["turn"]
     if not stack:
         # Both stacks empty: advance to end_campaign.
         if all(len(state["plan_stacks"][s]) == 0 for s in ("guelph", "ghibelline")):
@@ -2177,20 +2202,43 @@ def _run_fpd(state) -> dict[str, Any]:
     """
     summary: dict[str, Any] = {"feed": [], "disband": []}
     # 4.8.1 FEED (1.5.2 Sharing). CONF-013: two passes. PASS 1 — each Moved/
-    # Fought Lord feeds his OWN Forces first from his own Provender (preferred)
-    # then Loot. PASS 2 — co-located Friendly Mustered Lords MUST Share their
+    # Fought Lord feeds his OWN Forces first. PASS 2 — co-located Friendly
+    # Mustered Lords MUST Share their
     # remaining Provender/Loot to cover any shortfall ("a side may NOT withhold")
     # BEFORE a Lord is left Unfed. A Lord still short has consumed what was
     # available (own in pass 1 + shared in pass 2) AND shifts Service 1 box left.
     # The prior code fed each Lord from his OWN assets only (Sharing was deferred)
     # and, when Unfed, did not even consume his partial assets.
-    def _deduct_own(lrd, amt):
-        p = min(amt, lrd["assets"].get("Provender", 0))
-        lrd["assets"]["Provender"] = lrd["assets"].get("Provender", 0) - p
-        rem = amt - p
-        l = min(rem, lrd["assets"].get("Loot", 0))
-        lrd["assets"]["Loot"] = lrd["assets"].get("Loot", 0) - l
-        return p + l
+    from .battle import BattleDecisionContext
+    context = _FEED_CONTEXT.get()
+    if context is None:
+        context = BattleDecisionContext(callback=state.get("battle_callback"))
+
+    def spend_food(lid, donors, need, *, sharing):
+        paid = 0
+        spent = []
+        # Own mats keep their traditional order. Sharing defaults to Provender
+        # across sorted donors before Loot. Every available pair is selectable.
+        pairs = ([(oid, asset) for asset in ("Provender", "Loot") for oid in donors]
+                 if sharing else [(oid, asset) for oid in donors for asset in ("Provender", "Loot")])
+        while paid < need:
+            options = [{"from_lord_id": oid, "asset": asset} for oid, asset in pairs
+                       if state["lords"][oid]["assets"].get(asset, 0) > 0]
+            if not options:
+                break
+            info = {"lord_id": lid, "remaining": need - paid, "sharing": sharing}
+            if context.scripted:
+                choice = context.decide("feed_asset", state["lords"][lid]["side"], options, info)
+            elif len(options) > 1:
+                choice = context.decide_optional("feed_asset", state["lords"][lid]["side"],
+                                                 options, options[0], info)
+            else:
+                choice = options[0]
+            donor = state["lords"][choice["from_lord_id"]]
+            donor["assets"][choice["asset"]] -= 1
+            spent.append(choice)
+            paid += 1
+        return paid, spent
     # 1.5.1: Commander and Comune are one Lord for Feed. Count both
     # mats together, consume their provisions, and shift Service only once.
     feeding_ids = set()
@@ -2203,41 +2251,35 @@ def _run_fpd(state) -> dict[str, Any]:
     feeders = [(lid, state["lords"][lid]) for lid in sorted(feeding_ids)]
     residual = {}
     for lid, lord in feeders:
-        mats = [lord] + [c for c in state["lords"].values()
-                         if c.get("status") == "mustered" and c.get("comune_of")
-                         and c["comune_of"] in (lid, lord.get("name"))]
-        units = sum(sum(mat.get("forces", {}).values()) for mat in mats)
+        mats = [lid] + [cid for cid, c in state["lords"].items()
+                        if c.get("status") == "mustered" and c.get("comune_of")
+                        and c["comune_of"] in (lid, lord.get("name"))]
+        units = sum(sum(state["lords"][mat].get("forces", {}).values()) for mat in mats)
         need = 0 if units == 0 else (1 if units <= 6 else 2 if units <= 12 else 3)
-        paid = 0
-        for mat in mats:
-            paid += _deduct_own(mat, need - paid)
-        residual[lid] = {"units": units, "need": need, "short": need - paid}
+        paid, spent = spend_food(lid, mats, need, sharing=False)
+        residual[lid] = {"units": units, "need": need, "short": need - paid, "spent": spent}
     for lid, lord in feeders:
         info = residual[lid]
         short = info["short"]
         if short > 0:
-            side = lord.get("side"); loc = lord.get("location")
-            for asset in ("Provender", "Loot"):
-                if short <= 0:
-                    break
-                for oid in sorted(state["lords"]):
-                    ol = state["lords"][oid]
-                    if short <= 0:
-                        break
-                    if oid == lid or ol.get("side") != side \
-                            or ol.get("status") != "mustered" or ol.get("location") != loc:
-                        continue
-                    t = min(short, ol["assets"].get(asset, 0))
-                    if t:
-                        ol["assets"][asset] = ol["assets"].get(asset, 0) - t
-                        short -= t
+            donors = [oid for oid in sorted(state["lords"])
+                      if oid != lid and state["lords"][oid].get("side") == lord.get("side")
+                      and state["lords"][oid].get("status") == "mustered"
+                      and state["lords"][oid].get("location") == lord.get("location")]
+            paid, spent = spend_food(lid, donors, short, sharing=True)
+            short -= paid
+            info["spent"].extend(spent)
         if short <= 0:
             summary["feed"].append({"lord_id": lid, "units": info["units"],
-                                    "need": info["need"], "fed": True})
+                                    "need": info["need"], "fed": True, "spent": info["spent"]})
         else:
             vs.shift_service(state, lid, -1)
             summary["feed"].append({"lord_id": lid, "units": info["units"],
-                                    "need": info["need"], "fed": False, "service_shift": -1})
+                                    "need": info["need"], "fed": False, "service_shift": -1,
+                                    "spent": info["spent"]})
+
+    if context.trace:
+        summary["feed_decisions"] = list(context.trace)
 
     # 4.8.2 PAY (optional, Guelphs then Ghibellines). SMOKE-Inferno-057: the Pay
     # sub-step was auto-skipped; it is a player choice (No-Agent), so when either
@@ -5081,6 +5123,7 @@ def _h_end_reset(state, side, args, rng) -> dict[str, Any]:
             if isinstance(cid, str) and esd in state["decks"] and cid[:1] in ("F", "S"):
                 state["decks"][esd]["aow_discard"].append(cid)
     state.pop("active_events", None)
+    state["meta"].pop("friars_plan_shuffled_turn", None)
     # War/Treasurers permissions belong to one Levy, never another Turn.
     state.pop("war_declared_this_levy", None)
     state["meta"].pop("cta_extra_muster_lord", None)

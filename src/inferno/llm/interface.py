@@ -15,6 +15,7 @@ from ..actions import IllegalAction, dispatch
 from ..battle import ScriptedDecisionError
 from ..visibility import combat_visibility, strict_player_choices
 from .briefing import build_briefing_document, information_page, render_briefing
+from .filter import conceal_shuffle_rolls
 from .menu import ActionCatalog, acting_side
 from .player import ActionResult
 from .protocol import (compact, page_records, query_position, require_version,
@@ -74,7 +75,7 @@ class PlayerView:
 
 
 class DecisionView:
-    """A synchronous combat election: exact context and every legal option."""
+    """A synchronous player election: exact context and every legal option."""
     def __init__(self, state: dict, payload: dict, owner: str, parent_version: str, ordinal: int, hidden_mats: bool | None = None):
         self.side = owner
         self._state = state
@@ -168,7 +169,7 @@ def _require_live_elections(state: dict, action: dict) -> None:
     # player transport exposes the same elections via owner-bound DecisionView,
     # rather than letting the initiating faction pre-empt another player.
     args = action.get('args', {})
-    if any(args.get(k) for k in ('scripted_decisions', 'post_battle_decisions')) or any(
+    if any(args.get(k) for k in ('scripted_decisions', 'post_battle_decisions', 'feed_decisions')) or any(
             state.get(k) for k in ('approach_battle_decisions', 'approach_post_battle_decisions')):
         raise IllegalAction('OWNER_DECISION_REQUIRED',
             'Bulk tactical scripts are trusted-operator inputs. In player mode, make the same choices through each owning faction’s versioned DecisionView; no action was applied.')
@@ -234,6 +235,8 @@ def play_with_interface(state: dict, callback: Callable, *, max_strikes: int = 3
             state.pop('battle_callback', None)
         else:
             state['battle_callback'] = original
+    if 'rolls' in result:
+        result = {**result, 'rolls': conceal_shuffle_rolls(result['rolls'])}
     return ActionResult(applied=result, rejected=rejected)
 
 
@@ -241,7 +244,7 @@ def selection_session(state: dict, side: str, selection: dict, *,
                       decisions: list[dict] | None = None,
                       decision_request: dict | None = None,
                       hidden_mats: bool | None = None) -> dict:
-    """Stateless CLI/HTTP continuation for a selected combat action.
+    """Stateless CLI/HTTP continuation for a selected action's player choices.
 
     Replay from the unchanged base save with the prefix of explicit decision
     selections. Stop at the next unanswered election and return its full owner-

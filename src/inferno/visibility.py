@@ -9,6 +9,13 @@ from contextlib import contextmanager
 _COMBAT = ContextVar('inferno_combat_visibility', default=None)
 
 
+def friars_active(state: dict) -> bool:
+    """Recognize both duration records and older explicit S14 effect flags."""
+    return any(event.get('id') == 'S14'
+               or event.get('effect') == 'guelph_plan_blind_no_inspect'
+               for event in state.get('active_events', {}).get('this_campaign', []))
+
+
 def combat_view_scope(attacker_argument: str, defender_argument: str):
     """Reveal only actual participating mats during synchronous combat choices."""
     def decorate(function):

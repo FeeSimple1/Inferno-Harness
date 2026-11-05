@@ -71,5 +71,34 @@ reached game end with zero anomalies. Card-effect checks covered 52 cards
 and six seeds. Save/load covered all six scenarios and eight seeds.
 Malformed-input and state-injection fuzz checks also reported zero anomalies.
 
-Six of eight original Inferno findings are fixed. **INF-6** (Feed choices)
-and **IF-5** (Friars) remain open.
+## Feed and Friars batch — INF-6 and IF-5
+
+- **INF-6 — Feed choices**. The feeding faction chooses Provender or Loot
+  and, during sharing, the donor. All Moved/Fought Lords feed their own
+  Forces before sharing surplus. Commander and Comune mats count together.
+  The same choices work when a Command ends explicitly or automatically.
+  Scripts reject invalid and unused entries atomically. Player interfaces
+  route each election to its owner and can pause and resume from the
+  unchanged save. Results record every spent donor/resource pair.
+- **IF-5 — Friars**. S14 has its printed This Campaign classification.
+  Completing the Guelph Plan shuffles its chosen cards with the logged RNG.
+  Both factions' snapshots conceal the remaining order, and public results
+  and history conceal the shuffle indices. Commands reveal normally. Older
+  Held copies remain playable. An older save with a completed, active S14
+  Plan shuffles it once before revealing. Reset clears the effect.
+
+Twenty-nine regression cases cover explicit and automatic Feed, mixed
+resources, donor selection, own-food reservation, Commander/Comune feeding,
+invalid-script rollback and retries, both player perspectives with Hidden
+Mats, interrupted selections, and resumable sessions. Friars cases cover
+normal drawing, deterministic save/load, actual permutations, snapshots,
+public action results, version privacy, normal reveals, legacy saves and
+Reset. Twenty-seven fail on the preceding main revision and two preservation
+cases pass.
+
+Validation completed with 1,210 passing tests on Python 3.12. All six CI
+self-play scenarios reached game end with zero anomalies. Card-effect checks
+covered 52 cards and six seeds. Save/load covered all six scenarios and eight
+seeds. Malformed-input and state-injection checks also reported zero anomalies.
+
+All eight original Inferno findings are fixed.

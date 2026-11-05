@@ -51,6 +51,62 @@ response to a pending decision owed by the other side).
   minimal-discard variant when cargo exceeds Ships.
 - `cmd_pass` — 4.7.7
 
+### End-of-card Feed choices
+
+Every action that finishes a card runs Feed before Pay and Disband. The
+legal menu advertises an optional `feed_decisions` channel for Commands and
+their reactions, including automatic completion when actions run out.
+`feed_asset` chooses one food marker using a `choice` object with
+`from_lord_id` and `asset` (`"Provender"` or `"Loot"`). For example, ending
+Arezzo's card and feeding with his Loot uses this action.
+
+```json
+{
+  "action": "cmd_end_card",
+  "side": "guelph",
+  "args": {
+    "lord_id": "arezzo",
+    "feed_decisions": [
+      {"type": "feed_asset", "side": "guelph",
+       "choice": {"from_lord_id": "arezzo", "asset": "Loot"}}
+    ]
+  }
+}
+```
+
+The engine first feeds each Moved/Fought Lord from his own mats. A Commander
+and Comune count together. Only after that pass may short Lords consume
+surplus food from Friendly Mustered Lords at the same Locale. Each decision
+reports the feeding `lord_id`, `remaining` requirement and whether `sharing`
+is underway. The owner chooses any available donor/resource pair. Partial
+food is consumed before an Unfed Service shift, and expenditure stops at
+the exact requirement.
+
+Scripts run in Feed order and supply one entry per marker until their prefix
+ends, including forced markers encountered while entries remain. Invalid or
+unused entries reject the whole action. Trusted automation defaults to own
+Provender then Loot, followed by shared Provender then Loot in donor order.
+Player interfaces route each choice to the feeding faction, including the
+opponent of the active Lord. Interrupted selections roll back the Command.
+`fpd.feed` reports the actual `spent` donor/resource pairs. Explicit elections
+are recorded in `fpd.feed_decisions`. `selection_session` supports pausing,
+retrieving options and resuming Feed from the original unchanged save.
+
+### Friars and the Guelph Plan
+
+S14 Friars is a This Campaign Event. A drawn Event enters
+`active_events.this_campaign`. With Friars active, Guelphs select their
+cards normally and `plan_done` shuffles the completed stack using the
+logged replay RNG. Both players' snapshots conceal the remaining order,
+and Commands reveal normally. Player results and history conceal the
+shuffle rolls because those indices would reconstruct the stack.
+
+Older saves with S14 Held still offer its normal `play_event` action.
+Playing that copy activates the duration effect and, if planning is already
+complete, shuffles the remaining Guelph stack immediately. Reset discards
+S14 and clears its duration effect. An older save with an already active S14
+and a completed unshuffled Plan shuffles once before the first Guelph reveal.
+
 ### Campaign — March and Battle (Phase 3b)
 - `cmd_march` — 4.3
 - `approach_response` — 4.3.4 (Avoid / Withdraw / Battle). Optional arg

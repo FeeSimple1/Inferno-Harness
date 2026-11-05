@@ -24,6 +24,14 @@ from __future__ import annotations
 import copy
 from typing import Any
 
+from ..visibility import friars_active
+
+
+def conceal_shuffle_rolls(rolls: list[dict]) -> list[dict]:
+    """Keep the logged permutation private at every player-facing boundary."""
+    return [copy.deepcopy(roll) for roll in rolls
+            if roll.get("context") != "friars_plan_shuffle"]
+
 
 def hide_for_side(state: dict[str, Any], visible_side: str,
                   hidden_mats: bool = False) -> dict[str, Any]:
@@ -58,13 +66,24 @@ def hide_for_side(state: dict[str, Any], visible_side: str,
         deck["aow_held"] = [f"<hidden:{len(deck.get('aow_held', []))}>"] if deck.get("aow_held") else []
         # Plan stack is face-down until revealed; redact card identities,
         # keep position count.
-    if opp in s.get("plan_stacks", {}):
-        n = len(s["plan_stacks"][opp])
-        s["plan_stacks"][opp] = [f"<facedown:{i+1}>" for i in range(n)]
+    plans_to_hide = {opp}
+    meta = s.get("meta", {})
+    guelph_selecting = (meta.get("phase") == "campaign"
+                        and meta.get("campaign_step") == "plan"
+                        and meta.get("active_player") == "guelph")
+    if friars_active(s) and not guelph_selecting:
+        plans_to_hide.add("guelph")
+    for owner in plans_to_hide:
+        if owner in s.get("plan_stacks", {}):
+            n = len(s["plan_stacks"][owner])
+            s["plan_stacks"][owner] = [f"<facedown:{i+1}>" for i in range(n)]
 
     # Plans remain secret in the transcript too. Draw history can identify
     # held Events, and RNG seeds would allow reconstructing future draws.
     for entry in s.get("history", []):
+        # Shuffle indices reconstruct the concealed order from the submitted
+        # cards. Keep them in the operator replay log only.
+        entry["rolls"] = conceal_shuffle_rolls(entry.get("rolls", []))
         # Resolving a public Event/Exiles/placement may also resume a private
         # draw queue. Those continuation notes can reveal a newly Held card,
         # even in an action owned by the OTHER side (Exiles). Public effects
@@ -95,7 +114,7 @@ def hide_for_side(state: dict[str, Any], visible_side: str,
                     resolution[key] = ["<unrevealed>" for _ in resolution[key]]
     for entry in s.get("history", []):
         if entry.get("side") == opp:
-            for key in ("scripted_decisions", "post_battle_decisions"):
+            for key in ("scripted_decisions", "post_battle_decisions", "feed_decisions"):
                 entry.get("args", {}).pop(key, None)
     # Pending choices must be complete for their owner, but do not disclose
     # private choice payloads to the other player. Approach geometry is public.

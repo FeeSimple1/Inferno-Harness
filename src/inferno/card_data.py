@@ -333,7 +333,7 @@ GHIBELLINE_CARDS = [
         "event_name": "Friars sent to deceive Florentines",
         "capability_name": "Palvesari",
         "is_war": False,
-        "event_kind": "hold"
+        "event_kind": "this_campaign"
     },
     {
         "id": "S15",

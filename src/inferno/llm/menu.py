@@ -214,4 +214,8 @@ def submit_selection(state: dict, side: str, selection: dict,
                      hidden_mats: bool | None = None) -> dict:
     """Reject stale IDs BEFORE dispatch: no dice, resources or history change."""
     catalog = ActionCatalog(state, side, hidden_mats)
-    return dispatch(state, catalog.resolve(selection))
+    result = dispatch(state, catalog.resolve(selection))
+    if "rolls" in result:
+        from .filter import conceal_shuffle_rolls
+        result = {**result, "rolls": conceal_shuffle_rolls(result["rolls"])}
+    return result

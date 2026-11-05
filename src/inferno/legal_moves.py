@@ -54,6 +54,13 @@ _FIELD_POST_BATTLE_DECISIONS = ["post_battle_withdraw", "retreat_destination", "
 _SALLY_POST_BATTLE_DECISIONS = ["retreat_destination", "retreat_way"]
 
 
+def _with_feed_decisions(moves):
+    """Commands and their reactions can finish a card and enter Feed."""
+    for move in moves:
+        move.setdefault("accepts_decisions", {})["feed_decisions"] = ["feed_asset"]
+    return moves
+
+
 def _enum_pending_revolts(state):
     """If a Revolt-table choice (Submission / Rebellion fallback) or an Exiles
     slide is pending, return ONLY the resolution moves (they pause everything
@@ -175,7 +182,7 @@ def enumerate_legal(state: dict[str, Any]) -> list[dict[str, Any]]:
             if atk:
                 extra += _enum_held_events(state, atk)
             keys = {(m["action"], m.get("side"), str(m.get("args", {}))) for m in base}
-            return base + [m for m in extra if (m["action"], m.get("side"), str(m.get("args", {}))) not in keys]
+            return _with_feed_decisions(base + [m for m in extra if (m["action"], m.get("side"), str(m.get("args", {}))) not in keys])
     # Revolt-table decisions (1.4.2) and Exiles (1.4.4) MUST be resolved before
     # anything else — they pause the triggering action. Surface only those.
     rev = _enum_pending_revolts(state)
@@ -194,7 +201,7 @@ def enumerate_legal(state: dict[str, Any]) -> list[dict[str, Any]]:
                   "rule_citation": "4.3.5",
                   "accepts_decisions": {"post_battle_decisions": list(_SPOILS_DECISIONS)}}
                  for choice in ("besiege", "bypass")]
-        return moves + _enum_held_events(state, side)
+        return _with_feed_decisions(moves + _enum_held_events(state, side))
     phase = state["meta"].get("phase")
     if phase == "levy":
         moves = _enum_levy(state)
@@ -203,7 +210,9 @@ def enumerate_legal(state: dict[str, Any]) -> list[dict[str, Any]]:
             return moves
         return moves + _enum_held_events(state, current_side(state))
     if phase == "campaign":
-        return _enum_campaign(state) + _enum_held_events(state, current_side(state))
+        moves = _enum_campaign(state) + _enum_held_events(state, current_side(state))
+        return (_with_feed_decisions(moves) if current_campaign_step(state) == "command_phase"
+                else moves)
     if phase == "victory":
         return []
     return [{

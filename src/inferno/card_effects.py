@@ -1300,16 +1300,21 @@ def S13_event(state, side, args, rng):
 
 @register_event("S14")
 def S14_event(state, side, args, rng):
-    """S14 FRIARS sent to deceive Florentines (Hold).
+    """S14 FRIARS sent to deceive Florentines (This Campaign).
 
     'This Campaign Guelphs shuffle and play chosen Command cards
-    without inspecting stack.' Sets a flag the Plan UI/engine can
-    respect.
+    without inspecting stack.' Older saves may still have S14 Held. If
+    played after planning, shuffle the remaining stack immediately.
     """
     state.setdefault("active_events", {}).setdefault("this_campaign", []).append({
         "id": "S14", "side": side, "name": "Friars",
         "effect": "guelph_plan_blind_no_inspect",
     })
+    meta = state.get("meta", {})
+    if (meta.get("phase") == "campaign" and state.get("plan_stacks", {}).get("guelph")
+            and (meta.get("campaign_step") != "plan" or meta.get("active_player") != "guelph")):
+        rng.shuffle(state["plan_stacks"]["guelph"], "friars_plan_shuffle")
+        meta["friars_plan_shuffled_turn"] = meta["turn"]
     return {"applied": True, "flag_set": "S14_this_campaign"}
 
 

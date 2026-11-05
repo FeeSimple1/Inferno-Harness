@@ -77,6 +77,12 @@ class HarnessRNG:
             if value < limit:
                 return value % size
 
+    def shuffle(self, items: list, context: str) -> None:
+        """Fisher-Yates shuffle using the same logged replay stream as dice."""
+        for index in range(len(items) - 1, 0, -1):
+            other = self.randbelow(index + 1, context)
+            items[index], items[other] = items[other], items[index]
+
     def drain_log(self) -> list[DieRoll]:
         """Return the rolls since last drain, clearing the buffer."""
         out, self._log = self._log, []

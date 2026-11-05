@@ -134,7 +134,9 @@ def held_event_options(state, side: str) -> list[dict[str, Any]]:
     out = []
     for cid in state["decks"][side].get("aow_held", []):
         card = cd.AOW_CARDS_BY_ID.get(cid)
-        if not card or card.get("event_kind") != "hold":
+        # Earlier saves classified S14 as Held. Let those existing copies
+        # resolve into their corrected duration effect through the normal UI.
+        if not card or (card.get("event_kind") != "hold" and cid != "S14"):
             continue
         for args in event_argument_candidates(state, side, cid):
             if not _candidate_in_context(state, side, cid, args):
