@@ -404,7 +404,8 @@ def _enum_muster(state, side, only_lord=None) -> list[dict[str, Any]]:
         for tlid, tlord in own_on_calendar.items():
             # CONF-030 (3.4.1 EMERGENCY ARMY): a Podestà with Enemy Lords at
             # his Main Seat counts as Ready wherever his cylinder is.
-            if ((tlord.get("calendar_box") or 0) <= levy_box
+            if (((tlord.get("calendar_box") or 0) <= levy_box
+                    and tlid not in state["calendar"].get("off_right", []))
                     or sd.emergency_army_ready(state, tlord)):
                 for seat in tlord.get("seats", []):
                     # SMOKE-Inferno-087: only offer Seats where the Muster is
@@ -602,7 +603,8 @@ def _enum_cta(state, side) -> list[dict[str, Any]]:
                 # 3.4.1"): cylinder at/left of the Levy marker, or the
                 # Emergency Army waiver (Enemy Lords at a Podestà's Main Seat).
                 _levy_box = state["calendar"]["levy_box"]
-                if ((lord.get("calendar_box") or 0) > _levy_box
+                if (((lord.get("calendar_box") or 0) > _levy_box
+                        or lid in state["calendar"].get("off_right", []))
                         and not sd.emergency_army_ready(state, lord)):
                     continue
                 for seat in lord.get("seats", []):

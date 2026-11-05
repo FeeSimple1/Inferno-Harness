@@ -102,3 +102,34 @@ covered 52 cards and six seeds. Save/load covered all six scenarios and eight
 seeds. Malformed-input and state-injection checks also reported zero anomalies.
 
 All eight original Inferno findings are fixed.
+
+## Second audit, batch 1 — INF2-1, INF2-2 and INF2-4
+
+- **INF2-1:** Losing a Lord's final Force outside combat invokes temporary
+  At Service Limit Disband under 1.6/3.3.2. Advanced Vassal expiry and Tau
+  Company discard clear the mat and place the cylinder for later Muster,
+  without Beyond-Service Revolt/Treachery. Surviving regular or Routed Forces
+  keep the Lord on map. Actual Beyond-Service penalties still apply normally.
+- **INF2-2:** At Service Limit placement counts from the current Levy box,
+  or the next box during Campaign, as specified by the erratum.
+- **INF2-4:** Late Disband and all three Muster paths place cylinders and
+  Service markers off-right rather than clamping to box 16. Shared placement
+  helpers maintain Calendar indexes. An off-right cylinder is not Ready in
+  either normal Muster or Allies menus/handlers; printed Emergency Army and
+  Commander-to-Arms exceptions remain available. One leftward Service shift
+  returns an off-right marker to 16.
+
+Nineteen new regressions cover both phases, Vassal and Tau removal, surviving
+Forces, political consequences, phase-relative placement, right-edge overflow,
+ordinary/Commander/Allies Muster, save/load, leftward Service shifts, menu
+agreement and rejected-action rollback. Thirteen fail on the preceding main;
+six preservation cases pass. One older Vassal test now expects temporary
+Calendar placement and no Revolt for an empty Lord, correcting its old premise.
+
+Validation: 1,229 tests pass. All six CI self-play scenarios end with zero
+anomalies. The configured card-effect, save/load, malformed-input and
+state-injection fuzz checks also report zero anomalies. New tests pass Ruff;
+changed source adds no Ruff diagnostics relative to the preceding main.
+
+Second-audit progress: **3 of 4 Inferno groups fixed**. INF2-3, voluntary Reset
+Arts of War discards, remains open. The original eight groups remain fixed.

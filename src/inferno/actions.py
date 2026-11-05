@@ -662,10 +662,6 @@ def _h_levy_disband(state, side, args, rng) -> dict[str, Any]:
     for lid in disbanded_at:
         _disband_at_service_limit(state, lid, levy_box)
     vassal_disbands, empty_lords = vs.disband_expired(state, side)
-    if empty_lords:
-        extra = _trigger_disband_revolt_and_treachery(state, empty_lords, rng, "vassal_disband")
-        revolt_rolls.extend(extra["revolt_rolls"])
-        treachery_added.extend(extra["treachery_added"])
 
     return {
         "state_changes": {
@@ -673,6 +669,7 @@ def _h_levy_disband(state, side, args, rng) -> dict[str, Any]:
             "at_service_limit_disbanded": disbanded_at,
             "treachery_added": treachery_added,
             "vassal_disbands": vassal_disbands,
+            "empty_lords_disbanded": empty_lords,
         },
         "rolls": revolt_rolls,
         "rule_citation": "3.3.1 / 3.3.2 (Errata 10 Apr 2023)",
@@ -761,7 +758,7 @@ def _disband_beyond_service_limit(state, lid: str, *, disband_attached: bool = T
         # Place cylinder Service-Rating boxes ahead of current Turn.
         sr = lord.get("ratings", {}).get("S", 0)
         turn = state["meta"]["turn"]
-        new_box = min(turn + sr, 16)
+        new_box = turn + sr
         lord["status"] = "on_calendar"
         _place_cylinder(state, lid, new_box)
     else:
@@ -783,9 +780,13 @@ def _place_service(state, lid, box) -> None:
             b["services"].remove(lid)
     for edge in ("off_left_service", "off_right_service"):
         state["calendar"][edge] = [x for x in state["calendar"].get(edge, []) if x != lid]
-    state["lords"][lid]["service_box"] = box
-    if box is not None:
-        _box(state, box)["services"].append(lid)
+    if box is not None and box > 16:
+        state["lords"][lid]["service_box"] = None
+        state["calendar"]["off_right_service"].append(lid)
+    else:
+        state["lords"][lid]["service_box"] = box
+        if box is not None:
+            _box(state, box)["services"].append(lid)
 
 
 def _place_cylinder(state, lid, box) -> None:
@@ -796,14 +797,19 @@ def _place_cylinder(state, lid, box) -> None:
             b["cylinders"].remove(lid)
     for edge in ("off_left", "off_right"):
         state["calendar"][edge] = [x for x in state["calendar"].get(edge, []) if x != lid]
-    state["lords"][lid]["calendar_box"] = box
-    if box is not None:
-        _box(state, box)["cylinders"].append(lid)
+    if box is not None and box > 16:
+        state["lords"][lid]["calendar_box"] = None
+        state["calendar"]["off_right"].append(lid)
+    else:
+        state["lords"][lid]["calendar_box"] = box
+        if box is not None:
+            _box(state, box)["cylinders"].append(lid)
 
 
 def _disband_at_service_limit(state, lid: str, levy_box: int) -> None:
     """3.3.2 per Errata: Lord whose Service marker is in same box as Levy
-    marker Disbands; cylinder placed Service-Rating boxes right of current.
+    marker Disbands; cylinder placed Service-Rating boxes right of current
+    Levy, or the next box during Campaign.
     Does NOT trigger Revolt or Treachery."""
     lord = state["lords"][lid]
     if lord.get("comune_of"):
@@ -835,9 +841,9 @@ def _disband_at_service_limit(state, lid: str, levy_box: int) -> None:
     # At-Service-Limit Disband previously left them, so a re-Mustered Lord
     # could return phantom-Bypassing (exempt from the co-location invariant).
     lord["flags"] = {}
-    # Cylinder placed S boxes right of current Turn.
+    # The Campaign's next Levy is one box ahead (3.3.2 erratum).
     sr = lord.get("ratings", {}).get("S", 0)
-    new_box = min(levy_box + sr, 16)
+    new_box = levy_box + sr + int(state["meta"].get("phase") == "campaign")
     lord["status"] = "on_calendar"
     _place_cylinder(state, lid, new_box)
 
@@ -980,7 +986,8 @@ def _h_levy_muster_lord(state, side, args, rng) -> dict[str, Any]:
     # EMERGENCY ARMY): a Podestà with Enemy Lords at his Main Seat is treated
     # as Ready wherever his cylinder is.
     levy_box = state["calendar"]["levy_box"]
-    if ((target_lord.get("calendar_box") or 0) > levy_box
+    if (((target_lord.get("calendar_box") or 0) > levy_box
+            or tlid in state["calendar"].get("off_right", []))
             and not sd.emergency_army_ready(state, target_lord)):
         raise IllegalAction(
             "TARGET_NOT_READY",
@@ -1022,7 +1029,7 @@ def _h_levy_muster_lord(state, side, args, rng) -> dict[str, Any]:
         # Remove cylinder from Calendar box; place Service marker S boxes right.
         _place_cylinder(state, tlid, None)
         sr = target_lord.get("ratings", {}).get("S", 0)
-        new_svc = min(state["meta"]["turn"] + sr, 16)
+        new_svc = state["meta"]["turn"] + sr
         _place_service(state, tlid, new_svc)
         # Starting Forces/Assets/Vassals from static_data
         canonical = target_lord["name"]
@@ -1397,8 +1404,7 @@ def _h_campaign_discard_capability(state, side, args, rng) -> dict[str, Any]:
                 removed, empty = vs.discard_tau(state)
                 changes["altopascio_disbanded"] = removed
                 if empty:
-                    changes["lord_disband_consequences"] = _trigger_disband_revolt_and_treachery(
-                        state, empty, rng, "tau_discard")
+                    changes["empty_lords_disbanded"] = empty
             return {
                 "state_changes": changes,
                 "rule_citation": "4.0 STEP A",
@@ -2363,7 +2369,7 @@ def _fpd_run_disband(state, summary: dict[str, Any]) -> None:
     for side in ("guelph", "ghibelline"):
         removed, empty = vs.disband_expired(state, side)
         summary.setdefault("vassal_disbands", []).extend(removed)
-        beyond_lids.extend(empty)
+        summary.setdefault("empty_lords_disbanded", []).extend(empty)
     # 3.3.1 Revolt & Treachery for Beyond-Service Disbands (4.8.2 Errata). Uses a
     # state-seeded RNG and updates rng_advance for replay determinism (this path
     # is reached without a handler rng — mirrors the post-Battle helper).
@@ -4616,9 +4622,10 @@ def _check_disband_on_zero_forces(state, lord_id: str) -> bool:
         return False
     if lord["status"] != "mustered":
         return False
-    if sum((lord.get("forces") or {}).values()) > 0:
+    if (sum((lord.get("forces") or {}).values())
+            + sum((lord.get("routed_units") or {}).values()) > 0):
         return False
-    _disband_beyond_service_limit(state, lord_id)
+    _disband_at_service_limit(state, lord_id, state["calendar"]["levy_box"])
     return True
 
 
@@ -5705,7 +5712,7 @@ def _h_cta_commander_arms(state, side, args, rng) -> dict[str, Any]:
             commander["location"] = LEADING_CITY[side]
             _place_cylinder(state, commander_id, None)
             sr = commander.get("ratings", {}).get("S", 0)
-            new_svc = min(state["meta"]["turn"] + sr, 16)
+            new_svc = state["meta"]["turn"] + sr
             _place_service(state, commander_id, new_svc)
             # Starting Forces/Assets/Vassals
             canonical = commander["name"]
@@ -5870,7 +5877,8 @@ def _h_cta_allies(state, side, args, rng) -> dict[str, Any]:
         # action are waived (Playbook: "by the usual rules (3.4.1, including
         # needing to be Ready on the Calendar) with automatic Fealty success").
         _levy_box = state["calendar"]["levy_box"]
-        if ((tlord.get("calendar_box") or 0) > _levy_box
+        if (((tlord.get("calendar_box") or 0) > _levy_box
+                or target in state["calendar"].get("off_right", []))
                 and not sd.emergency_army_ready(state, tlord)):
             raise IllegalAction(
                 "TARGET_NOT_READY",
@@ -5890,7 +5898,7 @@ def _h_cta_allies(state, side, args, rng) -> dict[str, Any]:
         tlord["location"] = seat
         _place_cylinder(state, target, None)
         sr = tlord.get("ratings", {}).get("S", 0)
-        new_svc = min(state["meta"]["turn"] + sr, 16)
+        new_svc = state["meta"]["turn"] + sr
         _place_service(state, target, new_svc)
         canonical = tlord["name"]
         base = sd.LORDS.get(canonical, {})

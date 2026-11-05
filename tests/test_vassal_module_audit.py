@@ -188,7 +188,8 @@ def test_advanced_campaign_expiry_and_zero_force_disband():
     A._fpd_run_disband(s, result)
     assert ("firenze", "Prato Comune") in result["vassal_disbands"]
     assert lord["status"] != "mustered"
-    assert "disband_revolts" in result
+    assert lord["status"] == "on_calendar" and lord["calendar_box"] == 5
+    assert "disband_revolts" not in result and "disband_treachery" not in result
 
 
 def test_off_calendar_lord_still_shifts_vassals_and_reenters():
