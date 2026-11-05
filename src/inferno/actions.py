@@ -2920,6 +2920,64 @@ def _h_cmd_march(state, side, args, rng) -> dict[str, Any]:
     }, state, side, citation="4.3")
 
 
+def _avoid_preview(state, side, info, args) -> dict[str, Any]:
+    """Validate a solo/group Avoid and compute its mandatory discards."""
+    lid = args.get("lord_id")
+    companions = args.get("with_lords", [])
+    if (not isinstance(companions, list)
+            or any(not isinstance(m, str) for m in companions)
+            or len(set(companions)) != len(companions) or lid in companions):
+        raise IllegalAction("BAD_AVOID_GROUP", "with_lords must list distinct other Lords.", "4.3.4")
+    group = [lid, *companions]
+    source = info["locale"]
+    entries = []
+    for member in group:
+        lord = state["lords"].get(member)
+        entry = next((p for p in state.get("pending", [])
+                      if p.get("type") == "approach_response" and p.get("side") == side
+                      and p["info"].get("lord_id") == member
+                      and p["info"].get("locale") == source), None)
+        if (not lord or lord.get("side") != side or lord.get("status") != "mustered"
+                or lord.get("location") != source or entry is None):
+            raise IllegalAction("BAD_AVOID_GROUP", f"{member} cannot join this Avoid.", "4.3.4")
+        if lord.get("flags", {}).get("ambush_forced"):
+            raise IllegalAction("AMBUSH_FORCED", f"{member} may not Avoid after Ambush.", "F1/S1")
+        entries.append(entry)
+    destination = args.get("destination")
+    if not isinstance(destination, str) or not destination:
+        raise IllegalAction("MISSING_DEST", "Avoid requires destination.", "4.3.4")
+    ways = [w for n, w in sd.adjacent_to(source) if n == destination and w in ("road", "track")]
+    if not ways or destination not in state["locales"]:
+        raise IllegalAction("NOT_ADJACENT", f"{destination} not adjacent to {source}.", "4.3.4")
+    requested = args.get("way_type")
+    if requested is not None and requested not in ways:
+        raise IllegalAction("BAD_WAY", f"No {requested} to {destination}.", "4.3.4")
+    # SMOKE-Inferno-009 / SMOKE-Inferno-055: do not reuse the Approach Way.
+    allowed = [w for w in ways if all(not sd.avoid_along_approach_way(
+        destination, p["info"].get("approached_from"), [w], p["info"].get("approached_via"))
+        for p in entries)]
+    if not allowed or (requested is not None and requested not in allowed):
+        raise IllegalAction("AVOID_ALONG_APPROACH_WAY", "May not reuse the Approach Way.", "4.3.4")
+    way = requested or allowed[0]
+    target = state["locales"][destination]
+    for member in group:
+        if target.get("type") == "outpost" and destination not in state["lords"][member].get("seats", []):
+            raise IllegalAction("OUTPOST_NOT_OWN", "Only its owner may enter an Outpost.", "1.3.1")
+    if any(state["lords"][oid]["side"] != side
+           and not state["lords"][oid].get("flags", {}).get("in_stronghold")
+           for oid in target.get("lords_present", [])):
+        raise IllegalAction("AVOID_INTO_ENEMY_LOCALE", "An Unbesieged Enemy Lord blocks Avoid.", "4.3.4")
+    from .battle import unladen_prov_to_keep
+    keep = unladen_prov_to_keep(state, group, way)
+    discards = {}
+    for member in group:
+        assets = state["lords"][member]["assets"]
+        discards[member] = {"Loot": assets.get("Loot", 0),
+                            "Provender": assets.get("Provender", 0) - keep[member]}
+    return {"group": group, "entries": entries, "destination": destination,
+            "way_type": way, "discards": discards}
+
+
 def _h_approach_response(state, side, args, rng) -> dict[str, Any]:
     """4.3.4: Inactive Lord chooses Avoid / Withdraw / Stand.
 
@@ -2927,6 +2985,8 @@ def _h_approach_response(state, side, args, rng) -> dict[str, Any]:
       lord_id:     responding Lord (must match a pending entry's info.lord_id)
       choice:      'avoid' | 'withdraw' | 'stand'
       destination: required if choice='avoid' (adjacent Locale)
+      with_lords:  optional other pending Lords Avoiding together with Shared Carts
+      way_type:    optional Road/Track selection when more than one Way connects
     """
     lid = args.get("lord_id")
     choice = args.get("choice")
@@ -2950,65 +3010,53 @@ def _h_approach_response(state, side, args, rng) -> dict[str, Any]:
             break
     if idx is None:
         raise IllegalAction("NO_PENDING", f"No pending approach_response for {lid}.", "4.3.4")
-    # Peek (do NOT pop yet): the Avoid/Withdraw validations below may raise, and
-    # dispatch has no rollback — popping here would strand the Approach window
-    # on a rejected response. The entry is consumed only after validation.
+    # Peek (do NOT pop yet): validate every response before consuming it.
     entry = pending[idx]
     info = entry["info"]
     locale_name = info["locale"]
-    approached_via = info["approached_via"]
     lord = state["lords"][lid]
+    response_entries = [entry]
+    avoid_changes = {}
 
     if choice == "avoid":
-        # 4.3.4 AVOID BATTLE restrictions:
-        #   - May NOT use the Way the Active Lord just used.
-        #   - May NOT enter a Locale with another Unbesieged Enemy Lord.
-        #   - Only UNLADEN Lords may Avoid.
-        dest_name = args.get("destination")
-        if not dest_name:
-            raise IllegalAction("MISSING_DEST", "Avoid requires destination.", "4.3.4")
-        # Unladen check
-        loot = lord["assets"].get("Loot", 0)
-        if loot > 0:
-            raise IllegalAction("LADEN_CANNOT_AVOID", f"{lid} has Loot={loot}; only Unladen may Avoid.", "4.3.4")
-        # Adjacency
-        adj = sd.adjacent_to(locale_name)
-        ways_to = [(n, w) for n, w in adj if n == dest_name]
-        if not ways_to:
-            raise IllegalAction("NOT_ADJACENT", f"{dest_name} not adjacent to {locale_name}.", "4.3.4")
-        # SMOKE-Inferno-009 / SMOKE-Inferno-055: Avoid-Battle may NOT retreat back
-        # along the Way the Active Lord just used to approach. Now enforced via
-        # the recorded approached_from + the shared predicate (was a no-op).
-        if sd.avoid_along_approach_way(dest_name, info.get("approached_from"),
-                                       [w for _, w in ways_to], approached_via):
-            raise IllegalAction(
-                "AVOID_ALONG_APPROACH_WAY",
-                f"{lid} may not Avoid back along the Way the Active Lord approached "
-                f"({approached_via}) to {dest_name}.",
-                "4.3.4")
-        # 4.3.4: may NOT Avoid into a Locale holding an UNBESIEGED Enemy Lord.
-        # An Enemy Lord shut inside a Stronghold (Besieged) does not block the
-        # Avoid — this matches the enumerator (_enum_approach_response), which
-        # only filters out enemies with in_stronghold == False.
-        target_loc = state["locales"][dest_name]
-        for other_id in target_loc.get("lords_present", []):
-            other = state["lords"][other_id]
-            if (other["side"] != side
-                    and not other.get("flags", {}).get("in_stronghold")):
-                raise IllegalAction(
-                    "AVOID_INTO_ENEMY_LOCALE",
-                    f"Cannot Avoid into {dest_name}; Unbesieged Enemy Lord {other_id} present.",
-                    "4.3.4",
-                )
-        # Move the Lord
+        preview = _avoid_preview(state, side, info, args)
+        group = preview["group"]
+        response_entries = preview["entries"]
+        dest_name = preview["destination"]
         src = state["locales"][locale_name]
-        if lid in src.get("lords_present", []):
-            src["lords_present"].remove(lid)
-        target_loc.setdefault("lords_present", []).append(lid)
-        lord["location"] = dest_name
-        lord.setdefault("flags", {})["moved_fought"] = True
-        lord["flags"].pop("bypassing", None)
+        target_loc = state["locales"][dest_name]
+        pool = {"Loot": 0, "Provender": 0}
+        for member, discarded in preview["discards"].items():
+            assets = state["lords"][member]["assets"]
+            for asset, amount in discarded.items():
+                if amount:
+                    assets[asset] -= amount
+                    pool[asset] += amount
+        attackers = [m for m in src.get("lords_present", [])
+                     if state["lords"][m]["side"] != side
+                     and state["lords"][m].get("status") == "mustered"
+                     and not state["lords"][m].get("flags", {}).get("in_stronghold")]
+        from .battle import distribute_spoils
+        allocation = distribute_spoils(state, pool, attackers)
+        bypass = (target_loc.get("type") in _STRONGHOLD_TYPES
+                  and not target_loc.get("ruins") and not target_loc.get("siege")
+                  and not _is_friendly_locale(state, target_loc, side))
+        if bypass and not any(m.get("side") == side for m in target_loc.get("bypass", [])):
+            target_loc.setdefault("bypass", []).append({"side": side, "lord_id": lid})
+        for member in group:
+            moving = state["lords"][member]
+            if member in src.get("lords_present", []):
+                src["lords_present"].remove(member)
+            target_loc.setdefault("lords_present", []).append(member)
+            moving["location"] = dest_name
+            moving.setdefault("flags", {})["moved_fought"] = True
+            moving["flags"].pop("bypassing", None)
+            if bypass:
+                moving["flags"]["bypassing"] = dest_name
         _sweep_freed_stronghold(state, locale_name)
+        avoid_changes = {"avoided": group, "destination": dest_name,
+                         "way_type": preview["way_type"], "discarded_as_spoils": pool,
+                         "spoils_allocation": allocation, "bypassing": bypass}
 
     elif choice == "withdraw":
         # 4.3.4 WITHDRAW: into a Friendly Stronghold at this Locale.
@@ -3044,7 +3092,8 @@ def _h_approach_response(state, side, args, rng) -> dict[str, Any]:
     # Validated and applied — only NOW consume the pending entry and record any
     # operator-supplied Battle decisions. Deferring this past the validations
     # means a rejected response leaves the Approach window intact (no leak).
-    pending.remove(entry)
+    for response in response_entries:
+        pending.remove(response)
     _sd_in = args.get("scripted_decisions")
     if _sd_in:
         state.setdefault("approach_battle_decisions", {}) \
@@ -3060,12 +3109,15 @@ def _h_approach_response(state, side, args, rng) -> dict[str, Any]:
                  and p["info"]["locale"] == locale_name]
     if remaining:
         return {
-            "state_changes": {"lord_id": lid, "choice": choice, "remaining_responses": len(remaining)},
+            "state_changes": {"lord_id": lid, "choice": choice,
+                              "remaining_responses": len(remaining), **avoid_changes},
             "rule_citation": "4.3.4",
         }
 
     # All responses gathered. Determine whether Battle resolves.
-    return _finalize_approach(state, locale_name, info["approaching_lord"], side)
+    result = _finalize_approach(state, locale_name, info["approaching_lord"], side)
+    result["state_changes"].update(avoid_changes)
+    return result
 
 
 def _finalize_approach(state, locale_name, approaching_lord, defender_side) -> dict[str, Any]:
@@ -3311,9 +3363,9 @@ def _retreat_candidates(state, lid, battle_locale, loser_side,
     for name, way in sd.adjacent_to(battle_locale):
         if way not in ("road", "track"):
             continue  # no Sail retreat
-        if approached_from and name == approached_from:
+        if name == approached_from and (approached_via is None or way == approached_via):
             continue  # Defenders may not retreat back along the Approach Way
-        if dest_ok(name):
+        if name not in candidates and dest_ok(name):
             candidates.append(name)
     candidates.sort(key=lambda nm: (not _is_friendly_locale(state, state["locales"][nm], loser_side), nm))
     return candidates
@@ -3368,9 +3420,8 @@ def _apply_post_battle(state, result, attackers: list[str], defenders: list[str]
     Withdraw into a Friendly Stronghold vs Retreat (4.4.3 / 11.2), and the
     Retreat destination among legal Locales (4.4.5) — flow through a
     BattleDecisionContext built from `decisions` (FIFO scripted list) and
-    `callback`. Both are optional, so absent operator input the behaviour is
-    byte-identical: the withdraw election defaults to meta.post_battle_withdraw
-    and the destination to the deterministic leftmost Locale.
+    `callback`. Without operator input, the withdraw election defaults to
+    meta.post_battle_withdraw and the destination to the leftmost legal Locale.
     """
     _bc = state["meta"].get("approach_breadcrumb") or {}
     _approached_from = _bc.get("approached_from")
@@ -3455,6 +3506,7 @@ def _apply_post_battle(state, result, attackers: list[str], defenders: list[str]
         and state["lords"][_o]["side"] == _loser_side
     )
     _retreated_for_shift: list[str] = []
+    retreat_spoils: dict[tuple[str, str], list[str]] = {}
     for lid in losers_ids:
         if lid not in state["lords"]:
             continue
@@ -3518,8 +3570,21 @@ def _apply_post_battle(state, result, attackers: list[str], defenders: list[str]
                 _remove_lord(lid, losing_battle_side=True)
                 continue
             # Retreated.
-            transfer_spoils(state, lid, winners_alive,
-                            retreated=True, conceded=conceded, withdrew=False)
+            ways = list(dict.fromkeys(w for n, w in sd.adjacent_to(battle_locale)
+                                      if n == dest and w in ("road", "track")))
+            if not is_marching_attacker and dest == _approached_from:
+                ways = [w for w in ways if w != _approached_via]
+            retreat_way = (_approached_via if is_marching_attacker and _approached_via in ways
+                           else (ways[0] if ways else "road"))
+            if len(ways) > 1:
+                retreat_way = bdc.decide_optional(
+                    "retreat_way", lord["side"], options=ways, default=retreat_way,
+                    info={"lord_id": lid, "destination": dest})
+            if conceded:
+                retreat_spoils.setdefault((dest, retreat_way), []).append(lid)
+            else:
+                transfer_spoils(state, lid, winners_alive,
+                                retreated=True, conceded=False, withdrew=False)
             # Relocate the Lord OFF the battle Locale to the chosen destination.
             if battle_locale and battle_locale in state["locales"]:
                 bl = state["locales"][battle_locale]
@@ -3534,6 +3599,16 @@ def _apply_post_battle(state, result, attackers: list[str], defenders: list[str]
             # with a Carroccio shifts Service just one box left" — so the
             # 1-box shift is decided only once every loser's fate is known.
             _retreated_for_shift.append(lid)
+    # Conceding Lords who Retreat together Share Carts (1.5.2 / 4.3.2).
+    from .battle import unladen_prov_to_keep
+    for (dest, way), members in retreat_spoils.items():
+        members = [m for m in members if state["lords"][m].get("status") == "mustered"
+                   and state["lords"][m].get("location") == dest]
+        keep = unladen_prov_to_keep(state, members, way)
+        for member in members:
+            transfer_spoils(state, member, winners_alive, retreated=True,
+                            conceded=True, withdrew=False, retreat_way_type=way,
+                            prov_to_keep=keep[member])
     # CONF-028: if the side Conceded and its (retained) Carroccio Retreated,
     # EVERY Retreated Lord of that side shifts exactly one box; otherwise each
     # rolls the normal 1-3 box die (4.4.3). Previously only the Lord personally

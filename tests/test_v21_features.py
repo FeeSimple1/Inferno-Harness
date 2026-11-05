@@ -287,8 +287,7 @@ class TestAvoidApproachWay:
         # no recorded origin (e.g. Sally sortie) -> not blocked.
         assert sd.avoid_along_approach_way("A", None, ["track"], "track") is False
 
-    def test_handler_blocks_retreat_along_approach_way(self):
-        from inferno.actions import IllegalAction
+    def _blocked_approach(self):
         # Altopascio <-> Lucca is a single 'track' Way. Active approached Lucca
         # FROM Altopascio via track; the Avoiding Lord may not retreat to
         # Altopascio along that same Way.
@@ -304,15 +303,24 @@ class TestAvoidApproachWay:
                      "locale": "Lucca", "approached_via": "track",
                      "approached_from": "Altopascio"},
         })
+        return s, avoider
+
+    def test_handler_blocks_retreat_along_approach_way(self):
+        from inferno.actions import IllegalAction
+        s, avoider = self._blocked_approach()
         with pytest.raises(IllegalAction) as exc:
             A.dispatch(s, {"action": "approach_response", "side": "ghibelline",
                            "args": {"lord_id": avoider, "choice": "avoid",
                                     "destination": "Altopascio"}})
         assert exc.value.code == "AVOID_ALONG_APPROACH_WAY"
 
-    def test_both_sites_use_shared_predicate(self):
-        assert "avoid_along_approach_way" in inspect.getsource(A._h_approach_response)
-        assert "avoid_along_approach_way" in inspect.getsource(LM)
+    def test_menu_excludes_retreat_along_approach_way(self):
+        s, _ = self._blocked_approach()
+        responses = [m["args"] for m in LM.enumerate_legal(s)
+                     if m["action"] == "approach_response"]
+        assert any(a["choice"] == "stand" for a in responses)
+        assert not any(a["choice"] == "avoid" and a["destination"] == "Altopascio"
+                       for a in responses)
 
     def test_marker_present(self):
         assert "SMOKE-Inferno-055" in inspect.getsource(sd.avoid_along_approach_way)

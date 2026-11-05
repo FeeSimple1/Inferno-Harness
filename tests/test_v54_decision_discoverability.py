@@ -118,7 +118,7 @@ class TestDecisionDiscoverability:
         acc = stand["accepts_decisions"]
         assert "concede" in acc["scripted_decisions"]
         assert acc["post_battle_decisions"] == ["post_battle_withdraw",
-                                                "retreat_destination"]
+                                                "retreat_destination", "retreat_way"]
 
     def test_avoid_move_has_no_decision_channel(self):
         s = self._approach_pending()

@@ -49,8 +49,8 @@ _STORM_DECISIONS = [
 _SALLY_DECISIONS = [
     "concede", "sally_reserve_add", "select_target_unit", "absorb_target",
 ]
-_FIELD_POST_BATTLE_DECISIONS = ["post_battle_withdraw", "retreat_destination"]
-_SALLY_POST_BATTLE_DECISIONS = ["retreat_destination"]
+_FIELD_POST_BATTLE_DECISIONS = ["post_battle_withdraw", "retreat_destination", "retreat_way"]
+_SALLY_POST_BATTLE_DECISIONS = ["retreat_destination", "retreat_way"]
 
 
 def _enum_pending_revolts(state):
@@ -1275,40 +1275,44 @@ def _enum_approach_response(state, pending) -> list[dict[str, Any]]:
         "rule_citation": "4.3.4",
     })
 
-    # SMOKE-Inferno-011: Avoid Battle pre-check — Unladen + adjacent + not into enemy.
-    # SMOKE-Inferno-095: a Lord pinned by Ambush (F1/S1) may NOT Avoid (handler
-    # rejects it), so the menu must not offer Avoid for an ambush_forced Lord.
-    try:
-        if (lord and lord["assets"].get("Loot", 0) == 0
-                and not lord.get("flags", {}).get("ambush_forced")):
-            for neighbour, way_type in sd.adjacent_to(locale_name):
-                # SMOKE-Inferno-055: do not offer an Avoid that retreats back
-                # along the Way the Active Lord approached (shared predicate).
-                ways_to_n = [w for n, w in sd.adjacent_to(locale_name) if n == neighbour]
-                if sd.avoid_along_approach_way(neighbour, info.get("approached_from"),
-                                               ways_to_n, info.get("approached_via")):
-                    continue
-                target = state["locales"].get(neighbour, {})
-                # No Avoiding into an enemy-occupied Locale
-                has_enemy = any(
-                    state["lords"][oid]["side"] != side
-                    and state["lords"][oid].get("flags", {}).get("in_stronghold", False) is False
-                    for oid in target.get("lords_present", [])
-                )
-                if has_enemy:
-                    continue
-                # Outpost gate: only owning Lord may enter
-                if target.get("type") == "outpost" and neighbour not in lord.get("seats", []):
-                    continue
-                out.append({
-                    "action": "approach_response", "side": side,
-                    "args": {"lord_id": lid, "choice": "avoid",
-                             "destination": neighbour},
-                    "description": f"{lid} Avoids Battle to {neighbour} ({way_type}).",
-                    "rule_citation": "4.3.4",
-                })
-    except (KeyError, AttributeError, TypeError):
-        pass
+    # SMOKE-Inferno-011 / SMOKE-Inferno-095: the execution preview
+    # validates each Road/Track and every chosen co-Avoider. Discarding
+    # Loot/excess food is part of Avoid, so a loaded mat is not excluded.
+    if lord and not lord.get("flags", {}).get("ambush_forced"):
+        from itertools import combinations
+        from .actions import IllegalAction, _avoid_preview
+        for neighbour, way_type in dict.fromkeys(sd.adjacent_to(locale_name)):
+            if way_type not in ("road", "track"):
+                continue
+            target = state["locales"].get(neighbour, {})
+            others = [p["info"]["lord_id"] for p in state.get("pending", [])
+                      if p.get("type") == "approach_response" and p.get("side") == side
+                      and p["info"].get("locale") == locale_name
+                      and p["info"].get("lord_id") != lid
+                      and not state["lords"][p["info"]["lord_id"]].get("flags", {}).get("ambush_forced")
+                      and (target.get("type") != "outpost"
+                           or neighbour in state["lords"][p["info"]["lord_id"]].get("seats", []))]
+            ways = {w for n, w in sd.adjacent_to(locale_name) if n == neighbour}
+            for count in range(len(others) + 1):
+                for companions in combinations(others, count):
+                    args = {"lord_id": lid, "choice": "avoid", "destination": neighbour}
+                    if len(ways) > 1:
+                        args["way_type"] = way_type
+                    if companions:
+                        args["with_lords"] = list(companions)
+                    try:
+                        preview = _avoid_preview(state, side, info, args)
+                    except IllegalAction:
+                        continue
+                    out.append({
+                        "action": "approach_response", "side": side, "args": args,
+                        "description": (f"{', '.join([lid, *companions])} Avoid to {neighbour} "
+                                        f"({way_type})."),
+                        "discarded_assets": {m: {a: n for a, n in d.items() if n}
+                                             for m, d in preview["discards"].items()
+                                             if any(d.values())},
+                        "rule_citation": "4.3.4 / 1.7.2",
+                    })
 
     # SMOKE-Inferno-012: Withdraw pre-check — friendly Stronghold, room.
     try:

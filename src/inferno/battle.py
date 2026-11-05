@@ -2091,9 +2091,49 @@ def service_shift_for_retreated(state, lord_id: str, conceded_with_carroccio: bo
     return {"lord_id": lord_id, "die": r_val, "shift_left": shift}
 
 
+def unladen_prov_capacity(state, lord_ids: list[str], way_type: str) -> int:
+    """4.3.2: two Provender per shared Cart on Road, one on Track."""
+    carts = sum(state["lords"][lid]["assets"].get("Cart", 0) for lid in lord_ids)
+    return carts * (2 if way_type == "road" else 1)
+
+
+def unladen_prov_to_keep(state, group: list[str], way_type: str) -> dict[str, int]:
+    """Use own Carts first, then spare co-movers' capacity without trading food."""
+    capacity = {lid: unladen_prov_capacity(state, [lid], way_type) for lid in group}
+    prov = {lid: state["lords"][lid]["assets"].get("Provender", 0) for lid in group}
+    spare = sum(max(0, capacity[lid] - prov[lid]) for lid in group)
+    keep = {}
+    for lid in group:
+        borrowed = min(spare, max(0, prov[lid] - capacity[lid]))
+        spare -= borrowed
+        keep[lid] = min(prov[lid], capacity[lid] + borrowed)
+    return keep
+
+
+def distribute_spoils(state, pool: dict[str, int], winners: list[str]) -> dict:
+    """Divide captured Assets in stable order, spilling around full mats."""
+    allocation: dict[str, dict[str, int]] = {}
+    lost: dict[str, int] = {}
+    index = 0
+    for asset, count in pool.items():
+        for marker in range(count):
+            next_index = next((i for i in range(index, index + len(winners))
+                               if state["lords"][winners[i % len(winners)]]["assets"].get(asset, 0) < 16), None)
+            if next_index is None:
+                lost[asset] = count - marker
+                break
+            winner = winners[next_index % len(winners)]
+            index = (next_index + 1) % len(winners)
+            assets = state["lords"][winner]["assets"]
+            assets[asset] = assets.get(asset, 0) + 1
+            allocation.setdefault(winner, {})[asset] = allocation.get(winner, {}).get(asset, 0) + 1
+    return {"distributed": allocation, "lost_to_cap": lost}
+
+
 def transfer_spoils(state, loser_id: str, winners: list[str],
                     retreated: bool, conceded: bool,
-                    withdrew: bool) -> dict:
+                    withdrew: bool, *, retreat_way_type: str = "road",
+                    prov_to_keep: int | None = None) -> dict:
     """4.4.3 Post-Battle Spoils transfer.
 
     - REMOVED or RETREATED-WITHOUT-CONCEDE: transfer ALL Assets except
@@ -2112,13 +2152,12 @@ def transfer_spoils(state, loser_id: str, winners: list[str],
                 "reason": "withdrew"}
     elif conceded and retreated:
         # Concede+Retreat: Loot + (Provender beyond Unladen carry).
-        # SMOKE-Inferno-048: Concede+Retreat Spoils transfer Provender BEYOND
-        # what the loser could carry Unladen (Battle&Storm 11.3 / 4.4.3). The
-        # Unladen carry is up to 2x Provender per Cart on Road (Commands 4.3.2),
-        # so the excess given as Spoils is prov - 2*Carts (was prov - Carts).
-        carts = loser["assets"].get("Cart", 0)
+        # SMOKE-Inferno-048: retain up to 2*Carts on Road, but only
+        # Carts on Track. The caller supplies the actual Retreat Way.
+        capacity = (unladen_prov_capacity(state, [loser_id], retreat_way_type)
+                    if prov_to_keep is None else prov_to_keep)
         prov = loser["assets"].get("Provender", 0)
-        excess_prov = max(0, prov - 2 * carts)
+        excess_prov = max(0, prov - capacity)
         loot = loser["assets"].get("Loot", 0)
         transferred["Loot"] = loot
         transferred["Provender"] = excess_prov
@@ -2147,13 +2186,6 @@ def transfer_spoils(state, loser_id: str, winners: list[str],
             ccfs[winner_side] = ccfs.get(winner_side, 0) + 1
             # Remove Carroccio Vassal from loser
             loser["vassals"] = [v for v in loser["vassals"] if v.get("name") != "Carroccio"]
-    # Distribute to winners: round-robin starting with first
-    if transferred:
-        winner_idx = 0
-        for asset, total in transferred.items():
-            for _ in range(total):
-                w = state["lords"][winners[winner_idx % len(winners)]]
-                w["assets"][asset] = w["assets"].get(asset, 0) + 1
-                winner_idx += 1
+    distribute_spoils(state, transferred, winners)
     return {"loser_id": loser_id, "transferred": transferred,
             "carroccio_captured": carroccio_cap}

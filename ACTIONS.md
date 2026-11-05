@@ -59,7 +59,13 @@ response to a pending decision owed by the other side).
   Battle this Approach may trigger — same channel `cmd_storm` /
   `cmd_sally` accept. Entries are accumulated across the response
   window and routed per side by each decision's `side`. Omit for the
-  deterministic leftmost fallback.
+  deterministic leftmost fallback. For `choice: "avoid"`, supply the
+  `destination`, optional `way_type` (`"road"` or `"track"`), and optional
+  `with_lords` (other pending defenders avoiding together). Shared Carts
+  carry up to two Provender per Cart on Roads or one on Tracks. Avoiding
+  discards Loot and excess Provender to the approaching Lords as Spoils;
+  the legal menu lists each option's `discarded_assets`. Arrival at an
+  Unbesieged enemy Stronghold establishes Bypass.
 
 Battles resolve synchronously within the triggering action, so there are no
 separate `battle_decision`, `concede`, or `retreat` actions. In-Battle choices
@@ -68,10 +74,10 @@ and **concession** (4.4.4) — flow through the `BattleDecisionContext` via the
 `scripted_decisions` / callback channel above.
 
 The losing side's Retreat / Withdraw / Removed fate (4.4.5) is applied
-automatically in the post-Battle step, but the two player elections are
-operator-controllable. `approach_response` accepts an optional
+automatically in the post-Battle step, with player choices available.
+`approach_response` accepts an optional
 `post_battle_decisions` arg (a FIFO list, same shape as `scripted_decisions`)
-with two decision types:
+with these decision types:
 
 - `post_battle_withdraw` — for each eligible losing Lord, `choice` is
   `"withdraw"` (go inside the Friendly Stronghold at the Battle Locale, 4.4.3 /
@@ -80,14 +86,17 @@ with two decision types:
 - `retreat_destination` — for each Retreating Lord, `choice` is one of the legal
   target Locales. Default: the deterministic leftmost (Friendly first, then
   alphabetical).
+- `retreat_way` — when more than one legal Way connects the chosen
+  destination, select `"road"` or `"track"`. Conceding Lords retain
+  Provender according to the selected Way and their co-retreaters' Carts.
 
 Omit `post_battle_decisions` (and leave `meta.post_battle_withdraw` unset) for
-the legacy deterministic behaviour. The resolved post-Battle choices are echoed
+the deterministic defaults. Non-default post-Battle choices are echoed
 on `battle_result["post_battle_decisions"]`.
 
 `cmd_storm` and `cmd_sally` accept the same `scripted_decisions` channel for
 their in-Battle choices. `cmd_sally` additionally accepts `post_battle_decisions`
-with `retreat_destination` entries to direct where a losing-but-surviving
+with `retreat_destination` and `retreat_way` entries to direct where a losing-but-surviving
 Besieger Retreats (default: deterministic leftmost). `cmd_storm` has no
 post-Battle election (Storm Attackers never Retreat).
 

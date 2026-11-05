@@ -359,5 +359,5 @@ def test_avoid_clears_bypassing_at_previous_locale():
     A.dispatch(s, {"action": "approach_response", "side": "ghibelline",
                    "args": {"lord_id": "siena", "choice": "avoid", "destination": "San Giovanni"}})
     assert s["lords"]["siena"]["location"] == "San Giovanni"
-    assert not s["lords"]["siena"]["flags"].get("bypassing")
+    assert s["lords"]["siena"]["flags"].get("bypassing") == "San Giovanni"
     assert not s["locales"]["Figline"]["bypass"]
