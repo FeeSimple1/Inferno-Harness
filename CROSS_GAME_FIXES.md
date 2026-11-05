@@ -32,8 +32,7 @@ re-hide behavior. Existing interface tests now require the constant marker.
   Carroccio; existing non-conceding and Withdraw Spoils rules still apply.
 
 Avoid and Battle Spoils use the same capacity-aware distributor. It skips
-full mats and loses only markers that no recipient has room to take. Tax and
-Sack still need the remaining INF-4 corrections.
+full mats and loses only markers that no recipient has room to take.
 
 Thirty-three new regression cases cover both Way types, grouped and split
 Avoids, cart sharing, discards and overflow, Bypass and Encamp, Ambush and
@@ -46,6 +45,31 @@ Validation: 1,164 tests passed. The six CI self-play scenarios all reached
 game end without anomalies. Card-effect, save/load (48 scenario/seed pairs),
 malformed-input and state-injection fuzz checks also reported zero anomalies.
 
-Four of eight original Inferno findings are fixed. **INF-4** (remaining Asset
-caps), **INF-5** (owner Spoils allocation), **INF-6** (Feed choices) and **IF-5**
-(Friars) remain open.
+## Asset caps and Spoils batch — INF-4 and INF-5
+
+- **INF-4 — Asset caps**. Tax caps Coin at 16 and reports actual gain and
+  overflow. Sack uses the shared capped distributor for both printed rewards
+  and captured Assets, filling eligible allies before losing excess.
+- **INF-5 — Owner allocation**. Field Battle, Sack and Avoid expose
+  `spoils_recipient` and `spoils_amount` through the existing post-Battle
+  decision channel. The owning faction may concentrate or split each pool
+  among surviving eligible Lords. The legal menu advertises the choices,
+  including Surprise's automatic Storm. Default allocation remains capped
+  round-robin. Battle and Sack allocation wait for Losses and removal so
+  an eliminated winner cannot receive Assets.
+
+Seventeen new regression cases cover ordinary and Podesta Tax at zero, 15
+and 16 Coin, printed and captured Sack overflow, concentrated and split
+allocations, a winner eliminated by Losses, actual Storm resolution, Avoid
+scripts and owner-routed player callbacks. Invalid recipients, amounts and
+pinned factions reject atomically. Interrupted player responses roll back
+the whole action. Fourteen of these cases fail on the preceding main
+revision and three preservation cases pass.
+
+Validation completed with 1,181 passing tests. All six CI self-play scenarios
+reached game end with zero anomalies. Card-effect checks covered 52 cards
+and six seeds. Save/load covered all six scenarios and eight seeds.
+Malformed-input and state-injection fuzz checks also reported zero anomalies.
+
+Six of eight original Inferno findings are fixed. **INF-6** (Feed choices)
+and **IF-5** (Friars) remain open.

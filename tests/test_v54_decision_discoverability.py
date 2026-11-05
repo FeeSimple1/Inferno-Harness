@@ -118,14 +118,16 @@ class TestDecisionDiscoverability:
         acc = stand["accepts_decisions"]
         assert "concede" in acc["scripted_decisions"]
         assert acc["post_battle_decisions"] == ["post_battle_withdraw",
-                                                "retreat_destination", "retreat_way"]
+                                                "retreat_destination", "retreat_way",
+                                                "spoils_recipient", "spoils_amount"]
 
-    def test_avoid_move_has_no_decision_channel(self):
+    def test_avoid_advertises_the_approaching_owners_spoils_channel(self):
         s = self._approach_pending()
         avoids = [m for m in enumerate_legal(s)
                   if m["action"] == "approach_response"
                   and m["args"].get("choice") == "avoid"]
-        assert all("accepts_decisions" not in m for m in avoids)
+        assert all(m["accepts_decisions"]["post_battle_decisions"] ==
+                   ["spoils_recipient", "spoils_amount"] for m in avoids)
 
     def test_advertised_move_still_dispatches(self):
         """The informational key is a sibling of args; replaying the move the

@@ -1683,9 +1683,13 @@ def _h_cmd_tax(state, side, args, rng) -> dict[str, Any]:
         loc["walls_plus_one"] = side
         payload = {"taxed": lid, "reinforced_walls_at": loc["name"]}
     else:
-        gain = 2 if lord.get("podesta") else 1
-        lord["assets"]["Coin"] = lord["assets"].get("Coin", 0) + gain
+        entitlement = 2 if lord.get("podesta") else 1
+        coin = lord["assets"].get("Coin", 0)
+        gain = min(entitlement, max(0, 16 - coin))
+        lord["assets"]["Coin"] = coin + gain
         payload = {"taxed": lid, "coin_gained": gain}
+        if gain < entitlement:
+            payload["coin_lost_to_cap"] = entitlement - gain
     # Tax uses the entire card — consume all remaining actions.
     state["actions_remaining"] = 0
     state["card_action_consumed_by_entire_card"] = True
@@ -3017,6 +3021,7 @@ def _h_approach_response(state, side, args, rng) -> dict[str, Any]:
     lord = state["lords"][lid]
     response_entries = [entry]
     avoid_changes = {}
+    post_decisions = args.get("post_battle_decisions")
 
     if choice == "avoid":
         preview = _avoid_preview(state, side, info, args)
@@ -3036,8 +3041,11 @@ def _h_approach_response(state, side, args, rng) -> dict[str, Any]:
                      if state["lords"][m]["side"] != side
                      and state["lords"][m].get("status") == "mustered"
                      and not state["lords"][m].get("flags", {}).get("in_stronghold")]
-        from .battle import distribute_spoils
-        allocation = distribute_spoils(state, pool, attackers)
+        from .battle import BattleDecisionContext, distribute_spoils
+        spoils_context = BattleDecisionContext(scripted=list(post_decisions or []),
+                                               callback=state.get("battle_callback"))
+        allocation = distribute_spoils(state, pool, attackers, decisions=spoils_context)
+        post_decisions = spoils_context.scripted
         bypass = (target_loc.get("type") in _STRONGHOLD_TYPES
                   and not target_loc.get("ruins") and not target_loc.get("siege")
                   and not _is_friendly_locale(state, target_loc, side))
@@ -3057,6 +3065,8 @@ def _h_approach_response(state, side, args, rng) -> dict[str, Any]:
         avoid_changes = {"avoided": group, "destination": dest_name,
                          "way_type": preview["way_type"], "discarded_as_spoils": pool,
                          "spoils_allocation": allocation, "bypassing": bypass}
+        if spoils_context.trace:
+            avoid_changes["spoils_decisions"] = spoils_context.trace
 
     elif choice == "withdraw":
         # 4.3.4 WITHDRAW: into a Friendly Stronghold at this Locale.
@@ -3098,7 +3108,7 @@ def _h_approach_response(state, side, args, rng) -> dict[str, Any]:
     if _sd_in:
         state.setdefault("approach_battle_decisions", {}) \
              .setdefault(locale_name, []).extend(_sd_in)
-    _pbd_in = args.get("post_battle_decisions")
+    _pbd_in = post_decisions
     if _pbd_in:
         state.setdefault("approach_post_battle_decisions", {}) \
              .setdefault(locale_name, []).extend(_pbd_in)
@@ -3433,6 +3443,12 @@ def _apply_post_battle(state, result, attackers: list[str], defenders: list[str]
         transfer_spoils,
     )
     bdc = BattleDecisionContext(scripted=list(decisions or []), callback=callback)
+    spoils = []
+
+    def take_spoils(lid, **fate):
+        captured = transfer_spoils(state, lid, winners_alive, defer_award=True, **fate)
+        if any(captured["transferred"].values()):
+            spoils.append(captured)
     from .rng import HarnessRNG
     rng = HarnessRNG(state["meta"]["rng_seed"],
                      advance=state["meta"].get("rng_advance", 0))
@@ -3482,8 +3498,7 @@ def _apply_post_battle(state, result, attackers: list[str], defenders: list[str]
                 _remove_lord(cid, losing_battle_side=losing_battle_side,
                              include_attached=False)
         if losing_battle_side:
-            transfer_spoils(state, lid, winners_alive,
-                            retreated=False, conceded=False, withdrew=False)
+            take_spoils(lid, retreated=False, conceded=False, withdrew=False)
         _knights_quarter_all(state, lid)
         _disband_beyond_service_limit(state, lid, disband_attached=False)
         if lid not in combat_removed:
@@ -3521,8 +3536,7 @@ def _apply_post_battle(state, result, attackers: list[str], defenders: list[str]
             _remove_lord(lid, losing_battle_side=True)
         elif lord.get("flags", {}).get("in_stronghold"):
             # Withdrew into Stronghold: keep Assets, no Service shift.
-            transfer_spoils(state, lid, winners_alive,
-                            retreated=False, conceded=False, withdrew=True)
+            take_spoils(lid, retreated=False, conceded=False, withdrew=True)
         else:
             # 4.4.3 / 11.2 / 4.4.5: a losing-but-surviving Lord either Withdraws
             # into a Friendly Stronghold at the Battle Locale (when eligible) or
@@ -3546,8 +3560,7 @@ def _apply_post_battle(state, result, attackers: list[str], defenders: list[str]
                 # Withdraw INSIDE: keep Assets, no Service shift, stay put.
                 lord.setdefault("flags", {})["in_stronghold"] = True
                 _wd_count += 1
-                transfer_spoils(state, lid, winners_alive,
-                                retreated=False, conceded=False, withdrew=True)
+                take_spoils(lid, retreated=False, conceded=False, withdrew=True)
                 continue
             # SMOKE-Inferno-090: RETREAT to a legal adjacent Locale (4.4.5).
             _default_dest = _retreat_destination(
@@ -3583,8 +3596,7 @@ def _apply_post_battle(state, result, attackers: list[str], defenders: list[str]
             if conceded:
                 retreat_spoils.setdefault((dest, retreat_way), []).append(lid)
             else:
-                transfer_spoils(state, lid, winners_alive,
-                                retreated=True, conceded=False, withdrew=False)
+                take_spoils(lid, retreated=True, conceded=False, withdrew=False)
             # Relocate the Lord OFF the battle Locale to the chosen destination.
             if battle_locale and battle_locale in state["locales"]:
                 bl = state["locales"][battle_locale]
@@ -3606,9 +3618,8 @@ def _apply_post_battle(state, result, attackers: list[str], defenders: list[str]
                    and state["lords"][m].get("location") == dest]
         keep = unladen_prov_to_keep(state, members, way)
         for member in members:
-            transfer_spoils(state, member, winners_alive, retreated=True,
-                            conceded=True, withdrew=False, retreat_way_type=way,
-                            prov_to_keep=keep[member])
+            take_spoils(member, retreated=True, conceded=True, withdrew=False,
+                        retreat_way_type=way, prov_to_keep=keep[member])
     # CONF-028: if the side Conceded and its (retained) Carroccio Retreated,
     # EVERY Retreated Lord of that side shifts exactly one box; otherwise each
     # rolls the normal 1-3 box die (4.4.3). Previously only the Lord personally
@@ -3624,8 +3635,6 @@ def _apply_post_battle(state, result, attackers: list[str], defenders: list[str]
                 conceded_with_carroccio=_side_carroccio,
                 rng_caller=rng.roll,
             )
-    if bdc.trace:
-        result["post_battle_decisions"] = list(bdc.trace)
     # 4.4.1 Relief Sally: if the combined Attackers (incl. relief-Sallying Besieged
     # Lords) LOSE, the Sallying Lords Withdraw back inside (handled above via the
     # in_stronghold branch) AND the Siege markers there are reduced to ONE.
@@ -3677,6 +3686,17 @@ def _apply_post_battle(state, result, attackers: list[str], defenders: list[str]
             continue
         _remove_lord(lid, losing_battle_side=(lid in losers_ids))
 
+    from .battle import distribute_spoils
+    recipients = [wid for wid in winners_alive
+                  if state["lords"][wid].get("status") == "mustered"
+                  and (battle_locale is None or state["lords"][wid].get("location") == battle_locale)]
+    for captured in spoils:
+        captured["allocation"] = distribute_spoils(
+            state, captured["transferred"], recipients, decisions=bdc)
+    if spoils:
+        result["spoils"] = spoils
+    if bdc.trace:
+        result["post_battle_decisions"] = list(bdc.trace)
     result["loss_results"] = loss_results
     result["removed_lords"] = sorted(combat_removed)
     # 4.4.5 Revolt & Treachery for Lords removed in this Battle.
@@ -3920,7 +3940,7 @@ def _storm_with_aftermath(state, side, lid, args, rng, *, round_limit=None):
     # ONLY on a Sack (handled by _apply_sack) and Attackers are never Captured,
     # so per-unit captures are disabled here (failed Knights are Lost).
     if result["outcome"] == "sack":
-        _apply_sack(state, locale_name, side, result, rng)
+        result["spoils"] = _apply_sack(state, locale_name, side, result, rng, defer_award=True)
         # Inside losers are removed by the Sack; only the Attackers' own Routed
         # units remain to roll (Harsh).
         loss_results = _roll_routed_losses(state, [(a, True) for a in attackers],
@@ -3949,10 +3969,31 @@ def _storm_with_aftermath(state, side, lid, args, rng, *, round_limit=None):
                                           context=f"storm_empty_{locale_name}")
     # SMOKE-Inferno-080: Doctors restoration now also fires in Storm.
     _apply_doctors_restoration(state, result.get("doctors", []), loss_results)
+    if result["outcome"] == "sack":
+        from .battle import BattleDecisionContext
+        context = BattleDecisionContext(scripted=list(args.get("post_battle_decisions") or []),
+                                        callback=state.get("battle_callback"))
+        survivors = [a for a in attackers if state["lords"][a].get("status") == "mustered"]
+        _award_sack_spoils(state, result["spoils"], survivors, context)
+        if context.trace:
+            result["post_battle_decisions"] = context.trace
     return result
 
 
-def _apply_sack(state, locale_name, side, storm_result, rng):
+def _award_sack_spoils(state, spoils_log, winners, decisions=None):
+    from .battle import distribute_spoils
+    # Printed rewards traditionally start their round-robin at the first mat
+    # for each Asset. Captured Lord pools rotate across their Asset types.
+    spoils_log["allocation"] = {}
+    for asset, key in (("Loot", "loot"), ("Provender", "provender"), ("Coin", "coin")):
+        spoils_log["allocation"][asset] = distribute_spoils(
+            state, {asset: spoils_log[key]}, winners, decisions=decisions)
+    for captured in spoils_log["from_inside"]:
+        captured["allocation"] = distribute_spoils(
+            state, captured["transferred"], winners, decisions=decisions)
+
+
+def _apply_sack(state, locale_name, side, storm_result, rng, *, defer_award=False):
     """Per 4.5.2 SACK: full Spoils per 11.3 + Ruins + Revolt/Treachery + Knights' Quarter.
 
     Spoils awarded to Besiegers (size=Value):
@@ -3975,21 +4016,12 @@ def _apply_sack(state, locale_name, side, storm_result, rng):
     winners = [
         oid for oid in loc.get("lords_present", [])
         if state["lords"][oid]["side"] == side
+        and state["lords"][oid].get("status") == "mustered"
         and not state["lords"][oid].get("flags", {}).get("in_stronghold")
     ]
 
     spoils_log: dict[str, Any] = {"loot": size, "provender": size, "coin": size,
                                    "from_inside": [], "carroccio_captured": 0}
-
-    # Award Loot, Provender, Coin = Value each, distributed to winners
-    for asset, count in (("Loot", size), ("Provender", size), ("Coin", size)):
-        i = 0
-        for _ in range(count):
-            if not winners:
-                break
-            recv = state["lords"][winners[i % len(winners)]]
-            recv["assets"][asset] = recv["assets"].get(asset, 0) + 1
-            i += 1
 
     # Take all non-Ship Assets from inside Lords
     for ilid in inside_losers:
@@ -4001,15 +4033,6 @@ def _apply_sack(state, locale_name, side, storm_result, rng):
             if c > 0:
                 transferred[a] = c
                 ilord["assets"][a] = 0
-        # Distribute to winners
-        i = 0
-        for a, n in transferred.items():
-            for _ in range(n):
-                if not winners:
-                    break
-                recv = state["lords"][winners[i % len(winners)]]
-                recv["assets"][a] = recv["assets"].get(a, 0) + 1
-                i += 1
         spoils_log["from_inside"].append({"lord_id": ilid, "transferred": transferred})
 
         # Carroccio capture (+2 VP)
@@ -4075,6 +4098,8 @@ def _apply_sack(state, locale_name, side, storm_result, rng):
     for _ in range(size):
         _add_treachery_to_enemy(state, "<sack>", side)
 
+    if not defer_award:
+        _award_sack_spoils(state, spoils_log, winners)
     return spoils_log
 
 
@@ -5214,6 +5239,7 @@ def _h_play_event(state, side, args, rng) -> dict[str, Any]:
         result = _h_besiege_or_bypass(state, side, {
             "lord_id": state["current_lord_id"], "choice": "besiege",
             "scripted_decisions": args.get("scripted_decisions"),
+            "post_battle_decisions": args.get("post_battle_decisions"),
         }, rng)
         result["state_changes"].update(played=cid, effect=effect_result)
         return result

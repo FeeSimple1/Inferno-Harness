@@ -49,7 +49,8 @@ _STORM_DECISIONS = [
 _SALLY_DECISIONS = [
     "concede", "sally_reserve_add", "select_target_unit", "absorb_target",
 ]
-_FIELD_POST_BATTLE_DECISIONS = ["post_battle_withdraw", "retreat_destination", "retreat_way"]
+_SPOILS_DECISIONS = ["spoils_recipient", "spoils_amount"]
+_FIELD_POST_BATTLE_DECISIONS = ["post_battle_withdraw", "retreat_destination", "retreat_way", *_SPOILS_DECISIONS]
 _SALLY_POST_BATTLE_DECISIONS = ["retreat_destination", "retreat_way"]
 
 
@@ -156,7 +157,8 @@ def _enum_held_events(state, side):
     moves = held_event_options(state, side)
     for move in moves:
         if move["args"]["card_id"] in ("F3", "S3"):
-            move["accepts_decisions"] = {"scripted_decisions": list(_STORM_DECISIONS)}
+            move["accepts_decisions"] = {"scripted_decisions": list(_STORM_DECISIONS),
+                                         "post_battle_decisions": list(_SPOILS_DECISIONS)}
     return moves
 
 
@@ -189,7 +191,9 @@ def enumerate_legal(state: dict[str, Any]) -> list[dict[str, Any]]:
         moves = [{"action": "besiege_or_bypass", "side": side,
                   "args": {"lord_id": arrival["lord_id"], "choice": choice},
                   "description": f"{choice.title()} at {arrival['locale']} (part of March; no extra action).",
-                  "rule_citation": "4.3.5"} for choice in ("besiege", "bypass")]
+                  "rule_citation": "4.3.5",
+                  "accepts_decisions": {"post_battle_decisions": list(_SPOILS_DECISIONS)}}
+                 for choice in ("besiege", "bypass")]
         return moves + _enum_held_events(state, side)
     phase = state["meta"].get("phase")
     if phase == "levy":
@@ -1006,6 +1010,7 @@ def _enum_command_phase(state, side) -> list[dict[str, Any]]:
                     moves.append({
                         "action": "besiege_or_bypass", "side": side,
                         "args": {"lord_id": lid, "choice": choice},
+                        "accepts_decisions": {"post_battle_decisions": list(_SPOILS_DECISIONS)},
                         "description": f"{lid} {choice}s Enemy {loc['type']} at {lord['location']}.",
                         "rule_citation": "4.3.5",
                     })
@@ -1037,7 +1042,8 @@ def _enum_command_phase(state, side) -> list[dict[str, Any]]:
             # Storm if at least 1 Siege marker
             moves.append({
                 "action": "cmd_storm", "side": side, "args": {"lord_id": lid},
-                "accepts_decisions": {"scripted_decisions": list(_STORM_DECISIONS)},
+                "accepts_decisions": {"scripted_decisions": list(_STORM_DECISIONS),
+                                     "post_battle_decisions": list(_SPOILS_DECISIONS)},
                 "description": f"{lid} Storms {lord['location']} ({sum(s.get('count',1) for s in own_sieges)} Siege markers).",
                 "rule_citation": "4.5.2",
             })
@@ -1306,6 +1312,7 @@ def _enum_approach_response(state, pending) -> list[dict[str, Any]]:
                         continue
                     out.append({
                         "action": "approach_response", "side": side, "args": args,
+                        "accepts_decisions": {"post_battle_decisions": list(_SPOILS_DECISIONS)},
                         "description": (f"{', '.join([lid, *companions])} Avoid to {neighbour} "
                                         f"({way_type})."),
                         "discarded_assets": {m: {a: n for a, n in d.items() if n}

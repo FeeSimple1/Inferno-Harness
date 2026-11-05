@@ -89,6 +89,32 @@ with these decision types:
 - `retreat_way` — when more than one legal Way connects the chosen
   destination, select `"road"` or `"track"`. Conceding Lords retain
   Provender according to the selected Way and their co-retreaters' Carts.
+- `spoils_recipient` — the winning faction chooses a surviving Lord with
+  room for the current Asset type. The decision info identifies the `asset`
+  and `remaining` markers in that pool.
+- `spoils_amount` — choose how many of those markers the selected Lord
+  receives, from one through the remaining pool or that mat's spare capacity,
+  whichever is smaller. Repeat recipient and amount choices until the pool
+  is exhausted. With just one eligible recipient the full legal amount is
+  forced. Each mat holds at most 16 of each Asset type. Excess that cannot
+  fit on any eligible mat is lost and reported in `lost_to_cap`.
+
+For example, these entries give four Coin to Astimberg after the losing
+side's Retreat choices have resolved.
+
+```json
+[
+  {"type": "spoils_recipient", "side": "ghibelline", "choice": "astimberg"},
+  {"type": "spoils_amount", "side": "ghibelline", "choice": 4}
+]
+```
+
+Spoils use the winning faction's decision callback, including when an Enemy
+Avoid triggers the award. Player-facing interfaces require a valid selection
+at each optional choice. Operator scripts reject invalid recipients, amounts
+and pinned sides atomically. Without a script or callback the engine divides
+Spoils in capped round-robin order. Field Battle and Sack awards wait until
+Losses and removal have determined the surviving recipients.
 
 Omit `post_battle_decisions` (and leave `meta.post_battle_withdraw` unset) for
 the deterministic defaults. Non-default post-Battle choices are echoed
@@ -97,8 +123,15 @@ on `battle_result["post_battle_decisions"]`.
 `cmd_storm` and `cmd_sally` accept the same `scripted_decisions` channel for
 their in-Battle choices. `cmd_sally` additionally accepts `post_battle_decisions`
 with `retreat_destination` and `retreat_way` entries to direct where a losing-but-surviving
-Besieger Retreats (default: deterministic leftmost). `cmd_storm` has no
-post-Battle election (Storm Attackers never Retreat).
+Besieger Retreats (default: deterministic leftmost). `cmd_storm` accepts
+`post_battle_decisions` for Spoils allocation after a Sack, as do Surprise
+(`play_event` with F3/S3) and its automatic Storm through `besiege_or_bypass`.
+Sack pools are offered in Loot, Provender and Coin order, followed by the
+captured Assets of each inside Lord. Avoid responses accept the same Spoils
+entries for Assets discarded to the approaching faction. Field Battle
+allocations are recorded under `battle_result["spoils"]`, Sack allocations
+under `storm_result["spoils"]` (or `auto_storm["spoils"]`), and Avoid allocations
+under `spoils_allocation`.
 
 Discoverability: `enumerate_legal` tags each Battle-triggering move (the Stand
 `approach_response`, `cmd_storm`, `cmd_sally`) with an informational

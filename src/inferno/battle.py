@@ -2110,30 +2110,58 @@ def unladen_prov_to_keep(state, group: list[str], way_type: str) -> dict[str, in
     return keep
 
 
-def distribute_spoils(state, pool: dict[str, int], winners: list[str]) -> dict:
-    """Divide captured Assets in stable order, spilling around full mats."""
+def distribute_spoils(state, pool: dict[str, int], winners: list[str], *,
+                      decisions: BattleDecisionContext | None = None) -> dict:
+    """Award Assets up to 16 per mat and type, with optional owner elections."""
     allocation: dict[str, dict[str, int]] = {}
     lost: dict[str, int] = {}
     index = 0
+
+    def choose(kind, options, default, info):
+        if decisions is None:
+            return default
+        side = state["lords"][winners[0]]["side"]
+        # Matching operator entries are explicit instructions and are validated
+        # strictly. Other optional elections keep their place in the queue.
+        if (decisions.scripted and isinstance(decisions.scripted[0], dict)
+                and decisions.scripted[0].get("type") == kind):
+            return decisions.decide(kind, side, options, info)
+        if len(options) == 1:
+            return default
+        return decisions.decide_optional(kind, side, options, default, info)
+
     for asset, count in pool.items():
-        for marker in range(count):
-            next_index = next((i for i in range(index, index + len(winners))
-                               if state["lords"][winners[i % len(winners)]]["assets"].get(asset, 0) < 16), None)
-            if next_index is None:
-                lost[asset] = count - marker
+        remaining = count
+        while remaining > 0:
+            ordered = winners[index:] + winners[:index]
+            room = {lid: 16 - state["lords"][lid]["assets"].get(asset, 0) for lid in ordered}
+            eligible = [lid for lid in ordered if room[lid] > 0]
+            if not eligible:
+                lost[asset] = remaining
                 break
-            winner = winners[next_index % len(winners)]
-            index = (next_index + 1) % len(winners)
+            info = {"asset": asset, "remaining": remaining}
+            winner = choose("spoils_recipient", eligible, eligible[0], info)
+            maximum = min(remaining, room[winner])
+            amounts = [maximum] if len(eligible) == 1 else list(range(1, maximum + 1))
+            default_amount = maximum if len(eligible) == 1 else 1
+            amount = choose("spoils_amount", amounts, default_amount,
+                            {**info, "recipient": winner})
+            if type(amount) is not int:
+                raise ScriptedDecisionError("Spoils amount must be an integer.")
+            index = (winners.index(winner) + 1) % len(winners)
             assets = state["lords"][winner]["assets"]
-            assets[asset] = assets.get(asset, 0) + 1
-            allocation.setdefault(winner, {})[asset] = allocation.get(winner, {}).get(asset, 0) + 1
+            assets[asset] = assets.get(asset, 0) + amount
+            received = allocation.setdefault(winner, {})
+            received[asset] = received.get(asset, 0) + amount
+            remaining -= amount
     return {"distributed": allocation, "lost_to_cap": lost}
 
 
 def transfer_spoils(state, loser_id: str, winners: list[str],
                     retreated: bool, conceded: bool,
                     withdrew: bool, *, retreat_way_type: str = "road",
-                    prov_to_keep: int | None = None) -> dict:
+                    prov_to_keep: int | None = None,
+                    defer_award: bool = False) -> dict:
     """4.4.3 Post-Battle Spoils transfer.
 
     - REMOVED or RETREATED-WITHOUT-CONCEDE: transfer ALL Assets except
@@ -2186,6 +2214,7 @@ def transfer_spoils(state, loser_id: str, winners: list[str],
             ccfs[winner_side] = ccfs.get(winner_side, 0) + 1
             # Remove Carroccio Vassal from loser
             loser["vassals"] = [v for v in loser["vassals"] if v.get("name") != "Carroccio"]
-    distribute_spoils(state, transferred, winners)
+    if not defer_award:
+        distribute_spoils(state, transferred, winners)
     return {"loser_id": loser_id, "transferred": transferred,
             "carroccio_captured": carroccio_cap}
