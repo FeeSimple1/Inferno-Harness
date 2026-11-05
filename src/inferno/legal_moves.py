@@ -51,7 +51,7 @@ _SALLY_DECISIONS = [
 ]
 _SPOILS_DECISIONS = ["spoils_recipient", "spoils_amount"]
 _FIELD_POST_BATTLE_DECISIONS = ["post_battle_withdraw", "retreat_destination", "retreat_way", *_SPOILS_DECISIONS]
-_SALLY_POST_BATTLE_DECISIONS = ["retreat_destination", "retreat_way"]
+_SALLY_POST_BATTLE_DECISIONS = ["retreat_destination", "retreat_way", *_SPOILS_DECISIONS]
 
 
 def _with_feed_decisions(moves):

@@ -143,10 +143,9 @@ class TestCombatRemovalRevolt:
         assert rng.calls == 0
         assert res["treachery_added"] == []
 
-    def test_wired_into_all_three_combat_paths(self):
-        # The shared trigger is invoked by Battle (_apply_post_battle), Storm
-        # (_apply_sack), and Sally (_h_cmd_sally) — defined once, reused.
-        for fn in (A._apply_post_battle, A._apply_sack, A._h_cmd_sally):
+    def test_wired_into_battle_and_sack(self):
+        # Public Sally removal effects are checked in test_cross_game_sally.
+        for fn in (A._apply_post_battle, A._apply_sack):
             assert "_trigger_disband_revolt_and_treachery" in inspect.getsource(fn)
 
     def test_marker_present(self):

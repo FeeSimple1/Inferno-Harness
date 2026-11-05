@@ -3489,7 +3489,10 @@ def _apply_post_battle(state, result, attackers: list[str], defenders: list[str]
     `callback`. Without operator input, the withdraw election defaults to
     meta.post_battle_withdraw and the destination to the leftmost legal Locale.
     """
-    _bc = state["meta"].get("approach_breadcrumb") or {}
+    # Sally has no Approach Way and losing besiegers must Retreat, even
+    # when the corresponding field-Battle position could allow Withdrawal.
+    is_sally = result.get("mode") == "sally"
+    _bc = {} if is_sally else state["meta"].get("approach_breadcrumb") or {}
     _approached_from = _bc.get("approached_from")
     _approached_via = _bc.get("approached_via")
     from .battle import (
@@ -3564,7 +3567,8 @@ def _apply_post_battle(state, result, attackers: list[str], defenders: list[str]
     # Retreating ("owner chooses for each"). Opt-in: the consumer lists lord_ids
     # in meta.post_battle_withdraw; default (absent) = Retreat, unchanged.
     _any_retreat_off = False  # set when a loser actually relocates off battle_locale
-    withdraw_elected = set(state["meta"].pop("post_battle_withdraw", []) or [])
+    withdraw_elected = (set() if is_sally else
+                        set(state["meta"].pop("post_battle_withdraw", []) or []))
     _wd_cap = _withdraw_capacity(state, battle_locale)
     # Count Lords already inside the Stronghold (e.g. Withdrawn during the
     # Approach response) against capacity, so elected Withdraws can't overfill
@@ -3601,8 +3605,8 @@ def _apply_post_battle(state, result, attackers: list[str], defenders: list[str]
             # operator-controllable here; absent operator input they fall back
             # to meta.post_battle_withdraw (default Retreat) and the
             # deterministic leftmost Locale, so legacy callers are unchanged.
-            is_marching_attacker = (loser == "attacker")
-            eligible_withdraw = (_wd_count < _wd_cap
+            is_marching_attacker = not is_sally and loser == "attacker"
+            eligible_withdraw = (not is_sally and _wd_count < _wd_cap
                                  and _can_withdraw_into_stronghold(state, lid, battle_locale))
             do_withdraw = False
             if eligible_withdraw:
@@ -3756,7 +3760,8 @@ def _apply_post_battle(state, result, attackers: list[str], defenders: list[str]
     result["loss_results"] = loss_results
     result["removed_lords"] = sorted(combat_removed)
     # 4.4.5 Revolt & Treachery for Lords removed in this Battle.
-    _trigger_disband_revolt_and_treachery(state, combat_removed, rng, context="battle")
+    _trigger_disband_revolt_and_treachery(state, combat_removed, rng,
+                                          context="sally" if is_sally else "battle")
     state["meta"]["rng_advance"] = state["meta"].get("rng_advance", 0) + (rng.advance_count - rolls_before)
     post_rolls = [{"context": r.context, "value": r.value} for r in rng.drain_log()]
     if post_rolls:
@@ -4191,66 +4196,15 @@ def _h_cmd_sally(state, side, args, rng) -> dict[str, Any]:
         scripted_decisions=args.get("scripted_decisions"),
         callback=state.get("battle_callback"),
     )
-    if result["loser"] == "defender":
-        # Besiegers lose: Siege ends (4.5.3)
-        loc["siege"] = []
-        # SMOKE-Inferno-093: losing-but-surviving Besiegers must RETREAT normally
-        # (4.5.3 SALLY LOSING / 11.2) -- not remain co-located at the Locale. No
-        # Approach breadcrumb applies in a Sally (no marching attacker).
-        # The losing Besiegers' Retreat destination is operator-controllable via
-        # the post_battle_decisions channel (retreat_destination), mirroring the
-        # field-Battle path; absent input it is the deterministic leftmost.
-        from .battle import BattleDecisionContext
-        _sally_bdc = BattleDecisionContext(
-            scripted=list(args.get("post_battle_decisions") or []),
-            callback=state.get("battle_callback"))
-        for bid in list(besiegers):
-            b = state["lords"].get(bid)
-            if (b is None or bid in result.get("removed_lords", [])
-                    or b.get("status") != "mustered"
-                    or sum(b.get("forces", {}).values()) == 0):
-                continue  # fully Routed besiegers are Removed below
-            _cands = _retreat_candidates(state, bid, locale_name, enemy_side,
-                                         False, None, None)
-            if not _cands:
-                dest = None
-            else:
-                dest = _sally_bdc.decide_optional(
-                    "retreat_destination", enemy_side, options=_cands,
-                    default=_cands[0], info={"lord_id": bid})
-            if dest is None:
-                _disband_beyond_service_limit(state, bid)
-            else:
-                if bid in loc.get("lords_present", []):
-                    loc["lords_present"].remove(bid)
-                b["location"] = dest
-                state["locales"][dest].setdefault("lords_present", []).append(bid)
-        if _sally_bdc.trace:
-            result["post_battle_decisions"] = list(_sally_bdc.trace)
-    else:
-        # Sallying Lords lose: RAID — reduce Siege markers to 1
-        if loc.get("siege"):
-            loc["siege"] = [{"side": loc["siege"][0]["side"], "color": loc["siege"][0]["color"], "count": 1}]
-        # Losing Sallying Lords must Withdraw back inside (4.5.3 END).
-        for sid_ in sallying:
-            if sid_ in state["lords"]:
-                state["lords"][sid_].setdefault("flags", {})["in_stronghold"] = True
-    sally_removed = [rl for rl in result["removed_lords"] if rl in state["lords"]]
-    # CONF-022 (RoP 4.4.5): a Lord removed in a Sally (Battle rules, 4.5.3)
-    # receives Knights' Quarter for ALL his Cavalieri and Ritter BEFORE his
-    # remaining Forces return to the pool.
-    for removed_lid in sally_removed:
-        _knights_quarter_all(state, removed_lid)
-        _disband_beyond_service_limit(state, removed_lid)
-    # SMOKE-Inferno-081: 4.4.4 Loss rolls for surviving participants' Routed
-    # units. Sally uses Battle procedure (Battle&Storm 2.3), so Knights' Quarter
-    # applies (capture_knights=True) and recovery is Standard — neither side
-    # "Retreats without Conceding" in a Sally (the Sallying Lord returns inside;
-    # the Besiegers hold their ground), so Harsh Recovery does not apply.
-    _roll_routed_losses(state, [(p, False) for p in sallying + besiegers],
-                        capture_knights=True)
-    # 4.4.5 Revolt & Treachery for Lords removed in this Sally.
-    _trigger_disband_revolt_and_treachery(state, sally_removed, rng, context="sally")
+    if result["loser"] == "attacker" and loc.get("siege"):
+        # Raid reduces Siegeworks to one marker. Losing Sallying Lords already
+        # have the inside flag, so Battle aftermath treats them as Withdrawn.
+        loc["siege"] = [{**loc["siege"][0], "count": 1}]
+    # 4.5.3 uses Battle aftermath. Besieger departures lift the Siege through
+    # the same cleanup as a Retreat or combat Removal in a field Battle.
+    _apply_post_battle(state, result, sallying, besiegers, battle_locale=locale_name,
+                       decisions=args.get("post_battle_decisions"),
+                       callback=state.get("battle_callback"))
     return _finish_card_with({"sally_result": result}, state, side,
                               reason="sally_ends_card", citation="4.5.3")
 

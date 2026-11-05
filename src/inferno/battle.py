@@ -873,6 +873,16 @@ def _clear_battle_modifiers(state) -> None:
     ]
 
 
+def _take_doctors_modifiers(state) -> list[dict]:
+    """Pass the one-shot F24/S24 modifiers to the current combat's Loss step."""
+    pending = state.get("battle_modifiers_pending", [])
+    doctors = [dict(m) for m in pending if m.get("effect") == "doctors_restore_half_lost"]
+    if doctors:
+        state["battle_modifiers_pending"] = [
+            m for m in pending if m.get("effect") != "doctors_restore_half_lost"]
+    return doctors
+
+
 
 
 # =====================================================================
@@ -1652,12 +1662,7 @@ def resolve_storm(state, attackers: list[str], defenders: list[str],
     # half modifiers so the post-Storm loss step can apply them after the 4.4.4
     # Loss rolls. (Only Doctors mods are touched here; Storm's other modifier
     # handling is unchanged.)
-    doctors_mods = [dict(m) for m in state.get("battle_modifiers_pending", [])
-                    if m.get("effect") == "doctors_restore_half_lost"]
-    if doctors_mods:
-        state["battle_modifiers_pending"] = [
-            m for m in state.get("battle_modifiers_pending", [])
-            if m.get("effect") != "doctors_restore_half_lost"]
+    doctors_mods = _take_doctors_modifiers(state)
 
     return {
         "locale": locale_name,
@@ -1714,11 +1719,6 @@ def resolve_sally(state, sallying: list[str], besiegers: list[str],
     stronghold_type = locale.get("type")
     size = sd.STRONGHOLDS.get(stronghold_type, {}).get("size", 1)
     siege_count = sum(s.get("count", 1) for s in locale.get("siege", []))
-    # Besiegers (defender) defend behind Siegeworks = # Siege markers; the
-    # Sallying side (attacker) gets no Walls.
-    siegeworks_die = list(range(1, siege_count + 1))
-    walls_by_side = {"defender": siegeworks_die}
-
     pre_forces = {lid: dict(state["lords"][lid].get("forces", {}))
                   for lid in [active_id] + list(besiegers) if lid in state["lords"]}
 
@@ -1793,6 +1793,10 @@ def resolve_sally(state, sallying: list[str], besiegers: list[str],
         # 6-step Battle Strike, with Siegeworks-as-Walls protecting the Besiegers.
         hit_log_round: list = []
         for step in BATTLE_STRIKE_ORDER:
+            # Trebuchets reduces Siegeworks only while its mat is Unrouted.
+            reduction = _trebuchets_walls_reduction(
+                state, locale_name, besiegers, sallying, mode="sally")
+            walls_by_side = {"defender": list(range(1, siege_count - reduction + 1))}
             _resolve_step(state, step, positions, reserve, conceded, bdc, _rng_roll,
                           hit_log_round, removed_lords, routed_per_lord, round_n,
                           walls_by_side=walls_by_side, locale_name=locale_name)
@@ -1830,6 +1834,7 @@ def resolve_sally(state, sallying: list[str], besiegers: list[str],
     return {
         "locale": locale_name,
         "mode": "sally",
+        "doctors": _take_doctors_modifiers(state),
         "winner": winner,
         "loser": loser,
         "conceded": conceded,

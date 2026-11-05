@@ -177,9 +177,12 @@ the deterministic defaults. Non-default post-Battle choices are echoed
 on `battle_result["post_battle_decisions"]`.
 
 `cmd_storm` and `cmd_sally` accept the same `scripted_decisions` channel for
-their in-Battle choices. `cmd_sally` additionally accepts `post_battle_decisions`
-with `retreat_destination` and `retreat_way` entries to direct where a losing-but-surviving
-Besieger Retreats (default: deterministic leftmost). `cmd_storm` accepts
+their in-Battle choices. `cmd_sally` accepts `post_battle_decisions` with
+`retreat_destination` and `retreat_way` entries for losing Besiegers, plus
+`spoils_recipient` and `spoils_amount` for the winning faction's allocation.
+Sally reports Loss rolls and captured Assets under `sally_result`, with
+`routed_out_lords` recording Array Rout and `removed_lords` recording actual
+removal. `cmd_storm` accepts
 `post_battle_decisions` for Spoils allocation after a Sack, as do Surprise
 (`play_event` with F3/S3) and its automatic Storm through `besiege_or_bypass`.
 Sack pools are offered in Loot, Provender and Coin order, followed by the

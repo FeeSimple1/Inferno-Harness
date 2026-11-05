@@ -172,3 +172,37 @@ changed source adds no Ruff diagnostics relative to the preceding main.
 
 Second-audit progress: **all 4 Inferno groups fixed**. All eight original
 Inferno findings remain fixed.
+
+## Third audit, batch 1 — INF3-01 through INF3-04
+
+- **INF3-01 — Sally Losses.** Sally uses the shared Battle aftermath. Fully
+  Routed Lords roll for recovery before final-Force removal. Losing Sallying
+  Lords Withdraw, and their raid leaves one Siege marker. Actual combat
+  removals apply Knights' Quarter, Revolt and Treachery under the same rules
+  as field Battle.
+- **INF3-02 — Sally Retreat.** Losing besiegers Retreat by a legal Way or
+  suffer combat removal if blocked. Retreat uses the actual Way, Shared Carts,
+  Spoils, Service shifts and harsh Loss recovery when appropriate. The Siege
+  ends when the besiegers depart. The winning faction can allocate Spoils
+  among eligible survivors through the existing decision channel.
+- **INF3-03 — Trebuchets.** At three or four Siege markers, an Unrouted
+  Sallying holder reduces enemy Siegeworks by one. The reduction ends when
+  that mat Routes.
+- **INF3-04 — Doctors.** Sally uses and clears its one-shot Doctors modifier.
+  Restoration follows Loss rolls and precedes final-Force removal, including
+  reclaiming recovered Knights from the Captured Knights box.
+
+Thirteen public-action cases cover seeded recovery and removal, Road and
+Track capacity, shared Carts, owner allocation, invalid-choice rollback,
+blocked Retreat, Trebuchets timing and Doctors restoration. Against preceding
+main, 11 fail and two control cases pass. The old direct-call check for Sally's
+removal trigger is covered by the public blocked-Retreat test, which verifies
+both the Revolt dice and the transfer of Treachery cards into the winner's deck.
+
+**1,275 tests passed.** All six CI smoke scenarios reached victory over 1,194
+actions with zero anomalies. The configured card-effect, save/load,
+malformed-input and state-injection checks also reported zero anomalies.
+New tests pass Ruff, and changed source adds no diagnostics against main.
+
+All four third-audit Inferno groups are fixed. **7 of 23** are fixed across
+the five games.
