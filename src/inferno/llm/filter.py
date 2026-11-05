@@ -89,6 +89,14 @@ def hide_for_side(state: dict[str, Any], visible_side: str,
         # even in an action owned by the OTHER side (Exiles). Public effects
         # remain visible; hands already show their owner's private draws.
         changes = entry.get("state_changes")
+        if entry.get("side") == opp and entry.get("action") == "end_reset":
+            # Immediate victory can stop a submitted batch before later
+            # Holds are discarded. Only completed elections become public.
+            entry.get("args", {}).pop("reset_discard", None)
+            completed = (changes or {}).get("reset_discards", [])
+            if completed:
+                entry.setdefault("args", {})["reset_discard"] = [
+                    c["card_id"] for c in completed]
         if isinstance(changes, dict) and entry.get("action") != "levy_aow_draw":
             changes.pop("deployment", None)
             changes.pop("aow_deployment", None)

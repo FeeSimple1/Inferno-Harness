@@ -1427,10 +1427,15 @@ def _enum_end_campaign(state, side) -> list[dict[str, Any]]:
             "description": "Waste: each Lord with multi-Assets discards one.",
             "rule_citation": "4.9.5",
         }]
-    # 4.9.6 Reset — finalizes the Campaign
-    return [{
+    # 4.9.6 Reset — every subset is reachable by single-card choices or a batch.
+    from .actions import reset_discard_candidates
+    return [{"action": "end_reset", "side": side,
+             "args": {"reset_discard": [cid], "done": False},
+             "description": f"Reset: discard {cid}; continue this side's election.",
+             "rule_citation": "4.9.6"}
+            for cid in reset_discard_candidates(state, side)] + [{
         "action": "end_reset", "side": side,
-        "description": "Reset: set aside Treachery, unstack Lieutenants, advance Calendar.",
+        "description": "Reset: keep remaining cards; finish this side's election.",
         "rule_citation": "4.9.6",
     }]
 

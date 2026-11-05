@@ -133,3 +133,42 @@ changed source adds no Ruff diagnostics relative to the preceding main.
 
 Second-audit progress: **3 of 4 Inferno groups fixed**. INF2-3, voluntary Reset
 Arts of War discards, remains open. The original eight groups remain fixed.
+
+## Second audit, batch 2 — INF2-3
+
+Reset now runs compulsory cleanup once, then offers Guelph and Ghibelline
+players their 4.9.6 elections before Calendar advance. Both factions may keep
+everything or return any owned Holds, This-Lord Capabilities or side-wide
+Capabilities to their own decks, independently of Waste or excess limits.
+The menu offers repeatable single-card selections and a finish choice, with
+optional batch arguments, preserving every subset without an exponential menu.
+
+Holds return unused. Tau Company Capability discard removes Altopascio and
+uses the repaired temporary Disband rule if a Lord loses his final Force.
+Regular or Routed survivors keep him on the map, and the Held F22 Event does
+not invoke Capability cleanup. Mat-clearance cascades return cards once.
+Campaign victory stops the remaining selections and Calendar advance; a
+submitted but uncompleted Hold discard remains concealed in opponent history.
+
+Save/load retains Reset progress and the active faction. Treachery, unstacking
+and expired Events are not processed twice. Eligible Holds remain playable
+during Reset and expire before the next Levy. Political decisions block Reset
+until resolved, and earlier End Campaign substeps cannot replay after it starts.
+Final scoring remains ahead of Repair, Waste and Reset. Existing Reset tests
+now explicitly finish both factions' elections; synthetic fixtures mark their
+preceding End Campaign steps complete.
+
+Thirty-three regressions cover both factions, all card locations, subsets and
+batches, conservation, Tau removal, surviving Forces, Disband, cascades,
+immediate victory, secrecy, compulsory cleanup, live Holds, save/load,
+malformed selections, actor ownership, political blocking and final scoring.
+Thirty fail on the preceding main; three preservation cases pass.
+
+Validation: **1,262 tests passed**. All six configured CI self-play scenarios
+ended with zero anomalies. Card-effect checks covered 52 cards and six seeds;
+save/load covered all six scenarios and eight seeds. Malformed-input and
+state-injection checks also reported zero anomalies. New tests pass Ruff;
+changed source adds no Ruff diagnostics relative to the preceding main.
+
+Second-audit progress: **all 4 Inferno groups fixed**. All eight original
+Inferno findings remain fixed.

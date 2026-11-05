@@ -144,6 +144,9 @@ class TestReset:
         dispatch(s, {"action": "end_waste", "side": "ghibelline"})
         before = s["meta"]["turn"]
         dispatch(s, {"action": "end_reset", "side": "guelph"})
+        assert s["meta"]["turn"] == before
+        assert s["meta"]["active_player"] == "ghibelline"
+        dispatch(s, {"action": "end_reset", "side": "ghibelline"})
         # Scenario A ends at box 3 -> Reset from turn 1 -> turn 2 (still pre-end)
         # turn 2 < end_box 3 so Levy resumes.
         if before == 1 and s["calendar"].get("end_box") == 3:

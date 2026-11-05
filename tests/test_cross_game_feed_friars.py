@@ -383,7 +383,9 @@ def test_friars_expires_at_reset_and_ordinary_plans_keep_their_order():
     state["active_events"] = {"this_campaign": [{"id": "S14", "side": "ghibelline"}]}
     state["decks"]["ghibelline"]["aow_deck"].remove("S14")
     state["meta"].update(campaign_step="end_campaign", active_player="guelph")
+    state["meta"]["end_substep_done"] = ["grow", "ransom", "game_check", "repair", "waste"]
     A.dispatch(state, {"action": "end_reset", "side": "guelph"})
+    A.dispatch(state, {"action": "end_reset", "side": "ghibelline"})
     assert not state.get("active_events")
     assert "S14" in state["decks"]["ghibelline"]["aow_discard"]
     state["meta"].update(phase="campaign", campaign_step="plan", active_player="guelph")

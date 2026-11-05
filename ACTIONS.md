@@ -396,3 +396,38 @@ Missing saves now produce `STATE_NOT_FOUND`, not an invented placeholder game.
 Raw `dispatch`, `do`, `play-event`, saves and legacy `play_with_callback` remain
 trusted-operator APIs. Never pass their unfiltered state/results to a model.
 See `LLM_PLAY_GUIDE.md` and `examples/play_with_claude.py` for the current callback.
+
+### Voluntary Reset discards (4.9.6)
+
+After Waste, `end_reset` runs the compulsory Reset cleanup once: set aside
+used Treachery, unstack Lieutenants, and expire Campaign Events. Guelphs then
+Ghibellines may return any of their Held Events, This-Lord Capabilities or
+side-wide Capabilities to their own Arts of War decks. The Calendar stays in
+the current box until both factions finish their elections.
+
+```json
+{"action":"end_reset","side":"guelph","args":{"reset_discard":["F4","F22"]}}
+{"action":"end_reset","side":"ghibelline","args":{"reset_discard":[]}}
+```
+
+Unselected cards stay in play or Held. Omitting `reset_discard` keeps all
+cards. By default each action finishes that faction's election; use
+`done:false` to discard some cards and continue choosing. The legal menu
+offers every available card as a repeatable single-card choice plus a finish
+choice, so every subset remains reachable without listing every combination.
+Explicit batches are accepted as well. Wrong owners, duplicate IDs, invalid
+cards and malformed selections reject without mutation.
+
+Returning a Hold does not play its Event. Returning Tau Company (F22's
+Capability) removes Altopascio and temporarily Disbands a Lord left without
+Forces; F22's Held Event does not apply those Capability effects. Cascade
+discards return each card once. Immediate Campaign victory stops the remaining
+batch before further cards or Calendar advance, and opponent history reveals
+only completed discards. Other eligible Held Events can still be played during
+Reset and expire normally. Political decisions must resolve before continuing.
+
+The `meta.reset_started` flag persists compulsory cleanup and the active
+faction across save/load. Past End Campaign substeps cannot be replayed once
+Reset begins. Finishing the Ghibelline election advances the Calendar once,
+clears the flag, and resumes Levy or game end. Final Game End checking remains
+before Repair, Waste and Reset.

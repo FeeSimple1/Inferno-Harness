@@ -31,6 +31,7 @@ class Meta(TypedDict, total=False):
     active_player: Side
     game_over: bool
     winner: Side | None
+    reset_started: bool
 
 
 # -----------------------------------------------------------------

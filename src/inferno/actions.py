@@ -28,6 +28,7 @@ from . import vassals as vs
 from . import revolt as _revolt
 from .flow import (
     advance_to_next_side_or_step,
+    current_campaign_step,
     current_side,
     current_step,
     is_first_levy,
@@ -154,6 +155,13 @@ def dispatch(state: dict[str, Any], action: dict[str, Any]) -> dict[str, Any]:
             and (state.get("pending_revolts") or state.get("pending_exiles"))
             and name not in ("cmd_resolve_revolt", "cmd_resolve_exiles")):
         raise IllegalAction("PENDING_DECISION", "Resolve the drawn Event's consequences first.", "3.1.3")
+    if (state["meta"].get("reset_started")
+            and current_campaign_step(state) == "end_campaign"):
+        if (state.get("pending_revolts") or state.get("pending_exiles")) and name not in (
+                "cmd_resolve_revolt", "cmd_resolve_exiles"):
+            raise IllegalAction("PENDING_DECISION", "Resolve Reset consequences first.", "4.9.6")
+        if name not in ("end_reset", "play_event", "cmd_resolve_revolt", "cmd_resolve_exiles"):
+            raise IllegalAction("PENDING_DECISION", "Finish both Reset elections first.", "4.9.6")
     if state.get("pending_besiege") and name not in (
             "besiege_or_bypass", "play_event", "cmd_resolve_revolt", "cmd_resolve_exiles"):
         raise IllegalAction("PENDING_DECISION", "Resolve Besiege/Bypass at the March destination first.", "4.3.5")
@@ -5101,13 +5109,101 @@ def _h_end_waste(state, side, args, rng) -> dict[str, Any]:
     return {"state_changes": {"waste": waste_log}, "rule_citation": "4.9.5"}
 
 
+def reset_discard_candidates(state, side) -> list[str]:
+    """4.9.6: Holds and both scopes of owned Capabilities may return."""
+    cards = set(state["decks"][side].get("aow_held", []))
+    cards.update(c["id"] for c in state.get("capabilities_in_play", [])
+                 if c.get("side") == side)
+    cards.update(cid for lord in state["lords"].values() if lord["side"] == side
+                 for cid in lord.get("capabilities", []))
+    return sorted(cards)
+
+
+def _reset_discard_card(state, side, cid) -> dict[str, Any]:
+    """Return the unused Event or Capability, including printed cleanup."""
+    held = state["decks"][side].setdefault("aow_held", [])
+    is_capability = cid not in held
+    if cid in held:
+        held.remove(cid)
+    else:
+        state["capabilities_in_play"] = [
+            c for c in state.get("capabilities_in_play", [])
+            if not (c.get("side") == side and c.get("id") == cid)]
+        for lord in state["lords"].values():
+            if lord["side"] == side:
+                lord["capabilities"] = [c for c in lord.get("capabilities", []) if c != cid]
+    state["decks"][side]["aow_deck"].append(cid)
+    changes = {"card_id": cid}
+    if is_capability and cid == "F22":
+        removed, empty = vs.discard_tau(state)
+        changes.update(altopascio_disbanded=removed, empty_lords_disbanded=empty)
+    return changes
+
+
+def _reset_expire_events(state) -> None:
+    """Return expired Events once, including any played during Reset."""
+    ae = state.get("active_events", {}) or {}
+    for kind in ("immediate", "this_levy", "this_campaign"):
+        for event in ae.get(kind, []) or []:
+            cid, owner = event.get("id"), event.get("side")
+            if isinstance(cid, str) and owner in state["decks"] and cid[:1] in ("F", "S"):
+                state["decks"][owner]["aow_discard"].append(cid)
+    state.pop("active_events", None)
+    state["meta"].pop("friars_plan_shuffled_turn", None)
+
+
 def _h_end_reset(state, side, args, rng) -> dict[str, Any]:
-    """4.9.6 RESET: set aside used Treachery cards; unstack Lieutenants;
-    discard 'This Campaign' Events; advance Calendar Levy marker; flip
-    to Levy phase."""
+    """4.9.6: mandatory cleanup, Guelph/Ghibelline discards, then advance.
+
+    args.reset_discard lists owned Holds/Capabilities. done=False keeps
+    choosing; the default finishes this side's election while keeping all
+    unselected cards. Calendar advance waits for the Ghibellines.
+    """
     from .flow import current_campaign_step
-    if current_campaign_step(state) != "end_campaign":
+    if state["meta"].get("phase") != "campaign" or current_campaign_step(state) != "end_campaign":
         raise IllegalAction("WRONG_STEP", "Reset in end_campaign.", "4.9.6")
+    if state.get("pending_revolts") or state.get("pending_exiles"):
+        raise IllegalAction("PENDING_DECISION", "Resolve political choices before Reset.", "4.9.6")
+    if "waste" not in state["meta"].get("end_substep_done", []):
+        raise IllegalAction("WRONG_STEP", "Complete Waste before Reset.", "4.9.6")
+    if not state["meta"].get("reset_started") and side != "guelph":
+        raise IllegalAction("WRONG_TURN", "Guelphs elect Reset discards first.", "4.9.6")
+    cards = args.get("reset_discard", [])
+    done = args.get("done", True)
+    if (not isinstance(cards, list) or not all(isinstance(cid, str) for cid in cards)
+            or len(set(cards)) != len(cards)):
+        raise IllegalAction("BAD_DISCARD", "reset_discard must list distinct card IDs.", "4.9.6")
+    if not isinstance(done, bool) or (not done and not cards):
+        raise IllegalAction("BAD_DISCARD", "Choose cards or finish with done=true.", "4.9.6")
+    candidates = reset_discard_candidates(state, side)
+    if any(cid not in candidates for cid in cards):
+        raise IllegalAction("BAD_DISCARD", "Choose only this side's Holds or Capabilities.", "4.9.6")
+    if not state["meta"].get("reset_started"):
+        _begin_reset_cleanup(state)
+        state["meta"]["reset_started"] = True
+    changes = {"reset_done": False, "reset_discards": []}
+    for cid in cards:
+        # Tau loss can Disband a mat and already return another selected card.
+        if cid in reset_discard_candidates(state, side):
+            changes["reset_discards"].append(_reset_discard_card(state, side, cid))
+        _check_campaign_victory(state)
+        if state["meta"].get("game_over"):
+            changes["game_ended"] = True
+            state["meta"].pop("reset_started", None)
+            return {"state_changes": changes, "rule_citation": "4.9.6"}
+    if not done or side == "guelph":
+        state["meta"]["active_player"] = side if not done else "ghibelline"
+        changes["reset_waiting_on"] = state["meta"]["active_player"]
+        return {"state_changes": changes, "rule_citation": "4.9.6"}
+    _reset_expire_events(state)
+    state["meta"].pop("reset_started", None)
+    result = _finish_reset(state)
+    result["state_changes"]["reset_discards"] = changes["reset_discards"]
+    return result
+
+
+def _begin_reset_cleanup(state) -> None:
+    """The compulsory pre-election portion of 4.9.6 runs once."""
     # Set aside used Treachery cards (Phase 3e: all Treachery cards in any side's plan this Campaign return to set-aside)
     for s in ("guelph", "ghibelline"):
         deck = state["decks"][s]
@@ -5123,17 +5219,13 @@ def _h_end_reset(state, side, args, rng) -> dict[str, Any]:
     # Discard 'This Campaign' Events. SMOKE-Inferno-071: return their AoW cards
     # to the owning side's discard so card conservation holds (the next Levy
     # reshuffle reforms the deck from these anyway).
-    ae = state.get("active_events", {}) or {}
-    for kind in ("immediate", "this_levy", "this_campaign"):
-        for e in ae.get(kind, []) or []:
-            cid = e.get("id"); esd = e.get("side")
-            if isinstance(cid, str) and esd in state["decks"] and cid[:1] in ("F", "S"):
-                state["decks"][esd]["aow_discard"].append(cid)
-    state.pop("active_events", None)
-    state["meta"].pop("friars_plan_shuffled_turn", None)
+    _reset_expire_events(state)
     # War/Treasurers permissions belong to one Levy, never another Turn.
     state.pop("war_declared_this_levy", None)
     state["meta"].pop("cta_extra_muster_lord", None)
+
+
+def _finish_reset(state) -> dict[str, Any]:
     # Advance Calendar
     cal = state["calendar"]
     cur_box = cal["levy_box"]

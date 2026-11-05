@@ -18,7 +18,8 @@
         "levy_step": {"type": ["string", "null"]},
         "active_player": {"type": "string", "enum": ["guelph", "ghibelline"]},
         "game_over": {"type": "boolean"},
-        "winner": {"type": ["string", "null"], "enum": ["guelph", "ghibelline", null]}
+        "winner": {"type": ["string", "null"], "enum": ["guelph", "ghibelline", null]},
+        "reset_started": {"type": "boolean"}
       }
     },
     "calendar": {"type": "object", "description": "Calendar boxes -> markers. Schema filled in Phase 1."},

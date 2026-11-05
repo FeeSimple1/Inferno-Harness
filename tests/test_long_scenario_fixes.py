@@ -146,7 +146,9 @@ def test_war_permission_expires_at_levy_exit_and_next_turn(sides):
     # Even a loaded Campaign carrying the obsolete flag is cleaned by Reset.
     s['war_declared_this_levy'] = sides
     s['meta'].update(phase='campaign', campaign_step='end_campaign', active_player='guelph')
+    s['meta']['end_substep_done'] = ['grow', 'ransom', 'game_check', 'repair', 'waste']
     A.dispatch(s, act('end_reset'))
+    A.dispatch(s, act('end_reset', side='ghibelline'))
     assert not s.get('war_declared_this_levy')
     assert s['meta']['turn'] == 2
     s['meta'].update(levy_step='3.5', cta_active=False)
