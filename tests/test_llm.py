@@ -51,7 +51,7 @@ class TestHiddenInfoFilter:
         # Siena (Ghibelline, Mustered) has Cavalieri etc.
         filtered = hide_for_side(s, "guelph", hidden_mats=True)
         siena = filtered["lords"]["siena"]
-        assert "<hidden_force_count>" in siena["forces"]
+        assert siena["forces"] == {"<hidden>": True}
         assert "<hidden>" in siena["assets"]
         # Guelph mats remain visible
         firenze = filtered["lords"]["firenze"]

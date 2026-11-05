@@ -303,7 +303,7 @@ def test_live_storm_views_preserve_choices_results_and_reveal_only_combat_mats()
     assert returned and len(returned)==len(traces)
     assert result.applied==expected and s==other
     assert 'battle_callback' not in s
-    assert '<hidden_force_count>' in hide_for_side(s,'ghibelline')['lords']['firenze']['forces']
+    assert hide_for_side(s,'ghibelline')['lords']['firenze']['forces'] == {'<hidden>': True}
 
 
 def test_interrupted_optional_combat_decision_rolls_back_without_silent_default():

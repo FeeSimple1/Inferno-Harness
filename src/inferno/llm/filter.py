@@ -117,7 +117,8 @@ def hide_for_side(state: dict[str, Any], visible_side: str,
             if lord.get("side") == opp and lid not in revealed:
                 # Public: name, side, status, location, calendar_box, service_box, ratings, podesta, commander
                 # Hidden: forces, assets, vassals (readiness), capabilities, routed_units, flags
-                lord["forces"] = {"<hidden_force_count>": sum(lord.get("forces", {}).values())}
+                # A hidden mat conceals army size as well as unit types.
+                lord["forces"] = {"<hidden>": True}
                 lord["assets"] = {"<hidden>": True}
                 if s["meta"].get("advanced_vassal_service"):
                     lord["public_vassal_service"] = [
