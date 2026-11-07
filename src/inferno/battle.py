@@ -2119,8 +2119,10 @@ def unladen_prov_capacity(state, lord_ids: list[str], way_type: str) -> int:
     return carts * (2 if way_type == "road" else 1)
 
 
-def unladen_prov_to_keep(state, group: list[str], way_type: str) -> dict[str, int]:
-    """Use own Carts first, then spare co-movers' capacity without trading food."""
+def unladen_prov_to_keep(state, group: list[str], way_type: str, *,
+                         decisions: BattleDecisionContext | None = None,
+                         destination: str | None = None) -> dict[str, int]:
+    """Allocate shared carrying capacity while keeping food on its original mat."""
     capacity = {lid: unladen_prov_capacity(state, [lid], way_type) for lid in group}
     prov = {lid: state["lords"][lid]["assets"].get("Provender", 0) for lid in group}
     spare = sum(max(0, capacity[lid] - prov[lid]) for lid in group)
@@ -2129,6 +2131,32 @@ def unladen_prov_to_keep(state, group: list[str], way_type: str) -> dict[str, in
         borrowed = min(spare, max(0, prov[lid] - capacity[lid]))
         spare -= borrowed
         keep[lid] = min(prov[lid], capacity[lid] + borrowed)
+    if decisions is None:
+        return keep
+
+    remaining = sum(keep.values())
+    food_remaining = sum(prov.values())
+    for lid in group:
+        food_remaining -= prov[lid]
+        minimum = max(0, remaining - food_remaining)
+        maximum = min(prov[lid], remaining)
+        default = max(minimum, min(keep[lid], maximum))
+        amount = default
+        if minimum < maximum:
+            kind = "keep_provender"
+            side = state["lords"][lid]["side"]
+            options = [default, *(n for n in range(minimum, maximum + 1) if n != default)]
+            info = {"lord_id": lid, "destination": destination, "way_type": way_type,
+                    "remaining_capacity": remaining, "provender_on_mat": prov[lid]}
+            if (decisions.scripted and isinstance(decisions.scripted[0], dict)
+                    and decisions.scripted[0].get("type") == kind):
+                amount = decisions.decide(kind, side, options, info)
+            else:
+                amount = decisions.decide_optional(kind, side, options, default, info)
+            if type(amount) is not int:
+                raise ScriptedDecisionError("Retained Provender must be an integer.")
+        keep[lid] = amount
+        remaining -= amount
     return keep
 
 

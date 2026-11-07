@@ -2980,7 +2980,7 @@ def _h_cmd_march(state, side, args, rng) -> dict[str, Any]:
     }, state, side, citation="4.3")
 
 
-def _avoid_preview(state, side, info, args) -> dict[str, Any]:
+def _avoid_preview(state, side, info, args, *, decisions=None) -> dict[str, Any]:
     """Validate a solo/group Avoid and compute its mandatory discards."""
     lid = args.get("lord_id")
     companions = args.get("with_lords", [])
@@ -3028,13 +3028,18 @@ def _avoid_preview(state, side, info, args) -> dict[str, Any]:
            for oid in target.get("lords_present", [])):
         raise IllegalAction("AVOID_INTO_ENEMY_LOCALE", "An Unbesieged Enemy Lord blocks Avoid.", "4.3.4")
     from .battle import unladen_prov_to_keep
-    keep = unladen_prov_to_keep(state, group, way)
+    keep = unladen_prov_to_keep(state, group, way, decisions=decisions, destination=destination)
     discards = {}
     for member in group:
         assets = state["lords"][member]["assets"]
         discards[member] = {"Loot": assets.get("Loot", 0),
                             "Provender": assets.get("Provender", 0) - keep[member]}
+    can_choose_provender = (
+        any(keep.values()) and any(d["Provender"] for d in discards.values())
+        and sum(state["lords"][m]["assets"].get("Provender", 0) > 0 for m in group) > 1
+    )
     return {"group": group, "entries": entries, "destination": destination,
+            "can_choose_provender": can_choose_provender,
             "way_type": way, "discards": discards}
 
 
@@ -3080,7 +3085,12 @@ def _h_approach_response(state, side, args, rng) -> dict[str, Any]:
     post_decisions = args.get("post_battle_decisions")
 
     if choice == "avoid":
-        preview = _avoid_preview(state, side, info, args)
+        from .battle import BattleDecisionContext, distribute_spoils
+        decision_context = BattleDecisionContext(scripted=list(post_decisions or []),
+                                                 callback=state.get("battle_callback"))
+        preview = _avoid_preview(state, side, info, args, decisions=decision_context)
+        provender_decisions = list(decision_context.trace)
+        decision_context.trace.clear()
         group = preview["group"]
         response_entries = preview["entries"]
         dest_name = preview["destination"]
@@ -3097,11 +3107,8 @@ def _h_approach_response(state, side, args, rng) -> dict[str, Any]:
                      if state["lords"][m]["side"] != side
                      and state["lords"][m].get("status") == "mustered"
                      and not state["lords"][m].get("flags", {}).get("in_stronghold")]
-        from .battle import BattleDecisionContext, distribute_spoils
-        spoils_context = BattleDecisionContext(scripted=list(post_decisions or []),
-                                               callback=state.get("battle_callback"))
-        allocation = distribute_spoils(state, pool, attackers, decisions=spoils_context)
-        post_decisions = spoils_context.scripted
+        allocation = distribute_spoils(state, pool, attackers, decisions=decision_context)
+        post_decisions = decision_context.scripted
         bypass = (target_loc.get("type") in _STRONGHOLD_TYPES
                   and not target_loc.get("ruins") and not target_loc.get("siege")
                   and not _is_friendly_locale(state, target_loc, side))
@@ -3121,8 +3128,10 @@ def _h_approach_response(state, side, args, rng) -> dict[str, Any]:
         avoid_changes = {"avoided": group, "destination": dest_name,
                          "way_type": preview["way_type"], "discarded_as_spoils": pool,
                          "spoils_allocation": allocation, "bypassing": bypass}
-        if spoils_context.trace:
-            avoid_changes["spoils_decisions"] = spoils_context.trace
+        if provender_decisions:
+            avoid_changes["provender_decisions"] = provender_decisions
+        if decision_context.trace:
+            avoid_changes["spoils_decisions"] = decision_context.trace
 
     elif choice == "withdraw":
         # 4.3.4 WITHDRAW: into a Friendly Stronghold at this Locale.
@@ -3670,7 +3679,7 @@ def _apply_post_battle(state, result, attackers: list[str], defenders: list[str]
     for (dest, way), members in retreat_spoils.items():
         members = [m for m in members if state["lords"][m].get("status") == "mustered"
                    and state["lords"][m].get("location") == dest]
-        keep = unladen_prov_to_keep(state, members, way)
+        keep = unladen_prov_to_keep(state, members, way, decisions=bdc, destination=dest)
         for member in members:
             take_spoils(member, retreated=True, conceded=True, withdrew=False,
                         retreat_way_type=way, prov_to_keep=keep[member])

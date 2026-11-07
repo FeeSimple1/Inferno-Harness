@@ -120,8 +120,10 @@ and a completed unshuffled Plan shuffles once before the first Guelph reveal.
   `with_lords` (other pending defenders avoiding together). Shared Carts
   carry up to two Provender per Cart on Roads or one on Tracks. Avoiding
   discards Loot and excess Provender to the approaching Lords as Spoils;
-  the legal menu lists each option's `discarded_assets`. Arrival at an
-  Unbesieged enemy Stronghold establishes Bypass.
+  the legal menu lists `discarded_assets` for the default Provender
+  allocation. The avoiding side can choose how to allocate shared capacity
+  through `keep_provender` before the approaching side allocates Spoils.
+  Arrival at an Unbesieged enemy Stronghold establishes Bypass.
 
 Battles resolve synchronously within the triggering action, so there are no
 separate `battle_decision`, `concede`, or `retreat` actions. In-Battle choices
@@ -149,6 +151,13 @@ with these decision types:
 - `retreat_way` — when more than one legal Way connects the chosen
   destination, select `"road"` or `"track"`. Conceding Lords retain
   Provender according to the selected Way and their co-retreaters' Carts.
+- `keep_provender` — during group Avoid or conceding group Retreat, the moving
+  side chooses an integer amount to keep on the named Lord's mat when more
+  than one amount is legal. The group keeps as much as it can carry Unladen,
+  with each Lord's food staying on its own mat. Omitted choices default to
+  the existing allocation that uses each Lord's own Carts first. Supply
+  entries in the offered Lord order before the Spoils choices. Avoid records
+  these elections under `provender_decisions`.
 - `spoils_recipient` — the winning faction chooses a surviving Lord with
   room for the current Asset type. The decision info identifies the `asset`
   and `remaining` markers in that pool.
@@ -188,7 +197,8 @@ scripts can omit the entry to use the first besieger as the default. The
 Sallying Active Lord starts in the attacking Front.
 
 `cmd_sally` accepts `post_battle_decisions` with
-`post_battle_fate`, `retreat_destination` and `retreat_way` entries for losing Besiegers, plus
+`post_battle_fate`, `retreat_destination`, `retreat_way` and `keep_provender`
+entries for losing Besiegers, plus
 `spoils_recipient` and `spoils_amount` for the winning faction's allocation.
 Sally reports Loss rolls and captured Assets under `sally_result`, with
 `routed_out_lords` recording Array Rout and `removed_lords` recording actual

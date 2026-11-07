@@ -51,7 +51,10 @@ _SALLY_DECISIONS = [
     "absorb_target",
 ]
 _SPOILS_DECISIONS = ["spoils_recipient", "spoils_amount"]
-_SALLY_POST_BATTLE_DECISIONS = ["post_battle_fate", "retreat_destination", "retreat_way", *_SPOILS_DECISIONS]
+_SALLY_POST_BATTLE_DECISIONS = [
+    "post_battle_fate", "retreat_destination", "retreat_way", "keep_provender",
+    *_SPOILS_DECISIONS,
+]
 _FIELD_POST_BATTLE_DECISIONS = ["post_battle_withdraw", *_SALLY_POST_BATTLE_DECISIONS]
 
 
@@ -1322,11 +1325,15 @@ def _enum_approach_response(state, pending) -> list[dict[str, Any]]:
                         preview = _avoid_preview(state, side, info, args)
                     except IllegalAction:
                         continue
+                    decision_types = list(_SPOILS_DECISIONS)
+                    description = f"{', '.join([lid, *companions])} Avoid to {neighbour} ({way_type})."
+                    if preview["can_choose_provender"]:
+                        decision_types.insert(0, "keep_provender")
+                        description += " Discard preview uses the default Provender allocation."
                     out.append({
                         "action": "approach_response", "side": side, "args": args,
-                        "accepts_decisions": {"post_battle_decisions": list(_SPOILS_DECISIONS)},
-                        "description": (f"{', '.join([lid, *companions])} Avoid to {neighbour} "
-                                        f"({way_type})."),
+                        "accepts_decisions": {"post_battle_decisions": decision_types},
+                        "description": description,
                         "discarded_assets": {m: {a: n for a, n in d.items() if n}
                                              for m, d in preview["discards"].items()
                                              if any(d.values())},

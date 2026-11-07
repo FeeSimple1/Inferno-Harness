@@ -119,7 +119,7 @@ class TestDecisionDiscoverability:
         assert "concede" in acc["scripted_decisions"]
         assert acc["post_battle_decisions"] == ["post_battle_withdraw",
                                                 "post_battle_fate",
-                                                "retreat_destination", "retreat_way",
+                                                "retreat_destination", "retreat_way", "keep_provender",
                                                 "spoils_recipient", "spoils_amount"]
 
     def test_avoid_advertises_the_approaching_owners_spoils_channel(self):

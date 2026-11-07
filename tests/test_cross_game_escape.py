@@ -8,7 +8,9 @@ import pytest
 
 from inferno import actions as A
 from inferno import static_data as sd
+from inferno.invariants import check_all_invariants
 from inferno.legal_moves import enumerate_legal
+from inferno.llm.interface import DecisionView, play_with_interface
 from inferno.scenarios import load_scenario
 
 
@@ -90,6 +92,88 @@ def test_group_avoid_shares_carts_but_food_stays_on_its_own_mat(way, kept):
     assert state["lords"]["firenze"]["assets"].get("Provender", 0) == 0
     assert all(state["lords"][m]["location"] == destination for m in ["arezzo", "firenze"])
     assert not state["pending"]
+
+
+@pytest.mark.parametrize("way, first, second", [("road", 0, 4), ("road", 2, 2), ("track", 1, 1)])
+def test_group_avoid_can_allocate_shared_capacity(way, first, second):
+    state, destination = approach(way, Provender=4, Cart=2)
+    source = state["lords"]["arezzo"]["location"]
+    place(state, "firenze", source, Provender=4)
+    origin = state["pending"][0]["info"]["approached_from"]
+    state["pending"].append(pending("firenze", source, origin))
+    move = next(m for m in enumerate_legal(state) if m["args"].get("with_lords") == ["firenze"]
+                and m["args"].get("destination") == destination)
+    assert move["accepts_decisions"]["post_battle_decisions"][0] == "keep_provender"
+    move["args"]["post_battle_decisions"] = [
+        {"type": "keep_provender", "side": "guelph", "choice": first},
+    ]
+    changes = A.dispatch(state, move)["state_changes"]
+    assert state["lords"]["arezzo"]["assets"]["Provender"] == first
+    assert state["lords"]["firenze"]["assets"]["Provender"] == second
+    assert changes["discarded_as_spoils"]["Provender"] == 8 - first - second
+    assert changes["provender_decisions"][0]["info"]["lord_id"] == "arezzo"
+
+
+def test_live_avoid_provender_election_belongs_to_the_avoiding_side():
+    state, destination = approach("road", Provender=4, Cart=2)
+    place(state, "firenze", "Figline", Provender=4)
+    state["pending"].append(pending("firenze", "Figline", "Firenze"))
+    offered = []
+
+    def choose(view):
+        if isinstance(view, DecisionView):
+            records = view.query({"request": "actions"})["records"]
+            offered.append((view.side, view.overview()["decision"],
+                            {entry["move"]["args"]["choice"] for entry in records}))
+            selected = next(e for e in records if e["move"]["args"]["choice"] == 2)
+        else:
+            records = view.query({"request": "actions", "category": "approach_response"})["records"]
+            selected = next(e for e in records if e["move"]["args"].get("with_lords") == ["firenze"]
+                            and e["move"]["args"].get("destination") == destination)
+        return {"action_id": selected["action_id"], "state_version": view.version}
+
+    play_with_interface(state, choose)
+    assert offered == [("guelph", "keep_provender", set(range(5)))]
+    assert all(state["lords"][lid]["assets"]["Provender"] == 2 for lid in ["arezzo", "firenze"])
+
+
+def test_conceding_retreat_chooses_shared_provender_before_feed():
+    from tests.test_phase3c import _to_command_with
+
+    state = _to_command_with("A", 99, "siena", "Firenze")
+    for lid, carts in [("firenze", 2), ("arezzo", 0)]:
+        place(state, lid, "Figline", Provender=4, Cart=carts)["forces"] = {"Cavalieri": 4}
+    state["lords"]["siena"]["forces"] = {"Cavalieri": 2}
+    state["meta"].update(rng_seed=1, rng_advance=0)
+    A.dispatch(state, {"action": "cmd_march", "side": "ghibelline", "args": {
+        "lord_id": "siena", "destination": "Figline", "way_type": "road",
+    }})
+    A.dispatch(state, {"action": "approach_response", "side": "guelph", "args": {
+        "lord_id": "firenze", "choice": "stand",
+    }})
+    response = {"action": "approach_response", "side": "guelph", "args": {
+        "lord_id": "arezzo", "choice": "stand",
+        "scripted_decisions": [
+            {"type": "initial_placement_defender", "choice": "firenze"},
+            {"type": "concede", "side": "attacker", "choice": "no"},
+            {"type": "concede", "side": "defender", "choice": "yes"},
+        ],
+        "post_battle_decisions": [{"type": "keep_provender", "side": "guelph", "choice": 5}],
+    }}
+    before = copy.deepcopy(state)
+    with pytest.raises(A.IllegalAction, match="BAD_DECISION"):
+        A.dispatch(state, response)
+    assert state == before
+    response["args"]["post_battle_decisions"][0]["choice"] = 2
+    result = A.dispatch(state, response)["state_changes"]["battle_result"]
+    assert result["post_battle_decisions"][0]["info"]["lord_id"] == "firenze"
+    assert {row["loser_id"]: row["transferred"]["Provender"] for row in result["spoils"]} == {
+        "firenze": 2, "arezzo": 2,
+    }
+    for lid in ["firenze", "arezzo"]:
+        assert state["lords"][lid]["location"] == "San Giovanni"
+        assert state["lords"][lid]["assets"]["Provender"] == 1
+    check_all_invariants(state)
 
 
 def test_every_coavoid_subset_is_discoverable_and_cannot_borrow_from_a_stayer():
