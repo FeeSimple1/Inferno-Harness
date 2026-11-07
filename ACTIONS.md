@@ -135,10 +135,11 @@ automatically in the post-Battle step, with player choices available.
 `post_battle_decisions` arg (a FIFO list, same shape as `scripted_decisions`)
 with these decision types:
 
-- `post_battle_withdraw` — for each eligible losing Lord, `choice` is
+- `post_battle_withdraw` — for each eligible losing field defender, `choice` is
   `"withdraw"` (go inside the Friendly Stronghold at the Battle Locale, 4.4.3 /
   11.2) or `"retreat"`. Default: `"withdraw"` if the Lord id is in
-  `meta.post_battle_withdraw`, else `"retreat"`.
+  `meta.post_battle_withdraw`, else `"retreat"`. A Marching Attacker's only
+  Retreat destination is the Approach origin.
 - `retreat_destination` — for each Retreating Lord, `choice` is one of the legal
   target Locales. Default: the deterministic leftmost (Friendly first, then
   alphabetical).

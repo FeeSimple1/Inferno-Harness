@@ -13,9 +13,12 @@ input is supplied.
 """
 from __future__ import annotations
 
+import pytest
+
 from inferno import actions as A
 import inferno.actions as actions_mod
 from inferno.actions import dispatch
+from inferno.invariants import check_all_invariants
 from tests.test_phase3b import _to_command_phase
 
 
@@ -116,6 +119,45 @@ class TestApproachThreadsPostBattleDecisions:
         s["locales"]["Figline"]["lords_present"].append("siena")
         s["lords"]["siena"]["location"] = "Figline"
         return s
+
+    @pytest.mark.parametrize("source", ["script", "callback", "saved_default"])
+    def test_losing_marcher_cannot_withdraw_at_friendly_destination(self, source):
+        s = self._setup_approach()
+        s["lords"]["firenze"]["service_box"] = 12
+        dispatch(s, {"action": "cmd_march", "side": "guelph",
+                     "args": {"lord_id": "firenze", "destination": "Figline",
+                              "way_type": "road"}})
+        args = {
+            "lord_id": "siena", "choice": "stand",
+            "scripted_decisions": [{"type": "concede", "side": "attacker", "choice": "yes"}],
+        }
+        offered = []
+
+        def callback(decision):
+            offered.append(decision["type"])
+            if decision["type"] == "post_battle_withdraw":
+                return "withdraw"
+            return decision["options"][0]
+
+        if source == "script":
+            args["post_battle_decisions"] = [
+                {"type": "post_battle_withdraw", "side": "guelph", "choice": "withdraw"},
+            ]
+        elif source == "callback":
+            s["battle_callback"] = callback
+        else:
+            s["meta"]["post_battle_withdraw"] = ["firenze"]
+
+        result = dispatch(s, {"action": "approach_response", "side": "ghibelline",
+                              "args": args})["state_changes"]["battle_result"]
+
+        assert result["loser"] == result["conceded"] == "attacker"
+        assert "post_battle_withdraw" not in offered
+        assert s["lords"]["firenze"]["location"] == "Firenze"
+        assert not s["lords"]["firenze"]["flags"].get("in_stronghold")
+        assert s["lords"]["firenze"]["service_box"] == 9
+        assert "post_battle_withdraw" not in s["meta"]
+        check_all_invariants(s)
 
     def test_post_battle_decisions_reach_apply_post_battle(self, monkeypatch):
         s = self._setup_approach()

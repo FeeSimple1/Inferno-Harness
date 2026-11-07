@@ -3448,10 +3448,10 @@ def _retreat_destination(state, lid, battle_locale, loser_side,
 
 
 def _can_withdraw_into_stronghold(state, lid, battle_locale) -> bool:
-    """4.4.3 / Battle&Storm 11.2 Withdraw eligibility: the losing Lord's side
-    holds an unruined, non-Outpost Stronghold at the Battle Locale (he was
-    Defending at one). A Marching Attacker losing at the enemy's Locale is not
-    eligible (the Stronghold is not his)."""
+    """Check whether the Battle Locale has a Friendly Stronghold for Withdrawal.
+
+    The caller checks the Lord's combat role and the Stronghold's capacity.
+    """
     loc = state["locales"].get(battle_locale) if battle_locale else None
     if not loc:
         return False
@@ -3606,8 +3606,10 @@ def _apply_post_battle(state, result, attackers: list[str], defenders: list[str]
             # to meta.post_battle_withdraw (default Retreat) and the
             # deterministic leftmost Locale, so legacy callers are unchanged.
             is_marching_attacker = not is_sally and loser == "attacker"
-            eligible_withdraw = (not is_sally and _wd_count < _wd_cap
-                                 and _can_withdraw_into_stronghold(state, lid, battle_locale))
+            eligible_withdraw = (
+                loser == "defender" and not is_sally and _wd_count < _wd_cap
+                and _can_withdraw_into_stronghold(state, lid, battle_locale)
+            )
             do_withdraw = False
             if eligible_withdraw:
                 _wd_default = "withdraw" if lid in withdraw_elected else "retreat"
