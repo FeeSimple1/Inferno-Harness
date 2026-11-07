@@ -47,7 +47,8 @@ _STORM_DECISIONS = [
     "concede", "storm_reserve_add", "select_target_unit", "absorb_target",
 ]
 _SALLY_DECISIONS = [
-    "concede", "sally_reserve_add", "select_target_unit", "absorb_target",
+    "sally_defender_front", "concede", "sally_reserve_add", "select_target_unit",
+    "absorb_target",
 ]
 _SPOILS_DECISIONS = ["spoils_recipient", "spoils_amount"]
 _SALLY_POST_BATTLE_DECISIONS = ["post_battle_fate", "retreat_destination", "retreat_way", *_SPOILS_DECISIONS]

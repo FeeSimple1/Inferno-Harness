@@ -9,6 +9,7 @@ import pytest
 from inferno import actions
 from inferno.invariants import check_all_invariants
 from inferno.legal_moves import enumerate_legal
+from inferno.llm.interface import DecisionView, play_with_interface
 from tests.test_cross_game_escape import place
 from tests.test_phase3c import _to_command_with
 
@@ -47,6 +48,58 @@ def give_card(state, card, pile):
         if isinstance(zone, list) and card in zone:
             zone.remove(card)
     pile.append(card)
+    check_all_invariants(state)
+
+
+def _sally_with_two_besiegers():
+    state = position(sally_knights=6)
+    arezzo = place(state, "arezzo", "Siena", Provender=2)
+    arezzo["forces"] = {"Cavalieri": 4}
+    pisa = place(state, "pisa", "Siena", Provender=2)
+    pisa["flags"]["in_stronghold"] = True
+    check_all_invariants(state)
+    return state
+
+
+@pytest.mark.parametrize("front", [None, "arezzo"])
+def test_sally_initial_front_and_legacy_default(front):
+    state = _sally_with_two_besiegers()
+    script = [{"type": "concede", "side": "attacker", "choice": "yes"}]
+    if front:
+        script.insert(0, {"type": "sally_defender_front", "side": "defender", "choice": front})
+    result = sally(state, scripted_decisions=script)
+    assert result["rounds"][0]["positions"]["defender"]["center"] == (front or "firenze")
+    assert result["rounds"][0]["positions"]["attacker"]["center"] == "siena"
+    assert result["reserve_final"] == {
+        "attacker": ["pisa"], "defender": ["firenze" if front else "arezzo"],
+    }
+
+
+def test_sally_front_election_is_advertised_and_owned_by_besiegers():
+    state = _sally_with_two_besiegers()
+    move = next(m for m in enumerate_legal(state) if m["action"] == "cmd_sally")
+    seen = []
+
+    def choose(view):
+        request = {"request": "actions"}
+        if not isinstance(view, DecisionView):
+            request["category"] = "cmd_sally"
+        records = view.query(request)["records"]
+        entry = records[0]
+        if isinstance(view, DecisionView):
+            kind = view.overview()["decision"]
+            seen.append((kind, view.side))
+            if kind == "sally_defender_front":
+                assert [row["move"]["args"]["choice"] for row in records] == ["firenze", "arezzo"]
+                entry = records[1]
+            elif kind == "concede":
+                entry = next(row for row in records if row["move"]["args"]["choice"] == "yes")
+        return {"action_id": entry["action_id"], "state_version": view.version}
+
+    result = play_with_interface(state, choose).applied["state_changes"]["sally_result"]
+    assert seen[0] == ("sally_defender_front", "guelph")
+    assert "sally_defender_front" in move["accepts_decisions"]["scripted_decisions"]
+    assert result["rounds"][0]["positions"]["defender"]["center"] == "arezzo"
     check_all_invariants(state)
 
 

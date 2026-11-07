@@ -1702,8 +1702,8 @@ def resolve_sally(state, sallying: list[str], besiegers: list[str],
     using full Battle procedure (the 6-step initiative) with a Storm-like Array:
 
       - Each side starts with 1 Lord in Front; the rest start in Reserve. The
-        Attacker Front is the Sallying Active Lord; the Defender Front is a
-        Besieging Lord.
+        Attacker Front is the Sallying Active Lord. The defender chooses the
+        Front Lord from the Besiegers.
       - In each Round AFTER the first, Attacker then Defender MAY add ONE Lord
         from Reserve to Front, up to the Stronghold Size.
       - If all of a side's Front Lords are Routed, a Reserve Lord (if any) MUST
@@ -1727,11 +1727,15 @@ def resolve_sally(state, sallying: list[str], besiegers: list[str],
 
     positions = _empty_positions()
     positions["attacker"]["center"] = active_id
+    def_center = besiegers[0] if besiegers else None
+    if len(besiegers) > 1:
+        def_center = bdc.decide_optional(
+            "sally_defender_front", "defender",
+            options=besiegers, default=def_center,
+            info={"reason": "one_front_lord"})
+    positions["defender"]["center"] = def_center
     reserve = {"attacker": [a for a in sallying if a != active_id],
-               "defender": list(besiegers)}
-    if besiegers:
-        positions["defender"]["center"] = besiegers[0]
-        reserve["defender"] = list(besiegers[1:])
+               "defender": [d for d in besiegers if d != def_center]}
 
     from .rng import HarnessRNG
     rng = HarnessRNG(state["meta"]["rng_seed"],

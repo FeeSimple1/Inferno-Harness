@@ -181,7 +181,13 @@ the deterministic defaults. Non-default post-Battle choices are echoed
 on `battle_result["post_battle_decisions"]`.
 
 `cmd_storm` and `cmd_sally` accept the same `scripted_decisions` channel for
-their in-Battle choices. `cmd_sally` accepts `post_battle_decisions` with
+their in-Battle choices. When several Lords are besieging, the defender
+chooses one as the initial Front Lord via `sally_defender_front` before the
+first `concede` decision. The `choice` is a besieger's Lord ID. Operator
+scripts can omit the entry to use the first besieger as the default. The
+Sallying Active Lord starts in the attacking Front.
+
+`cmd_sally` accepts `post_battle_decisions` with
 `post_battle_fate`, `retreat_destination` and `retreat_way` entries for losing Besiegers, plus
 `spoils_recipient` and `spoils_amount` for the winning faction's allocation.
 Sally reports Loss rolls and captured Assets under `sally_result`, with
