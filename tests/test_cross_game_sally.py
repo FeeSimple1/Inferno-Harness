@@ -121,6 +121,20 @@ def test_blocked_besieger_retreat_has_full_removal_aftermath():
     assert not state["lords"]["siena"]["flags"].get("in_stronghold")
 
 
+def test_losing_besieger_can_elect_removal_despite_legal_retreat():
+    state = position()
+    move = next(m for m in enumerate_legal(state) if m["action"] == "cmd_sally")
+    assert "post_battle_fate" in move["accepts_decisions"]["post_battle_decisions"]
+    result = sally(state, "defender", post_battle_decisions=[
+        {"type": "post_battle_fate", "side": "guelph", "choice": "remove"},
+    ])
+    assert result["removed_lords"] == ["firenze"]
+    assert result["post_battle_decisions"][0]["options"] == ["retreat", "remove"]
+    assert state["captured_knights"]["guelph"] == {"Cavalieri": 2}
+    assert not state["locales"]["Siena"]["siege"]
+    assert not state["lords"]["siena"]["flags"].get("in_stronghold")
+
+
 def test_conceding_co_retreaters_share_carts_and_winner_selects_spoils_recipient():
     state = position()
     place(state, "arezzo", "Siena", Cart=2)

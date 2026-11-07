@@ -135,14 +135,17 @@ automatically in the post-Battle step, with player choices available.
 `post_battle_decisions` arg (a FIFO list, same shape as `scripted_decisions`)
 with these decision types:
 
-- `post_battle_withdraw` — for each eligible losing field defender, `choice` is
-  `"withdraw"` (go inside the Friendly Stronghold at the Battle Locale, 4.4.3 /
-  11.2) or `"retreat"`. Default: `"withdraw"` if the Lord id is in
-  `meta.post_battle_withdraw`, else `"retreat"`. A Marching Attacker's only
-  Retreat destination is the Approach origin.
+- `post_battle_withdraw` — a losing field defender eligible to Withdraw may
+  choose `"withdraw"` into the Friendly Stronghold, `"remove"` per 4.4.5, or
+  `"retreat"` when a destination is available (4.4.3 / 11.2). The default is
+  `"withdraw"` for Lords in `meta.post_battle_withdraw`, otherwise
+  `"retreat"` when possible or `"remove"`.
+- `post_battle_fate` — a losing defender ineligible to Withdraw may choose
+  `"retreat"` (default) or `"remove"`. If Retreat is blocked, Removal is
+  automatic. This includes losing besiegers in a Sally.
 - `retreat_destination` — for each Retreating Lord, `choice` is one of the legal
   target Locales. Default: the deterministic leftmost (Friendly first, then
-  alphabetical).
+  alphabetical). A Marching Attacker's only Retreat destination is the Approach origin.
 - `retreat_way` — when more than one legal Way connects the chosen
   destination, select `"road"` or `"track"`. Conceding Lords retain
   Provender according to the selected Way and their co-retreaters' Carts.
@@ -179,7 +182,7 @@ on `battle_result["post_battle_decisions"]`.
 
 `cmd_storm` and `cmd_sally` accept the same `scripted_decisions` channel for
 their in-Battle choices. `cmd_sally` accepts `post_battle_decisions` with
-`retreat_destination` and `retreat_way` entries for losing Besiegers, plus
+`post_battle_fate`, `retreat_destination` and `retreat_way` entries for losing Besiegers, plus
 `spoils_recipient` and `spoils_amount` for the winning faction's allocation.
 Sally reports Loss rolls and captured Assets under `sally_result`, with
 `routed_out_lords` recording Array Rout and `removed_lords` recording actual

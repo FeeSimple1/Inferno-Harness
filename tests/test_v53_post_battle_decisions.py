@@ -19,7 +19,9 @@ from inferno import actions as A
 import inferno.actions as actions_mod
 from inferno.actions import dispatch
 from inferno.invariants import check_all_invariants
+from tests.test_cross_game_escape import place
 from tests.test_phase3b import _to_command_phase
+from tests.test_phase3c import _to_command_with
 
 
 def _state(loser_side="guelph", alleg="guelph", typ="town"):
@@ -109,6 +111,50 @@ class TestRetreatDestinationChoice:
                                 "lords_present": []}
         A._apply_post_battle(s, _result(), ["ATK"], ["DEF"], battle_locale="Town1")
         assert s["lords"]["DEF"]["location"] == "AdjA"
+
+
+@pytest.mark.parametrize("enemy_holds, expected_type, options", [
+    (None, "post_battle_withdraw", ["retreat", "withdraw", "remove"]),
+    ("Figline", "post_battle_fate", ["retreat", "remove"]),
+    ("Firenze", "post_battle_withdraw", ["withdraw", "remove"]),
+])
+def test_field_defender_can_elect_removal(enemy_holds, expected_type, options):
+    s = _to_command_with("A", 99, "siena", "San Giovanni")
+    loser = place(s, "firenze", "Figline", Coin=4, Loot=2, Provender=8, Cart=1, Ship=1)
+    loser["forces"] = {"Cavalieri": 2}
+    s["lords"]["siena"]["forces"] = {"Cavalieri": 2}
+    if enemy_holds:
+        s["locales"][enemy_holds]["current_allegiance"] = [{"side": "ghibelline", "value": 1}]
+    s["meta"].update(rng_seed=1, rng_advance=0)
+    check_all_invariants(s)
+    dispatch(s, {"action": "cmd_march", "side": "ghibelline",
+                 "args": {"lord_id": "siena", "destination": "Figline", "way_type": "road"}})
+    treachery = s["decks"]["ghibelline"]["treachery_set_aside"][:3]
+    offered = []
+
+    def callback(decision):
+        if decision["type"] in {"post_battle_fate", "post_battle_withdraw"}:
+            offered.append((decision["type"], decision["side"], decision["options"]))
+            return "remove"
+        return decision["options"][0]
+
+    s["battle_callback"] = callback
+    result = dispatch(s, {"action": "approach_response", "side": "guelph", "args": {
+        "lord_id": "firenze", "choice": "stand", "scripted_decisions": [
+            {"type": "concede", "side": "attacker", "choice": "no"},
+            {"type": "concede", "side": "defender", "choice": "yes"},
+        ],
+    }})["state_changes"]["battle_result"]
+
+    assert offered == [(expected_type, "guelph", options)]
+    assert result["removed_lords"] == ["firenze"]
+    assert result["spoils"][0]["transferred"] == {"Coin": 4, "Loot": 2, "Provender": 8, "Cart": 1}
+    assert s["captured_knights"]["guelph"] == {"Cavalieri": 2}
+    assert len(treachery) == 3 and set(treachery) <= set(s["decks"]["ghibelline"]["command_deck"])
+    assert any(roll["context"].startswith("revolt_battle_firenze_") for roll in result["rolls"])
+    assert not any(roll["context"] == "retreat_shift_firenze" for roll in result["rolls"])
+    assert loser["status"] == "on_calendar" and loser["location"] is None
+    check_all_invariants(s)
 
 
 class TestApproachThreadsPostBattleDecisions:

@@ -118,6 +118,7 @@ class TestDecisionDiscoverability:
         acc = stand["accepts_decisions"]
         assert "concede" in acc["scripted_decisions"]
         assert acc["post_battle_decisions"] == ["post_battle_withdraw",
+                                                "post_battle_fate",
                                                 "retreat_destination", "retreat_way",
                                                 "spoils_recipient", "spoils_amount"]
 

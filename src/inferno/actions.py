@@ -3482,15 +3482,13 @@ def _apply_post_battle(state, result, attackers: list[str], defenders: list[str]
 
     Conceded side gets the favourable Spoils + Service treatment.
 
-    The post-Battle player elections — for each losing-but-surviving Lord,
-    Withdraw into a Friendly Stronghold vs Retreat (4.4.3 / 11.2), and the
-    Retreat destination among legal Locales (4.4.5) — flow through a
+    Losing defenders choose among Removal, Retreat and eligible Withdrawal
+    (4.4.3 / 11.2). These elections and Retreat destinations flow through a
     BattleDecisionContext built from `decisions` (FIFO scripted list) and
-    `callback`. Without operator input, the withdraw election defaults to
-    meta.post_battle_withdraw and the destination to the leftmost legal Locale.
+    `callback`. By default Lords Retreat to the first legal Locale or are
+    Removed if blocked, with eligible Withdrawal opt-in via meta.post_battle_withdraw.
     """
-    # Sally has no Approach Way and losing besiegers must Retreat, even
-    # when the corresponding field-Battle position could allow Withdrawal.
+    # Sally has no Approach Way. Losing besiegers can Retreat or be Removed.
     is_sally = result.get("mode") == "sally"
     _bc = {} if is_sally else state["meta"].get("approach_breadcrumb") or {}
     _approached_from = _bc.get("approached_from")
@@ -3598,52 +3596,46 @@ def _apply_post_battle(state, result, attackers: list[str], defenders: list[str]
             # Withdrew into Stronghold: keep Assets, no Service shift.
             take_spoils(lid, retreated=False, conceded=False, withdrew=True)
         else:
-            # 4.4.3 / 11.2 / 4.4.5: a losing-but-surviving Lord either Withdraws
-            # into a Friendly Stronghold at the Battle Locale (when eligible) or
-            # Retreats to a legal adjacent Locale (Removed if none). Both the
-            # withdraw-vs-retreat election and the Retreat destination are
-            # operator-controllable here; absent operator input they fall back
-            # to meta.post_battle_withdraw (default Retreat) and the
-            # deterministic leftmost Locale, so legacy callers are unchanged.
             is_marching_attacker = not is_sally and loser == "attacker"
+            _default_dest = _retreat_destination(
+                state, lid, battle_locale, lord["side"],
+                is_marching_attacker, _approached_from, _approached_via)
             eligible_withdraw = (
                 loser == "defender" and not is_sally and _wd_count < _wd_cap
                 and _can_withdraw_into_stronghold(state, lid, battle_locale)
             )
-            do_withdraw = False
-            if eligible_withdraw:
-                _wd_default = "withdraw" if lid in withdraw_elected else "retreat"
-                _wd_choice = bdc.decide_optional(
-                    "post_battle_withdraw", lord["side"],
-                    options=["retreat", "withdraw"], default=_wd_default,
+            fate = "retreat" if _default_dest is not None else "remove"
+            if loser == "defender" and (_default_dest is not None or eligible_withdraw):
+                options = ["retreat"] if _default_dest is not None else []
+                if eligible_withdraw:
+                    options.append("withdraw")
+                    if lid in withdraw_elected:
+                        fate = "withdraw"
+                options.append("remove")
+                # Preserve the legacy script's choice point for eligible
+                # withdrawals, including when earlier defenders cannot Withdraw.
+                decision_type = "post_battle_withdraw" if eligible_withdraw else "post_battle_fate"
+                fate = bdc.decide_optional(
+                    decision_type, lord["side"], options=options, default=fate,
                     info={"lord_id": lid, "locale": battle_locale})
-                do_withdraw = (_wd_choice == "withdraw")
-            if do_withdraw:
+            if fate == "remove":
+                _remove_lord(lid, losing_battle_side=True)
+                continue
+            if fate == "withdraw":
                 # Withdraw INSIDE: keep Assets, no Service shift, stay put.
                 lord.setdefault("flags", {})["in_stronghold"] = True
                 _wd_count += 1
                 take_spoils(lid, retreated=False, conceded=False, withdrew=True)
                 continue
-            # SMOKE-Inferno-090: RETREAT to a legal adjacent Locale (4.4.5).
-            _default_dest = _retreat_destination(
+            # RETREAT to a legal adjacent Locale (4.4.3).
+            _cands = _retreat_candidates(
                 state, lid, battle_locale, lord["side"],
                 is_marching_attacker, _approached_from, _approached_via)
-            if _default_dest is None:
-                dest = None
-            else:
-                _cands = _retreat_candidates(
-                    state, lid, battle_locale, lord["side"],
-                    is_marching_attacker, _approached_from, _approached_via)
-                if _default_dest not in _cands:
-                    _cands = [_default_dest] + _cands
-                dest = bdc.decide_optional(
-                    "retreat_destination", lord["side"], options=_cands,
-                    default=_default_dest, info={"lord_id": lid})
-            if dest is None:
-                # No legal Retreat target -> Removed (4.4.5): Spoils, then
-                # Knights' Quarter for ALL his Cavalieri/Ritter (CONF-022).
-                _remove_lord(lid, losing_battle_side=True)
-                continue
+            if _default_dest not in _cands:
+                _cands = [_default_dest] + _cands
+            dest = bdc.decide_optional(
+                "retreat_destination", lord["side"], options=_cands,
+                default=_default_dest, info={"lord_id": lid})
             # Retreated.
             ways = list(dict.fromkeys(w for n, w in sd.adjacent_to(battle_locale)
                                       if n == dest and w in ("road", "track")))
