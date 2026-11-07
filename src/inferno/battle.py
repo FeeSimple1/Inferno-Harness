@@ -396,7 +396,8 @@ def _resolve_step(state, step: str, positions, reserve, conceded: str | None,
                   routed_per_lord: dict, round_n: int = 1,
                   walls_by_side: dict | None = None, locale_name: str | None = None,
                   only_slots: set | None = None, exclude_slots: set | None = None,
-                  select_target: bool = False) -> None:
+                  select_target: bool = False,
+                  defender_faction: str | None = None) -> None:
     """Resolve one Strike sub-step. Consults Phase-5 Battle hooks for
     F4 Sudden Clash, F6/S6 Hills, F8/S8 Swamp.
 
@@ -407,7 +408,8 @@ def _resolve_step(state, step: str, positions, reserve, conceded: str | None,
     striking_side = "attacker" if step.startswith("atk") else "defender"
     target_side = "defender" if striking_side == "attacker" else "attacker"
     # Phase 5: F8/S8 Swamp — defender's effect, skips enemy Horse R1.
-    if step.endswith("horse_melee") and _enemy_horse_skips_round_1(state, target_side, round_n):
+    if (step == "atk_horse_melee"
+            and _enemy_horse_skips_round_1(state, defender_faction, round_n)):
         hit_log.append({"step": step, "skipped": "swamp_horse_no_strike_r1"})
         return
     flanks = _flanking_relationships(positions, bdc)
@@ -453,13 +455,11 @@ def _resolve_step(state, step: str, positions, reserve, conceded: str | None,
                     break
 
     # Phase 5: Hills (F6/S6) — double Archery Hits if striker is the Defending side.
-    if step.endswith("archery") and striking_side == "defender":
-        mult = _archery_hits_multiplier(state, "defender")
-        if mult > 1:
-            per_target_hits = {k: v * mult for k, v in per_target_hits.items()}
-            per_target_cb_sel = {k: v * mult for k, v in per_target_cb_sel.items()}
-            per_target_cb_nosel = {k: v * mult for k, v in per_target_cb_nosel.items()}
-            hit_log.append({"step": step, "hills_doubled": True})
+    if step == "def_archery" and _defending_event(
+            state, "hills_double_archery_defending", defender_faction):
+        # Added hits are Bowmen, even when the original hits were Crossbows.
+        per_target_hits = {k: v * 2 for k, v in per_target_hits.items()}
+        hit_log.append({"step": step, "hills_doubled": True})
     # Halve hits if striking side is conceded
     if conceded == striking_side:
         per_target_hits = {k: v / 2 for k, v in per_target_hits.items()}
@@ -684,7 +684,8 @@ def _has_battle_modifier(state, effect_key: str, predicate=None) -> bool:
     return False
 
 
-def _apply_pre_battle_modifiers(state, attackers, defenders) -> dict:
+def _apply_pre_battle_modifiers(state, attackers, defenders, positions, reserve,
+                                rng_roll, removed_lords) -> dict:
     """Apply pre-Battle Hold-Event modifiers at 4.4.1 Events phase.
 
     F12/S12 Camp Attack: R1 Asset transfer from each Enemy + remove 2 more.
@@ -692,8 +693,7 @@ def _apply_pre_battle_modifiers(state, attackers, defenders) -> dict:
     """
     summary: dict = {"camp_attack": [], "bocca": []}
     # Camp Attack
-    cap = _consume_battle_modifier(state, "camp_attack_r1_asset_transfer")
-    if cap:
+    while cap := _consume_battle_modifier(state, "camp_attack_r1_asset_transfer"):
         playing_side = cap.get("side")
         enemy_side = "ghibelline" if playing_side == "guelph" else "guelph"
         enemy_ids = [a for a in attackers + defenders
@@ -718,14 +718,7 @@ def _apply_pre_battle_modifiers(state, attackers, defenders) -> dict:
                     to_take -= t
                 if to_take == 0:
                     break
-            # Distribute to own side (Ships allowed for "removed", not taken)
-            i = 0
-            for a, n in taken.items():
-                for _ in range(n):
-                    if own_ids:
-                        recv = state["lords"][own_ids[i % len(own_ids)]]
-                        recv["assets"][a] = recv["assets"].get(a, 0) + 1
-                        i += 1
+            allocation = distribute_spoils(state, taken, own_ids)
             # Remove 2 more (Ships allowed)
             removed: dict[str, int] = {}
             assets = list(elord.get("assets", {}).items())
@@ -740,23 +733,20 @@ def _apply_pre_battle_modifiers(state, attackers, defenders) -> dict:
                 if to_remove == 0:
                     break
             summary["camp_attack"].append({
-                "enemy": eid, "taken": taken, "removed": removed,
+                "enemy": eid, "taken": taken, "removed": removed, "allocation": allocation,
             })
 
     # S16 Bocca degli Abati: target Guelph Lord; each Cavalieri takes 1 Hit
     cap = _consume_battle_modifier(state, "bocca_cavalieri_auto_hit")
     if cap:
         target_id = cap.get("target_lord_id")
-        if target_id and target_id in state["lords"]:
+        if ((target_id in attackers or target_id in defenders)
+                and state["lords"][target_id]["side"] == "guelph"):
             tgt = state["lords"][target_id]
             cavs = tgt["forces"].get("Cavalieri", 0)
-            from .rng import HarnessRNG
-            rng = HarnessRNG(state["meta"]["rng_seed"],
-                             advance=state["meta"].get("rng_advance", 0))
-            rolls_before = rng.advance_count
             routed = 0
             for _ in range(cavs):
-                r = rng.roll(f"bocca_{target_id}_Cavalieri")
+                r = rng_roll(f"bocca_{target_id}_Cavalieri")
                 if r.value not in sd.UNITS["Cavalieri"]["protection"]:
                     routed += 1
                     tgt["forces"]["Cavalieri"] -= 1
@@ -765,7 +755,6 @@ def _apply_pre_battle_modifiers(state, attackers, defenders) -> dict:
                     tgt.setdefault("routed_units", {})["Cavalieri"] = (
                         tgt["routed_units"].get("Cavalieri", 0) + 1
                     )
-            state["meta"]["rng_advance"] = state["meta"].get("rng_advance", 0) + (rng.advance_count - rolls_before)
             # If any Routed, one transfers to a Ghibelline mat in the Battle
             if routed > 0:
                 ghib_ids = [a for a in attackers + defenders
@@ -777,40 +766,29 @@ def _apply_pre_battle_modifiers(state, attackers, defenders) -> dict:
                     tgt["routed_units"]["Cavalieri"] -= 1
                     if tgt["routed_units"]["Cavalieri"] <= 0:
                         tgt["routed_units"].pop("Cavalieri")
+                if _all_units_routed(tgt):
+                    role = "attacker" if target_id in attackers else "defender"
+                    slot = _slot_of(positions, role, target_id)
+                    if slot is not None:
+                        positions[role][slot] = None
+                    if target_id in reserve[role]:
+                        reserve[role].remove(target_id)
+                    removed_lords.add(target_id)
             summary["bocca"] = {"target": target_id, "routed_cavs": routed}
     return summary
 
 
-def _archery_hits_multiplier(state, defender_side: str) -> int:
-    """If Hills (F6/S6) is pending for defender_side, doubles Archery Hits.
-
-    Returns the multiplier (1 normally, 2 if Hills active for defender)."""
-    if _consume_battle_modifier(
-        state, "hills_double_archery_defending",
-        predicate=lambda m: m.get("side") == defender_side,
-    ):
-        # Re-add (Hills lasts the whole Battle); track via 'consumed_once' flag
-        state.setdefault("battle_modifiers_pending", []).append({
-            "id": "F6/S6", "side": defender_side,
-            "effect": "hills_double_archery_defending", "active_for_battle": True,
-        })
-        return 2
-    # Check if still active
-    if _has_battle_modifier(
-        state, "hills_double_archery_defending",
-        predicate=lambda m: m.get("side") == defender_side and m.get("active_for_battle"),
-    ):
-        return 2
-    return 1
-
-
-def _enemy_horse_skips_round_1(state, defender_side: str, round_n: int) -> bool:
-    """F8/S8 Swamp: enemy Horse don't Strike in R1 if Swamp Defending."""
-    if round_n != 1:
-        return False
+def _defending_event(state, effect: str, defender_faction: str | None) -> bool:
+    # Played Events store factions. Also accept role-tagged modifiers.
     return _has_battle_modifier(
-        state, "swamp_enemy_horse_no_strike_r1",
-        predicate=lambda m: m.get("side") == defender_side,
+        state, effect, predicate=lambda m: m.get("side", "") in ("defender", defender_faction),
+    )
+
+
+def _enemy_horse_skips_round_1(state, defender_faction: str | None, round_n: int) -> bool:
+    """F8/S8 Swamp: enemy Horse don't Strike in R1 if Swamp Defending."""
+    return round_n == 1 and _defending_event(
+        state, "swamp_enemy_horse_no_strike_r1", defender_faction,
     )
 
 
@@ -823,15 +801,13 @@ def _slot_of(positions, side: str, lord_id) -> str | None:
     return None
 
 
-def _sudden_clash_target(state, side: str, round_n: int) -> str | None:
+def _sudden_clash_target(state, role: str, faction: str | None) -> str | None:
     """F4/S4 Sudden Clash: R1, named Lord's Horse Melee precedes all
     Archery. Returns the target Lord id, or None."""
-    if round_n != 1:
-        return None
     pending = state.get("battle_modifiers_pending", [])
     for m in pending:
         if (m.get("effect") == "sudden_clash_r1_horse_first_select_target"
-                and m.get("side") == side):
+                and m.get("side") in (role, faction)):
             return m.get("lord_id")
     return None
 
@@ -1059,7 +1035,8 @@ def _trebuchets_walls_reduction(state, locale_name: str, defenders: list[str],
 def _resolve_relief_substep(state, step, relief_front, relief_reserve,
                             positions, reserve, conceded, bdc, rng_caller,
                             hit_log, removed_lords, routed_per_lord, round_n,
-                            siegeworks_die, locale_name) -> None:
+                            siegeworks_die, locale_name, defender_faction, *,
+                            only_lord=None, exclude_lord=None) -> None:
     """CONF-037 (RoP 4.4.1 RELIEF SALLY) — the rear theater of a Relief-Sally
     Battle, resolved within the normal 6-step initiative:
 
@@ -1073,16 +1050,20 @@ def _resolve_relief_substep(state, step, relief_front, relief_reserve,
       Front. The Sallying side gets no Walls (4.5.3).
     """
     striking_side = "attacker" if step.startswith("atk") else "defender"
+    if (step == "atk_horse_melee"
+            and _enemy_horse_skips_round_1(state, defender_faction, round_n)):
+        return
 
     def _one_strike(sid, options, walls):
+        if sid == exclude_lord or (only_lord is not None and sid != only_lord):
+            return
         lord_units = _live_units(state["lords"][sid])
         h = _strike_hits(lord_units, step)
         h += _capability_strike_modifier(state, sid, lord_units, step, round_n, "battle")
         cb_s, cb_n = _crossbow_archery_hits(state, sid, lord_units, step, "battle")
-        if step.endswith("archery") and striking_side == "defender":
-            mult = _archery_hits_multiplier(state, "defender")
-            if mult > 1:
-                h *= mult; cb_s *= mult; cb_n *= mult
+        if step == "def_archery" and _defending_event(
+                state, "hills_double_archery_defending", defender_faction):
+            h *= 2
         if conceded == striking_side:
             h /= 2; cb_s /= 2; cb_n /= 2
         n_hits = math.ceil(h)
@@ -1107,6 +1088,7 @@ def _resolve_relief_substep(state, step, relief_front, relief_reserve,
             return
         _absorb_hits(state, tgt, int(n_hits), rng_caller, hit_log, routed_per_lord,
                      crossbow_hits=int(cb_sel), crossbow_noselect_hits=int(cb_nos),
+                     select_hits=n_hits if only_lord is not None else 0,
                      bdc=bdc, allow_striker_select=True)
         if _all_units_routed(state["lords"][tgt]):
             removed_lords.add(tgt)
@@ -1134,6 +1116,58 @@ def _resolve_relief_substep(state, step, relief_front, relief_reserve,
             if not relief_front:
                 return
             _one_strike(did, list(relief_front), None)
+
+
+def _resolve_battle_strikes(
+    state, positions, reserve, conceded, bdc, rng_roll, hit_log, removed_lords,
+    routed_per_lord, round_n, attacker_faction, defender_faction, locale_name, *,
+    walls=None, relief_front=None, relief_reserve=None, relief_siegeworks=None,
+) -> None:
+    """Use the same Battle initiative and Events in the field and in Sally."""
+    opened_slots = {}
+    opened_relief = {}
+
+    def strike(step, **options):
+        _resolve_step(
+            state, step, positions, reserve, conceded, bdc, rng_roll, hit_log,
+            removed_lords, routed_per_lord, round_n,
+            walls_by_side=walls() if walls is not None else None, locale_name=locale_name,
+            defender_faction=defender_faction, **options,
+        )
+
+    def relief_strike(step, **options):
+        _resolve_relief_substep(
+            state, step, relief_front, relief_reserve, positions, reserve, conceded,
+            bdc, rng_roll, hit_log, removed_lords, routed_per_lord, round_n,
+            relief_siegeworks, locale_name, defender_faction, **options,
+        )
+
+    if round_n == 1:
+        # Defender goes first if both factions played Sudden Clash.
+        for role, faction, step in (("defender", defender_faction, "def_horse_melee"),
+                                    ("attacker", attacker_faction, "atk_horse_melee")):
+            if role == "attacker" and _enemy_horse_skips_round_1(
+                    state, defender_faction, round_n):
+                continue
+            lid = _sudden_clash_target(state, role, faction)
+            if lid is None:
+                continue
+            slot = _slot_of(positions, role, lid)
+            rear = relief_front if role == "attacker" else reserve["defender"]
+            if slot is not None:
+                strike(step, only_slots={slot}, select_target=True)
+                opened_slots[step] = {slot}
+            elif relief_front and lid in rear:
+                relief_strike(step, only_lord=lid)
+                opened_relief[step] = lid
+            else:
+                continue
+            hit_log.append({"sudden_clash": lid, "side": role})
+
+    for step in BATTLE_STRIKE_ORDER:
+        strike(step, exclude_slots=opened_slots.get(step))
+        if relief_front or relief_reserve:
+            relief_strike(step, exclude_lord=opened_relief.get(step))
 
 
 # =====================================================================
@@ -1193,9 +1227,6 @@ def resolve_battle(state, attacker_ids: list[str], defender_ids: list[str],
         _sc -= _trebuchets_walls_reduction(state, locale_name, defender_ids,
                                            relief, "sally")
         relief_siegeworks = list(range(1, max(0, _sc) + 1))
-    # Phase 5: pre-Battle Hold Event modifiers (4.4.1 Events).
-    pre_modifiers = _apply_pre_battle_modifiers(state, attacker_ids, defender_ids)
-
     # RNG helper that delegates back to the harness RNG via dispatch.
     # In testing we'll inject the rolls via state.meta.rng_seed + advance.
     from .rng import HarnessRNG
@@ -1205,10 +1236,17 @@ def resolve_battle(state, attacker_ids: list[str], defender_ids: list[str],
     def _rng_roll(ctx: str):
         return rng.roll(ctx)
 
+    removed_lords: set = set()
+    pre_modifiers = _apply_pre_battle_modifiers(
+        state, attacker_ids, defender_ids, positions, reserve, _rng_roll, removed_lords)
+    relief_front = [lid for lid in relief_front if lid not in removed_lords]
+    relief_reserve = [lid for lid in relief_reserve if lid not in removed_lords]
+    attacker_faction = state["lords"][active_id]["side"]
+    defender_faction = state["lords"][defender_ids[0]]["side"] if defender_ids else None
+
     conceded: str | None = None
     pursuit_marker: str | None = None
     rounds: list[dict] = []
-    removed_lords: set = set()
     routed_per_lord: dict = {}
     max_rounds = 12  # safety bound
 
@@ -1267,47 +1305,13 @@ def resolve_battle(state, attacker_ids: list[str], defender_ids: list[str],
                 relief_reserve.remove(_pick)
                 relief_front.append(_pick)
 
-        # 6-step Strike
         hit_log_round: list = []
-        # Phase 5: F4/S4 Sudden Clash inserts a special Strike before Archery in R1.
-        sc_atk = _sudden_clash_target(state, "attacker", round_n)
-        sc_def = _sudden_clash_target(state, "defender", round_n)
-        # Only the NAMED Lord's Horse Melee precedes all Archery and SELECTS its
-        # targets (F4/S4; Battle&Storm 10.2). Find his Front slot; a Lord not at
-        # the Front (Reserve) gets no Sudden Clash precedence.
-        sc_def_slot = _slot_of(positions, "defender", sc_def) if sc_def else None
-        sc_atk_slot = _slot_of(positions, "attacker", sc_atk) if sc_atk else None
-        if round_n == 1 and (sc_def_slot or sc_atk_slot):
-            # Defender's named Lord first, then Attacker's (rule order).
-            if sc_def_slot:
-                _resolve_step(state, "def_horse_melee", positions, reserve, conceded,
-                              bdc, _rng_roll, hit_log_round, removed_lords, routed_per_lord, round_n,
-                              only_slots={sc_def_slot}, select_target=True)
-                hit_log_round.append({"sudden_clash": sc_def, "side": "defender"})
-            if sc_atk_slot:
-                _resolve_step(state, "atk_horse_melee", positions, reserve, conceded,
-                              bdc, _rng_roll, hit_log_round, removed_lords, routed_per_lord, round_n,
-                              only_slots={sc_atk_slot}, select_target=True)
-                hit_log_round.append({"sudden_clash": sc_atk, "side": "attacker"})
-        for step in BATTLE_STRIKE_ORDER:
-            # The named Lord already struck via Sudden Clash; exclude only HIS
-            # slot from the normal horse-melee step (the rest of the side's Horse
-            # still strikes here at the normal time).
-            excl = None
-            if round_n == 1:
-                if step == "def_horse_melee" and sc_def_slot:
-                    excl = {sc_def_slot}
-                elif step == "atk_horse_melee" and sc_atk_slot:
-                    excl = {sc_atk_slot}
-            _resolve_step(state, step, positions, reserve, conceded,
-                          bdc, _rng_roll, hit_log_round, removed_lords, routed_per_lord, round_n,
-                          exclude_slots=excl)
-            if relief_front or relief_reserve:
-                _resolve_relief_substep(
-                    state, step, relief_front, relief_reserve, positions,
-                    reserve, conceded, bdc, _rng_roll, hit_log_round,
-                    removed_lords, routed_per_lord, round_n,
-                    relief_siegeworks, locale_name)
+        _resolve_battle_strikes(
+            state, positions, reserve, conceded, bdc, _rng_roll, hit_log_round,
+            removed_lords, routed_per_lord, round_n, attacker_faction, defender_faction,
+            locale_name, relief_front=relief_front, relief_reserve=relief_reserve,
+            relief_siegeworks=relief_siegeworks,
+        )
         round_log["hit_log"] = hit_log_round
         round_log["positions"] = _snapshot_positions(positions)
         rounds.append(round_log)
@@ -1347,8 +1351,7 @@ def resolve_battle(state, attacker_ids: list[str], defender_ids: list[str],
     # SMOKE-Inferno-080: capture any Doctors (F24/S24) restore-half modifiers
     # before the 4.4.6 cleanup discards them, so the post-Battle loss step can
     # consume them after the 4.4.4 Loss rolls.
-    doctors_mods = [dict(m) for m in state.get("battle_modifiers_pending", [])
-                    if m.get("effect") == "doctors_restore_half_lost"]
+    doctors_mods = _take_doctors_modifiers(state)
     # Phase 5: clear consumed Hold Events per 4.4.6 Aftermath.
     _clear_battle_modifiers(state)
     return {
@@ -1720,7 +1723,7 @@ def resolve_sally(state, sallying: list[str], besiegers: list[str],
     size = sd.STRONGHOLDS.get(stronghold_type, {}).get("size", 1)
     siege_count = sum(s.get("count", 1) for s in locale.get("siege", []))
     pre_forces = {lid: dict(state["lords"][lid].get("forces", {}))
-                  for lid in [active_id] + list(besiegers) if lid in state["lords"]}
+                  for lid in sallying + besiegers if lid in state["lords"]}
 
     positions = _empty_positions()
     positions["attacker"]["center"] = active_id
@@ -1747,10 +1750,21 @@ def resolve_sally(state, sallying: list[str], besiegers: list[str],
                 return s
         return None
 
+    removed_lords: set = set()
+    pre_modifiers = _apply_pre_battle_modifiers(
+        state, sallying, besiegers, positions, reserve, _rng_roll, removed_lords)
+    attacker_faction = state["lords"][active_id]["side"]
+    defender_faction = state["lords"][besiegers[0]]["side"] if besiegers else None
+
+    def siegeworks():
+        # Trebuchets reduces Siegeworks only while its mat is Unrouted.
+        reduction = _trebuchets_walls_reduction(
+            state, locale_name, besiegers, sallying, mode="sally")
+        return {"defender": list(range(1, siege_count - reduction + 1))}
+
     conceded: str | None = None
     pursuit_marker: str | None = None
     rounds: list[dict] = []
-    removed_lords: set = set()
     routed_per_lord: dict = {}
     max_rounds = 12  # safety bound
 
@@ -1790,16 +1804,12 @@ def resolve_sally(state, sallying: list[str], besiegers: list[str],
             if _front_count(s_side) == 0 and reserve[s_side]:
                 positions[s_side]["center"] = reserve[s_side].pop(0)
 
-        # 6-step Battle Strike, with Siegeworks-as-Walls protecting the Besiegers.
         hit_log_round: list = []
-        for step in BATTLE_STRIKE_ORDER:
-            # Trebuchets reduces Siegeworks only while its mat is Unrouted.
-            reduction = _trebuchets_walls_reduction(
-                state, locale_name, besiegers, sallying, mode="sally")
-            walls_by_side = {"defender": list(range(1, siege_count - reduction + 1))}
-            _resolve_step(state, step, positions, reserve, conceded, bdc, _rng_roll,
-                          hit_log_round, removed_lords, routed_per_lord, round_n,
-                          walls_by_side=walls_by_side, locale_name=locale_name)
+        _resolve_battle_strikes(
+            state, positions, reserve, conceded, bdc, _rng_roll, hit_log_round,
+            removed_lords, routed_per_lord, round_n, attacker_faction, defender_faction,
+            locale_name, walls=siegeworks,
+        )
         round_log["hit_log"] = hit_log_round
         round_log["positions"] = _snapshot_positions(positions)
         rounds.append(round_log)
@@ -1831,10 +1841,13 @@ def resolve_sally(state, sallying: list[str], besiegers: list[str],
         if lid in state["lords"]:
             state["lords"][lid].setdefault("flags", {})["moved_fought"] = True
 
+    doctors_mods = _take_doctors_modifiers(state)
+    _clear_battle_modifiers(state)
     return {
         "locale": locale_name,
         "mode": "sally",
-        "doctors": _take_doctors_modifiers(state),
+        "doctors": doctors_mods,
+        "pre_modifiers": pre_modifiers,
         "winner": winner,
         "loser": loser,
         "conceded": conceded,

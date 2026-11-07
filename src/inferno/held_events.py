@@ -88,10 +88,22 @@ def _candidate_in_context(state, side, cid, args):
     field = {"F4", "S4", "F6", "S6", "F8", "S8", "F12", "S12", "F16", "S16"}
     approach = [p for p in state.get("pending", []) if p.get("type") == "approach_response"]
     if cid in field:
-        if not approach:
-            return False
-        locale = approach[0].get("info", {}).get("locale")
-        if cid in ("F6", "S6", "F8", "S8") and side == state["meta"].get("approach_attacker_side"):
+        if approach:
+            locale = approach[0].get("info", {}).get("locale")
+            attacking = state["meta"].get("approach_attacker_side")
+        else:
+            active = state["lords"].get(state.get("current_lord_id"), {})
+            locale = active.get("location")
+            loc = state["locales"].get(locale, {})
+            # A Besieged active Lord can play Battle Events before Sally.
+            if (active.get("side") != side or not active.get("flags", {}).get("in_stronghold")
+                    or not loc.get("siege")
+                    or not any(state["lords"][lid]["side"] != side
+                               and not state["lords"][lid].get("flags", {}).get("in_stronghold")
+                               for lid in loc.get("lords_present", []))):
+                return False
+            attacking = side
+        if cid in ("F6", "S6", "F8", "S8") and side == attacking:
             return False
         target = args.get("target_lord_id")
         if target and state["lords"][target].get("location") != locale:

@@ -206,3 +206,23 @@ New tests pass Ruff, and changed source adds no diagnostics against main.
 
 All four third-audit Inferno groups are fixed. **7 of 23** are fixed across
 the five games.
+
+## Fourth audit, third tranche
+
+- **INF4-01.** Hills, Swamp and Sudden Clash match the faction playing the
+  Event to its role in the current combat. Hills adds Bowmen hits. Swamp
+  suppresses attacking Horse in Round 1, including Sudden Clash. The
+  named Lords strike early in defender-first order, including Lords
+  fighting in the rear of a Relief Sally.
+- **INF4-02.** Sally applies Camp Attack and Bocca at the same stage as
+  field Battle and clears one-shot Battle Events afterward. The active
+  Sallying player can find these Holds in the legal menu.
+- **INF4-03.** Camp Attack uses the capped Spoils allocator and reports
+  any Assets lost when eligible mats lack room.
+- **INF4-04.** Storm resolves Doctors after Loss rolls and before
+  checking whether a Lord has lost his final Force.
+
+Fourteen public-action cases cover both faction mirrors, the strike
+order and Crossbow treatment, Sally and Relief Sally, capped Spoils,
+and Storm with and without Doctors. Fourth-audit progress is **13 of
+21 groups**, including all four Inferno findings.

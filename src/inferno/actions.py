@@ -4013,6 +4013,8 @@ def _storm_with_aftermath(state, side, lid, args, rng, *, round_limit=None):
         loss_results = _roll_routed_losses(state, specs, capture_knights=False)
     else:
         loss_results = {}
+    # Doctors can restore the last Force before the Lord is removed.
+    _apply_doctors_restoration(state, result.get("doctors", []), loss_results)
     # CONF-024b (RoP 4.4.5): Lords removed in Storm "by ... Loss of all his
     # Forces" suffer removal as if Disbanding Beyond Service (incl. Revolt and
     # Treachery) — but NO Knights' Quarter ("if in Battle" only; Storm capture
@@ -4028,8 +4030,6 @@ def _storm_with_aftermath(state, side, lid, args, rng, *, round_limit=None):
         _disband_beyond_service_limit(state, _eid)
     _trigger_disband_revolt_and_treachery(state, _storm_emptied, rng,
                                           context=f"storm_empty_{locale_name}")
-    # SMOKE-Inferno-080: Doctors restoration now also fires in Storm.
-    _apply_doctors_restoration(state, result.get("doctors", []), loss_results)
     if result["outcome"] == "sack":
         from .battle import BattleDecisionContext
         context = BattleDecisionContext(scripted=list(args.get("post_battle_decisions") or []),

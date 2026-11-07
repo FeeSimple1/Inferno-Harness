@@ -313,12 +313,7 @@ def F3_event(state, side, args, rng):
 
 @register_event("F4")
 def F4_event(state, side, args, rng):
-    """F4 SUDDEN CLASH (Hold).
-
-    Sets in_battle_modifier_pending so the Battle engine can consult
-    it for Round 1 Strike order. Full Strike-order surgery is reserved
-    for a future engine pass; the flag is the contract.
-    """
+    """F4 SUDDEN CLASH (Hold): the named Lord's Horse strikes early in Round 1."""
     target = args.get("target_lord_id")
     if not target or target not in state["lords"]:
         return _manual("F4", "Provide target_lord_id (Guelph Lord in upcoming Battle).")
