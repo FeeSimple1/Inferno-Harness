@@ -220,11 +220,15 @@ def dispatch(state: dict[str, Any], action: dict[str, Any]) -> dict[str, Any]:
             seen[key] += 1
             if seen[key] > have[key]:
                 existing.append(record)
-    # Append to history
+    # Keep resolved Ransom elections in the trusted replay input. They belong
+    # to the captor and need not appear in the payer's action receipt.
+    history_args = copy.deepcopy(args)
+    if name == "end_ransom" and "ransom_decisions" in result:
+        history_args["ransom_decisions"] = result.pop("ransom_decisions")
     state.setdefault("history", []).append({
         "action": name,
         "side": side,
-        "args": copy.deepcopy(args),
+        "args": history_args,
         "rolls": result.get("rolls", []),
         "state_changes": result.get("state_changes", {}),
         "rule_citation": result.get("rule_citation"),
@@ -727,6 +731,17 @@ def _disband_attached_comuni(state, commander_id: str) -> None:
             _disband_comune(state, lid)
 
 
+def _release_lieutenant_partner(state, lid: str) -> None:
+    """The surviving member of a Lieutenant pair becomes a normal Lord (4.1.3)."""
+    flags = state["lords"][lid].get("flags", {})
+    for link, reciprocal in (("has_lower_lord", "lower_lord_of"),
+                             ("lower_lord_of", "has_lower_lord")):
+        partner = state["lords"].get(flags.get(link), {})
+        partner_flags = partner.get("flags", {})
+        if partner_flags.get(reciprocal) == lid:
+            del partner_flags[reciprocal]
+
+
 def _disband_beyond_service_limit(state, lid: str, *, disband_attached: bool = True) -> None:
     """3.3.1: Regular Lord -> remove permanently. Podestà -> cylinder
     placed Service-Rating boxes ahead of current Turn (may Muster again)."""
@@ -760,6 +775,7 @@ def _disband_beyond_service_limit(state, lid: str, *, disband_attached: bool = T
     lord["location"] = None
     # Clear transient flags (in_stronghold, moved_fought, ...) so a Podesta that
     # later re-Musters starts clean rather than phantom-Besieged / pre-Fought.
+    _release_lieutenant_partner(state, lid)
     lord["flags"] = {}
 
     if lord.get("podesta"):
@@ -848,6 +864,7 @@ def _disband_at_service_limit(state, lid: str, levy_box: int) -> None:
     # Clear transient flags (bypassing/in_stronghold/moved_fought ...) — an
     # At-Service-Limit Disband previously left them, so a re-Mustered Lord
     # could return phantom-Bypassing (exempt from the co-location invariant).
+    _release_lieutenant_partner(state, lid)
     lord["flags"] = {}
     # The Campaign's next Levy is one box ahead (3.3.2 erratum).
     sr = lord.get("ratings", {}).get("S", 0)
@@ -4743,7 +4760,13 @@ def _h_plan_attach_lieutenant(state, side, args, rng) -> dict[str, Any]:
 # command card = Pass. The dispatcher routes via _h_command_reveal;
 # we add the check there.
 def _is_lower_lord(state, lord_id: str) -> bool:
-    return bool(state["lords"].get(lord_id, {}).get("flags", {}).get("lower_lord_of"))
+    lord = state["lords"].get(lord_id, {})
+    lieutenant_id = lord.get("flags", {}).get("lower_lord_of")
+    lieutenant = state["lords"].get(lieutenant_id, {})
+    # Older saves can still carry a pointer to a Disbanded Lieutenant.
+    return (lieutenant.get("status") == "mustered"
+            and lieutenant.get("side") == lord.get("side")
+            and lieutenant.get("flags", {}).get("has_lower_lord") == lord_id)
 
 
 # Register Phase 3d handlers
@@ -4837,111 +4860,187 @@ def _h_end_grow_skip(state, side, args, rng) -> dict[str, Any]:
     return {"state_changes": {"grow": "skipped"}, "rule_citation": "4.9.1"}
 
 
-def _h_end_ransom(state, side, args, rng) -> dict[str, Any]:
-    """4.9.2 RANSOM: pay 1 Coin per 6 captured units (rounded UP),
-    full amount to enemy pool. Recover HALF (rounded UP) of those units
-    distributed to own Mustered Lords. Remainder returns to pool.
+def _ransom_lords(state, side) -> list[str]:
+    """Own Lords on the map, including Bypassed or Besieged Lords (4.9.2)."""
+    return [lid for lid, lord in state["lords"].items()
+            if lord["side"] == side and lord["status"] == "mustered"
+            and lord.get("location") in state["locales"]]
 
-    args:
-      pay:  bool — pay full Ransom and recover units, else Languish.
-      coin_from: optional lord_id that pays the Coin (default: first
-                 Mustered own Lord with enough Coin).
-      distribute_to: optional list[lord_id] — distribution targets.
+
+def _ransom_payment(args, balances: dict[str, int], cost: int) -> dict[str, int]:
+    """Validate an exact payment, or choose the legacy single payer when able."""
+    payer = args.get("coin_from")
+    if "coin_payments" in args:
+        payment = args.get("coin_payments")
+        if payer is not None or not isinstance(payment, dict):
+            raise IllegalAction("BAD_RANSOM_PAYMENT", "Use coin_payments or coin_from.", "4.9.2")
+    elif payer is not None:
+        if not isinstance(payer, str):
+            raise IllegalAction("BAD_RANSOM_PAYMENT", "coin_from must be a Lord ID.", "4.9.2")
+        payment = {payer: cost}
+    else:
+        if sum(balances.values()) < cost:
+            raise IllegalAction("INSUFFICIENT_COIN", f"Ransom needs {cost} Coin total.", "4.9.2")
+        single = next((lid for lid, balance in balances.items() if balance >= cost), None)
+        if single is not None:
+            return {single: cost}
+        payment = {}
+        remaining = cost
+        for lid, balance in balances.items():
+            amount = min(balance, remaining)
+            if amount:
+                payment[lid] = amount
+                remaining -= amount
+            if not remaining:
+                break
+
+    for lid, amount in payment.items():
+        if lid not in balances:
+            raise IllegalAction("BAD_RANSOM_LORD", "Each payer must be an own on-map Lord.", "4.9.2")
+        if type(amount) is not int or amount < 0:
+            raise IllegalAction("BAD_RANSOM_PAYMENT", "Coin counts must be nonnegative integers.", "4.9.2")
+        if amount > balances[lid]:
+            raise IllegalAction("INSUFFICIENT_COIN", f"{lid} cannot pay {amount} Coin.", "4.9.2")
+    if sum(payment.values()) != cost:
+        raise IllegalAction("BAD_RANSOM_PAYMENT", f"Pay exactly {cost} Coin.", "4.9.2")
+    return payment
+
+
+def _ransom_recovery(args, lords: list[str], captured: dict[str, int],
+                     count: int) -> dict[str, dict[str, int]]:
+    """Validate unit types and recipients before any payment is taken."""
+    targets = args.get("distribute_to")
+    if "recover" in args:
+        recovery = args.get("recover")
+        if targets is not None or not isinstance(recovery, dict):
+            raise IllegalAction("BAD_RANSOM_RECOVERY", "Use recover or distribute_to.", "4.9.2")
+        totals: Counter[str] = Counter()
+        for lid, units in recovery.items():
+            if lid not in lords:
+                raise IllegalAction("BAD_RANSOM_LORD", "Each recipient must be an own on-map Lord.", "4.9.2")
+            if not isinstance(units, dict) or any(
+                    unit not in captured or type(n) is not int or n < 0
+                    for unit, n in units.items()):
+                raise IllegalAction("BAD_RANSOM_RECOVERY", "Specify nonnegative counts of captured types.", "4.9.2")
+            totals.update(units)
+        if sum(totals.values()) != count or any(n > captured[u] for u, n in totals.items()):
+            raise IllegalAction("BAD_RANSOM_RECOVERY", f"Allocate exactly {count} captured units.", "4.9.2")
+        return recovery
+
+    if targets is not None and (not isinstance(targets, list) or any(lid not in lords for lid in targets)):
+        raise IllegalAction("BAD_RANSOM_LORD", "Each recipient must be an own on-map Lord.", "4.9.2")
+    targets = targets or lords
+    # Preserve the default recovery priority and round-robin distribution.
+    recovery = {}
+    restored = 0
+    for unit in dict.fromkeys([*_DOCTORS_RESTORE_PRIORITY, *captured]):
+        for _ in range(min(captured.get(unit, 0), count - restored)):
+            units = recovery.setdefault(targets[restored % len(targets)], {})
+            units[unit] = units.get(unit, 0) + 1
+            restored += 1
+    return recovery
+
+
+def _receive_ransom_coin(state, side, cost: int, decisions) -> int:
+    """The captor allocates Coin among its Lords, up to the 1.7.3 mat limit."""
+    room = {lid: 16 - state["lords"][lid]["assets"].get("Coin", 0)
+            for lid in _ransom_lords(state, side)}
+    room = {lid: capacity for lid, capacity in room.items() if capacity > 0}
+    remaining = cost
+    while remaining and room:
+        info = {"coin_remaining": remaining}
+        recipients = list(room)
+        lid = (decisions.decide("ransom_coin_recipient", side, recipients, info)
+               if len(recipients) > 1 else recipients[0])
+        amount = min(remaining, room[lid])
+        if len(recipients) > 1 and amount > 1:
+            amount = decisions.decide("ransom_coin_amount", side, list(range(amount, 0, -1)),
+                                      {**info, "lord_id": lid})
+            if type(amount) is not int:
+                raise IllegalAction("BAD_DECISION", "Coin allocation must be an integer.", "4.9.2")
+        assets = state["lords"][lid]["assets"]
+        assets["Coin"] = assets.get("Coin", 0) + amount
+        remaining -= amount
+        room[lid] -= amount
+        if not room[lid]:
+            del room[lid]
+    return remaining
+
+
+def _h_end_ransom(state, side, args, rng) -> dict[str, Any]:
+    """4.9.2 Ransom or Languish for the current side's Captured Knights.
+
+    pay: bool, defaults to True. Pay one Coin per six captives, rounded up.
+    coin_payments: {own_on_map_lord_id: Coin count}, totaling the price.
+    coin_from: legacy single payer. Omit both payment fields for a default.
+    recover: {own_on_map_lord_id: {captured_unit_type: count}}. Recover half
+      of the total captives, rounded up. Other captives return to the pool.
+    distribute_to: legacy list of own on-map Lords for default recovery.
+    ransom_decisions: trusted replay choices for the captor's Coin recipient
+      and Coin amount. Player mode asks the captor.
+    languish_treachery: Treachery count when declining payment.
     """
-    from .flow import current_campaign_step, advance_campaign_side_or_step
+    from .battle import BattleDecisionContext, ScriptedDecisionError
+    from .flow import advance_campaign_side_or_step
+
     if current_campaign_step(state) != "end_campaign":
         raise IllegalAction("WRONG_STEP", "Ransom runs in end_campaign.", "4.9.2")
+    pay = args.get("pay", True)
+    if not isinstance(pay, bool):
+        raise IllegalAction("BAD_RANSOM_PAYMENT", "pay must be true or false.", "4.9.2")
+    script = args.get("ransom_decisions", [])
+    if not isinstance(script, list) or not all(isinstance(choice, dict) for choice in script):
+        raise IllegalAction("BAD_DECISION", "ransom_decisions must be an array of decisions.", "4.9.2")
+    decisions = BattleDecisionContext(scripted=list(script), callback=state.get("battle_callback"))
     captured = state.get("captured_knights", {}).get(side, {})
-    total_captured = sum(captured.values())
-    if total_captured == 0:
-        if side == "ghibelline":
-            state["meta"]["end_substep_done"] = state["meta"].get("end_substep_done", []) + ["ransom"]
-        advance_campaign_side_or_step(state)
-        return {"state_changes": {"ransom": "no captures"}, "rule_citation": "4.9.2"}
-    cost = (total_captured + 5) // 6   # ceil(N/6)
-    pay = bool(args.get("pay", True))
-    if pay:
-        # Find a paying Lord with enough Coin
-        coin_from = args.get("coin_from")
-        candidates = ([state["lords"][coin_from]] if coin_from else
-                      [l for l in state["lords"].values()
-                       if l["side"] == side and l["status"] == "mustered"])
-        payer = next((l for l in candidates if l["assets"].get("Coin", 0) >= cost), None)
-        if payer is None:
-            raise IllegalAction("INSUFFICIENT_COIN",
-                                f"Ransom needs {cost} Coin total; no eligible Lord can pay.", "4.9.2")
-        payer["assets"]["Coin"] -= cost
-        # Coin goes to enemy pool — distribute to enemy Mustered Lords (first one)
-        enemy = "ghibelline" if side == "guelph" else "guelph"
-        enemy_lords = [l for l in state["lords"].values()
-                       if l["side"] == enemy and l["status"] == "mustered"]
-        if enemy_lords:
-            enemy_lords[0]["assets"]["Coin"] = enemy_lords[0]["assets"].get("Coin", 0) + cost
-        # SMOKE-Inferno-083: recover HALF (rounded UP) of the TOTAL captured
-        # units (4.9.2 "selects HALF (rounded UP) of those units"), owner's
-        # choice of which — NOT a per-unit-type ceil (which over-recovered, e.g.
-        # {Cav:1, Rit:1} -> 2 instead of 1). Restore most valuable first.
-        to_recover = (total_captured + 1) // 2
-        recover_half: dict[str, int] = {}
-        for u in _DOCTORS_RESTORE_PRIORITY + [k for k in captured if k not in _DOCTORS_RESTORE_PRIORITY]:
-            avail = captured.get(u, 0)
-            while to_recover > 0 and recover_half.get(u, 0) < avail:
-                recover_half[u] = recover_half.get(u, 0) + 1
-                to_recover -= 1
-            if to_recover <= 0:
-                break
-        recovered_units = sum(recover_half.values())
-        # Distribute
-        targets_ids = args.get("distribute_to") or [
-            lid for lid, l in state["lords"].items()
-            if l["side"] == side and l["status"] == "mustered"
-        ]
-        if not targets_ids:
-            advance_campaign_side_or_step(state)
-            return {"state_changes": {"ransom": "paid but no Lords to receive"}, "rule_citation": "4.9.2"}
-        i = 0
-        for u, c in recover_half.items():
-            for _ in range(c):
-                t = state["lords"][targets_ids[i % len(targets_ids)]]
-                t.setdefault("forces", {})[u] = t["forces"].get(u, 0) + 1
-                i += 1
-        # Remainder returns to pool (nothing to do — they're just not added back)
-        # Clear captured ledger
-        state["captured_knights"][side] = {}
-        if side == "ghibelline":
-            state["meta"]["end_substep_done"] = state["meta"].get("end_substep_done", []) + ["ransom"]
-        advance_campaign_side_or_step(state)
-        return {
-            "state_changes": {"ransom_paid": cost, "recovered_total": recovered_units},
-            "rule_citation": "4.9.2",
-        }
+    total = sum(captured.values())
+    cost = (total + 5) // 6
+    enemy = "ghibelline" if side == "guelph" else "guelph"
+
+    if not total:
+        changes = {"ransom": "no captures"}
+    elif pay:
+        lords = _ransom_lords(state, side)
+        balances = {lid: state["lords"][lid]["assets"].get("Coin", 0) for lid in lords}
+        payment = _ransom_payment(args, balances, cost)
+        recovered_count = (total + 1) // 2
+        recovery = _ransom_recovery(args, lords, captured, recovered_count)
+        for lid, amount in payment.items():
+            if amount:
+                state["lords"][lid]["assets"]["Coin"] -= amount
+        lost = _receive_ransom_coin(state, enemy, cost, decisions)
+        for lid, units in recovery.items():
+            forces = state["lords"][lid]["forces"]
+            for unit, amount in units.items():
+                if amount:
+                    forces[unit] = forces.get(unit, 0) + amount
+        changes = {"ransom_paid": cost, "recovered_total": recovered_count}
+        if lost:
+            changes["coin_lost_to_cap"] = lost
     else:
-        # LANGUISH (4.9.2): per 6 captured (rounded up) the captor gets ONE of
-        # either a Revolt roll OR a Treachery card — NOT both. SMOKE-Inferno-084:
-        # the prior code did BOTH n_events Revolt rolls AND n_events Treachery
-        # adds (a double penalty). The captor chooses the split; default is all
-        # Revolt rolls ("Revolt rolls in lieu of Treachery are mandatory").
-        n_events = (total_captured + 5) // 6
-        n_treachery = max(0, min(_int_arg(args, "languish_treachery", 0), n_events))
-        n_revolt = n_events - n_treachery
-        enemy = "ghibelline" if side == "guelph" else "guelph"
-        if n_revolt:
-            # 1.4.2 rolls: `side`'s captives Languish -> `enemy` benefits/rolls.
-            _revolt.trigger_revolts(state, losing_side=side, count=n_revolt,
+        # Per 4.9.2 each group of six captives yields a Revolt or Treachery.
+        treachery = max(0, min(_int_arg(args, "languish_treachery", 0), cost))
+        revolts = cost - treachery
+        if revolts:
+            _revolt.trigger_revolts(state, losing_side=side, count=revolts,
                                     rng=rng, context=f"languish_{side}")
-        for _ in range(n_treachery):
+        for _ in range(treachery):
             _add_treachery_to_enemy(state, "<languish>", enemy)
-        # Captured units removed (Lost)
+        changes = {"languished": True, "events": cost, "revolt_rolls": revolts,
+                   "treachery_added": treachery, "removed_units": total}
+
+    if decisions.scripted:
+        raise ScriptedDecisionError("The Ransom finished with unused decisions.")
+    if total:
         state["captured_knights"][side] = {}
-        if side == "ghibelline":
-            state["meta"]["end_substep_done"] = state["meta"].get("end_substep_done", []) + ["ransom"]
-        advance_campaign_side_or_step(state)
-        return {
-            "state_changes": {"languished": True, "events": n_events,
-                              "revolt_rolls": n_revolt, "treachery_added": n_treachery,
-                              "removed_units": total_captured},
-            "rule_citation": "4.9.2",
-        }
+    if side == "ghibelline":
+        state["meta"]["end_substep_done"] = state["meta"].get("end_substep_done", []) + ["ransom"]
+    advance_campaign_side_or_step(state)
+    result = {"state_changes": changes, "rule_citation": "4.9.2"}
+    if decisions.trace and (script or decisions.callback is not None):
+        result["ransom_decisions"] = [{key: entry[key] for key in ("type", "side", "choice")}
+                                     for entry in decisions.trace]
+    return result
 
 
 def _h_end_game_check(state, side, args, rng) -> dict[str, Any]:

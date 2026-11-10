@@ -1397,15 +1397,25 @@ def _enum_end_campaign(state, side) -> list[dict[str, Any]]:
         captured = state.get("captured_knights", {}).get(side, {})
         total = sum(captured.values())
         if total > 0:
+            from .actions import _ransom_lords
             cost = (total + 5) // 6
-            # SMOKE-Inferno-060: only offer PAY if a Mustered Lord can afford `cost`.
-            can_pay = any(l["side"] == side and l["status"] == "mustered"
-                          and l["assets"].get("Coin", 0) >= cost
-                          for l in state["lords"].values())
+            # SMOKE-Inferno-060: offer payment only when the side can pay in full.
+            balances = {lid: state["lords"][lid]["assets"].get("Coin", 0)
+                        for lid in _ransom_lords(state, side)}
             opts = []
-            if can_pay:
+            if sum(balances.values()) >= cost:
                 opts.append({"action": "end_ransom", "side": side, "args": {"pay": True},
-                             "description": f"Ransom {total} captured units for {cost} Coin; recover ceil(N/2).",
+                             "description": f"Ransom {total} captives for {cost} Coin. "
+                                            f"Choose {(total + 1) // 2} units to return to your Lords.",
+                             "parameterized": True,
+                             "parameters": {
+                                 "coin_payments": "Lord ID to Coin count, totaling the full price",
+                                 "recover": "Lord ID to {captured unit type: count}, totaling half rounded up",
+                                 "own_lord_coin": balances,
+                                 "captured_units": dict(captured),
+                             },
+                             "accepts_decisions": {"ransom_decisions": [
+                                 "ransom_coin_recipient", "ransom_coin_amount"]},
                              "rule_citation": "4.9.2"})
             opts.append({"action": "end_ransom", "side": side, "args": {"pay": False},
                          "description": f"Languish: skip Ransom; enemy adds {cost} Treachery/Revolt.",

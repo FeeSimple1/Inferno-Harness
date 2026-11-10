@@ -420,6 +420,33 @@ Raw `dispatch`, `do`, `play-event`, saves and legacy `play_with_callback` remain
 trusted-operator APIs. Never pass their unfiltered state/results to a model.
 See `LLM_PLAY_GUIDE.md` and `examples/play_with_claude.py` for the current callback.
 
+### Ransom (4.9.2)
+
+`end_ransom` offers payment when the captive side's on-map Lords together
+hold the full price. With `pay:true`, supply `coin_payments` to choose the
+contributions and `recover` to choose which captured units return to each
+own Lord. Both accept Bypassed and Besieged Lords. For seven captives, one
+possible choice is:
+
+```json
+{"action":"end_ransom","side":"guelph","args":{"pay":true,
+ "coin_payments":{"firenze":1,"arezzo":1},
+ "recover":{"firenze":{"Cavalieri":3},"arezzo":{"Cavalieri":1}}}}
+```
+
+The total payment must be one Coin per six captives, rounded up. Recovery
+must total half the captives, rounded up, within the captured count of each
+type. The legacy `coin_from` and `distribute_to` arguments remain available
+for a single payer and default unit selection, respectively. Omitted choices
+use the default payment and recovery order.
+
+The captor chooses the receiving Lords and Coin amounts through
+`ransom_coin_recipient` and `ransom_coin_amount` in their own `DecisionView`.
+The dispatcher applies the 16 Coin per mat limit. Trusted replay input
+`ransom_decisions` uses the same `type`, `side` and `choice` fields as other
+scripted elections. A raw call without elections allocates to the first
+eligible receiving mat with room, then uses the remaining eligible mats.
+
 ### Voluntary Reset discards (4.9.6)
 
 After Waste, `end_reset` runs the compulsory Reset cleanup once: set aside

@@ -89,6 +89,8 @@ def hide_for_side(state: dict[str, Any], visible_side: str,
         # even in an action owned by the OTHER side (Exiles). Public effects
         # remain visible; hands already show their owner's private draws.
         changes = entry.get("state_changes")
+        if hidden_mats and entry.get("action") == "end_ransom":
+            entry.get("args", {}).pop("ransom_decisions", None)
         if entry.get("side") == opp and entry.get("action") == "end_reset":
             # Immediate victory can stop a submitted batch before later
             # Holds are discarded. Only completed elections become public.

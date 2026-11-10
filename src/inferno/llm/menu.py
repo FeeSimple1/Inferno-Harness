@@ -205,6 +205,10 @@ class ActionCatalog:
             if not isinstance(selection['args'], dict):
                 raise IllegalAction("BAD_SELECTION", "args must be a complete JSON object.")
             action['args'] = copy.deepcopy(selection['args'])
+        if action["action"] == "end_ransom" and action.get("args", {}).get("ransom_decisions"):
+            raise IllegalAction("OWNER_DECISION_REQUIRED",
+                                "Ransom Coin goes to the captor's choice through their DecisionView.",
+                                "4.9.2")
         if _has_placeholder(action.get('args', {})):
             raise IllegalAction("MISSING_PARAMETERS", "Fill every required template argument before selecting it. The action was not applied.")
         return action
