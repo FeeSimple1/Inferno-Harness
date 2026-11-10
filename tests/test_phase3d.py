@@ -1,18 +1,25 @@
 """Phase 3d tests: Battle cleanup + Bypass-state March + Lieutenants."""
 from __future__ import annotations
 
+import copy
 import inspect
+import json
 
 import pytest
 
+from inferno import static_data as sd
 from inferno.actions import IllegalAction, dispatch
 from inferno.battle import (
     loss_roll_for_routed,
     service_shift_for_retreated,
     transfer_spoils,
 )
+from inferno.invariants import check_all_invariants
+from inferno.legal_moves import enumerate_legal
 from inferno.rng import HarnessRNG
 from inferno.scenarios import load_scenario
+from tests._helpers import _finish_pending_choices, _place
+from tests.test_phase3a import _skip_capability_discard, _skip_levy
 
 
 def _stand_battle_setup():
@@ -204,6 +211,152 @@ class TestLieutenants:
             dispatch(s, {"action": "plan_attach_lieutenant", "side": "guelph",
                          "args": {"lieutenant": "firenze", "lower_lord": "arezzo"}})
         assert exc.value.code == "COMMANDER_NOT_ELIGIBLE"
+
+
+def _paired_approach(locale="Firenze"):
+    state = load_scenario("D", seed=5)
+    _skip_levy(state)
+    _skip_capability_discard(state)
+    origin = "Figline" if locale == "Firenze" else "Firenze"
+    for lid in ("arezzo", "orvieto"):
+        _place(state, lid, locale)
+    _place(state, "astimberg", origin)
+    dispatch(state, {"action": "plan_attach_lieutenant", "side": "guelph",
+                     "args": {"lieutenant": "arezzo", "lower_lord": "orvieto"}})
+    size = sd.PLAN_SIZE_BY_SEASON[sd.SEASON_BY_BOX[state["meta"]["turn"]]]
+    for side in ("guelph", "ghibelline"):
+        cards = ["command_astimberg"] if side == "ghibelline" else []
+        for card in cards + ["PASS"] * (size - len(cards)):
+            dispatch(state, {"action": "plan_add_card", "side": side, "args": {"card_id": card}})
+        dispatch(state, {"action": "plan_done", "side": side})
+    dispatch(state, {"action": "command_reveal", "side": "guelph"})
+    _finish_pending_choices(state)
+    dispatch(state, {"action": "command_reveal", "side": "ghibelline"})
+    state["meta"].update(rng_seed=5, rng_advance=0)
+    dispatch(state, {"action": "cmd_march", "side": "ghibelline",
+                     "args": {"lord_id": "astimberg", "destination": locale, "way_type": "road"}})
+    return state
+
+
+def _respond(state, lid, choice, **args):
+    return dispatch(state, {"action": "approach_response", "side": "guelph",
+                            "args": {"lord_id": lid, "choice": choice, **args}})["state_changes"]
+
+
+@pytest.mark.parametrize("from_menu", [False, True])
+def test_lieutenant_avoid_moves_both_and_shares_carts(from_menu):
+    state = _paired_approach()
+    state["lords"]["arezzo"]["assets"]["Cart"] = 0
+    state = json.loads(json.dumps(state))
+    moves = [move for move in enumerate_legal(state)
+             if move["action"] == "approach_response" and move["args"].get("destination") == "Prato"]
+    assert len(moves) == 1 and moves[0]["args"]["with_lords"] == ["orvieto"]
+    if from_menu:
+        result = dispatch(state, moves[0])["state_changes"]
+    else:
+        result = _respond(state, "orvieto", "avoid", destination="Prato")
+    assert set(result["avoided"]) == {"arezzo", "orvieto"}
+    assert result["approach_resolved"] == "no_battle"
+    assert state["lords"]["arezzo"]["assets"]["Provender"] == 2
+    assert all(state["lords"][lid]["location"] == "Prato" for lid in result["avoided"])
+    check_all_invariants(state)
+
+
+@pytest.mark.parametrize("locale, fits", [("Firenze", True), ("Figline", False)])
+def test_lieutenant_approach_withdrawal_requires_room_for_both(locale, fits):
+    state = _paired_approach(locale)
+    moves = [move for move in enumerate_legal(state)
+             if move["action"] == "approach_response" and move["args"].get("choice") == "withdraw"]
+    if fits:
+        result = dispatch(state, moves[0])["state_changes"]
+        assert set(result["withdrawn"]) == {"arezzo", "orvieto"}
+        assert result["approach_resolved"] == "no_battle"
+        for lid in result["withdrawn"]:
+            flags = state["lords"][lid]["flags"]
+            assert flags["in_stronghold"] and not flags.get("moved_fought")
+    else:
+        assert moves == []
+        before = copy.deepcopy(state)
+        with pytest.raises(IllegalAction, match="STRONGHOLD_FULL"):
+            _respond(state, "arezzo", "withdraw")
+        assert state == before
+    check_all_invariants(state)
+
+
+def test_standing_lieutenant_prevents_partner_from_leaving_the_battle():
+    state = _paired_approach()
+    _respond(state, "arezzo", "stand")
+    choices = [move["args"]["choice"] for move in enumerate_legal(state)
+               if move["action"] == "approach_response"]
+    assert choices == ["stand"]
+    before = copy.deepcopy(state)
+    with pytest.raises(IllegalAction, match="BAD_AVOID_GROUP"):
+        _respond(state, "orvieto", "avoid", destination="Prato")
+    with pytest.raises(IllegalAction, match="BAD_WITHDRAW_GROUP"):
+        _respond(state, "orvieto", "withdraw")
+    assert state == before
+
+
+@pytest.mark.parametrize("remove_companion", [False, True])
+def test_lieutenant_battle_retreat_uses_one_route_and_allows_removal(remove_companion):
+    state = _paired_approach()
+    routes = []
+
+    def choose(decision):
+        kind = decision["type"]
+        if kind == "concede":
+            return "yes" if decision["side"] == "defender" else "no"
+        if kind == "retreat_destination":
+            routes.append(decision["info"])
+            return "Prato"
+        return decision["options"][0]
+
+    state["battle_callback"] = choose
+    _respond(state, "arezzo", "stand")
+    script = []
+    if remove_companion:
+        script = [{"type": "retreat_destination", "choice": "Prato"},
+                  {"type": "post_battle_withdraw", "choice": "remove"}]
+    battle = _respond(state, "orvieto", "stand", post_battle_decisions=script)["battle_result"]
+    state.pop("battle_callback")
+    assert battle["loser"] == battle["conceded"] == "defender"
+    assert state["lords"]["arezzo"]["location"] == "Prato"
+    if remove_companion:
+        assert "orvieto" in battle["removed_lords"]
+        assert "has_lower_lord" not in state["lords"]["arezzo"]["flags"]
+    else:
+        assert routes == [{"lord_id": "arezzo", "lord_ids": ["arezzo", "orvieto"]}]
+        assert state["lords"]["orvieto"]["location"] == "Prato"
+        assert state["lords"]["orvieto"]["flags"]["lower_lord_of"] == "arezzo"
+    check_all_invariants(state)
+
+
+@pytest.mark.parametrize("locale, fits", [("Firenze", True), ("Figline", False)])
+def test_lieutenant_battle_withdrawal_respects_capacity(locale, fits):
+    state = _paired_approach(locale)
+    offered = {}
+
+    def choose(decision):
+        if decision["type"] == "concede":
+            return "yes" if decision["side"] == "defender" else "no"
+        if decision["type"] == "post_battle_withdraw":
+            offered[decision["info"]["lord_id"]] = decision
+            return "withdraw" if "withdraw" in decision["options"] else "remove"
+        return decision["options"][0]
+
+    state["battle_callback"] = choose
+    _respond(state, "arezzo", "stand")
+    battle = _respond(state, "orvieto", "stand")["battle_result"]
+    state.pop("battle_callback")
+    assert state["lords"]["arezzo"]["flags"]["in_stronghold"]
+    if fits:
+        assert state["lords"]["orvieto"]["flags"]["in_stronghold"]
+        assert "orvieto" not in battle["removed_lords"]
+    else:
+        assert offered["arezzo"]["info"]["requires_partner_removal"] == ["withdraw"]
+        assert offered["orvieto"]["options"] == ["remove"]
+        assert "orvieto" in battle["removed_lords"]
+    check_all_invariants(state)
 
 
 # =====================================================================

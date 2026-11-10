@@ -123,7 +123,9 @@ and a completed unshuffled Plan shuffles once before the first Guelph reveal.
   the legal menu lists `discarded_assets` for the default Provender
   allocation. The avoiding side can choose how to allocate shared capacity
   through `keep_provender` before the approaching side allocates Spoils.
-  Arrival at an Unbesieged enemy Stronghold establishes Bypass.
+  Arrival at an Unbesieged enemy Stronghold establishes Bypass. Avoid and
+  Withdrawal automatically include a Lieutenant or Lower Lord's partner.
+  Both must be able to respond, and Withdrawal requires space for both.
 
 Battles resolve synchronously within the triggering action, so there are no
 separate `battle_decision`, `concede`, or `retreat` actions. In-Battle choices
@@ -145,12 +147,17 @@ with these decision types:
 - `post_battle_fate` — a losing defender ineligible to Withdraw may choose
   `"retreat"` (default) or `"remove"`. If Retreat is blocked, Removal is
   automatic. This includes losing besiegers in a Sally.
-- `retreat_destination` — for each Retreating Lord, `choice` is one of the legal
-  target Locales. Default: the deterministic leftmost (Friendly first, then
-  alphabetical). A Marching Attacker's only Retreat destination is the Approach origin.
+  When a Lieutenant or Lower Lord chooses movement, the partner can follow
+  that movement or be removed. `requires_partner_removal` identifies choices
+  that only one Lord can take, such as Withdrawal into the last open space.
+- `retreat_destination` — choose a legal Locale for each Retreating Lord or
+  intact Lieutenant pair. The default is the first legal Locale, ordered
+  Friendly first and then alphabetically. A Marching Attacker's only Retreat
+  destination is the Approach origin.
 - `retreat_way` — when more than one legal Way connects the chosen
   destination, select `"road"` or `"track"`. Conceding Lords retain
   Provender according to the selected Way and their co-retreaters' Carts.
+  Script a shared destination and Way once for a Lieutenant pair.
 - `keep_provender` — during group Avoid or conceding group Retreat, the moving
   side chooses an integer amount to keep on the named Lord's mat when more
   than one amount is legal. The group keeps as much as it can carry Unladen,

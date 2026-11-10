@@ -742,6 +742,23 @@ def _release_lieutenant_partner(state, lid: str) -> None:
             del partner_flags[reciprocal]
 
 
+def _co_located_lieutenant_partner(state, lid: str) -> str | None:
+    """Find the other Mustered Lord in an intact stack at this Locale (4.1.3)."""
+    lord = state["lords"].get(lid, {})
+    flags = lord.get("flags", {})
+    for link, reciprocal in (("has_lower_lord", "lower_lord_of"),
+                             ("lower_lord_of", "has_lower_lord")):
+        partner_id = flags.get(link)
+        if partner_id is None or partner_id == lid:
+            continue
+        partner = state["lords"].get(partner_id, {})
+        if (partner.get("status") == "mustered" and partner.get("side") == lord.get("side")
+                and partner.get("location") == lord.get("location")
+                and partner.get("flags", {}).get(reciprocal) == lid):
+            return partner_id
+    return None
+
+
 def _disband_beyond_service_limit(state, lid: str, *, disband_attached: bool = True) -> None:
     """3.3.1: Regular Lord -> remove permanently. Podestà -> cylinder
     placed Service-Rating boxes ahead of current Turn (may Muster again)."""
@@ -2997,16 +3014,15 @@ def _h_cmd_march(state, side, args, rng) -> dict[str, Any]:
     }, state, side, citation="4.3")
 
 
-def _avoid_preview(state, side, info, args, *, decisions=None) -> dict[str, Any]:
-    """Validate a solo/group Avoid and compute its mandatory discards."""
-    lid = args.get("lord_id")
-    companions = args.get("with_lords", [])
-    if (not isinstance(companions, list)
-            or any(not isinstance(m, str) for m in companions)
-            or len(set(companions)) != len(companions) or lid in companions):
-        raise IllegalAction("BAD_AVOID_GROUP", "with_lords must list distinct other Lords.", "4.3.4")
-    group = [lid, *companions]
-    source = info["locale"]
+def _approach_movement_group(state, side, source, members, *, withdraw=False):
+    group = list(members)
+    for member in members:
+        partner = _co_located_lieutenant_partner(state, member)
+        if partner is not None and partner not in group:
+            # A saved Approach may already have one member inside.
+            if withdraw and state["lords"][partner].get("flags", {}).get("in_stronghold"):
+                continue
+            group.append(partner)
     entries = []
     for member in group:
         lord = state["lords"].get(member)
@@ -3016,10 +3032,26 @@ def _avoid_preview(state, side, info, args, *, decisions=None) -> dict[str, Any]
                       and p["info"].get("locale") == source), None)
         if (not lord or lord.get("side") != side or lord.get("status") != "mustered"
                 or lord.get("location") != source or entry is None):
+            if withdraw:
+                raise IllegalAction("BAD_WITHDRAW_GROUP",
+                                    f"{member} cannot join this Withdrawal.", "4.3.4 / 4.1.3")
             raise IllegalAction("BAD_AVOID_GROUP", f"{member} cannot join this Avoid.", "4.3.4")
-        if lord.get("flags", {}).get("ambush_forced"):
+        if not withdraw and lord.get("flags", {}).get("ambush_forced"):
             raise IllegalAction("AMBUSH_FORCED", f"{member} may not Avoid after Ambush.", "F1/S1")
         entries.append(entry)
+    return group, entries
+
+
+def _avoid_preview(state, side, info, args, *, decisions=None) -> dict[str, Any]:
+    """Validate a solo/group Avoid and compute its mandatory discards."""
+    lid = args.get("lord_id")
+    companions = args.get("with_lords", [])
+    if (not isinstance(companions, list)
+            or any(not isinstance(m, str) for m in companions)
+            or len(set(companions)) != len(companions) or lid in companions):
+        raise IllegalAction("BAD_AVOID_GROUP", "with_lords must list distinct other Lords.", "4.3.4")
+    source = info["locale"]
+    group, entries = _approach_movement_group(state, side, source, [lid, *companions])
     destination = args.get("destination")
     if not isinstance(destination, str) or not destination:
         raise IllegalAction("MISSING_DEST", "Avoid requires destination.", "4.3.4")
@@ -3060,6 +3092,28 @@ def _avoid_preview(state, side, info, args, *, decisions=None) -> dict[str, Any]
             "way_type": way, "discards": discards}
 
 
+def _withdraw_preview(state, side, locale_name, lid):
+    """Check that the withdrawing Lord or stack fits inside the Stronghold."""
+    loc = state["locales"][locale_name]
+    if loc.get("ruins"):
+        raise IllegalAction("WITHDRAW_INTO_RUINS", "Cannot withdraw into Ruins.", "4.3.4")
+    if not _is_friendly_locale(state, loc, side):
+        raise IllegalAction("WITHDRAW_NOT_FRIENDLY", f"{locale_name} not Friendly to {side}.", "4.3.4")
+    capacity = _withdraw_capacity(state, locale_name)
+    if not capacity:
+        raise IllegalAction("NO_WITHDRAW_HERE", f"{loc['type']} has no Stronghold for Withdraw.", "4.3.4")
+    group, entries = _approach_movement_group(state, side, locale_name, [lid], withdraw=True)
+    already_in = sum(
+        1 for other_id in loc.get("lords_present", [])
+        if state["lords"][other_id].get("flags", {}).get("in_stronghold")
+        and state["lords"][other_id]["side"] == side
+    )
+    if already_in + len(group) > capacity:
+        raise IllegalAction("STRONGHOLD_FULL",
+                            f"{locale_name} lacks room for the Withdrawing Lords.", "4.3.4")
+    return group, entries
+
+
 def _h_approach_response(state, side, args, rng) -> dict[str, Any]:
     """4.3.4: Inactive Lord chooses Avoid / Withdraw / Stand.
 
@@ -3096,9 +3150,8 @@ def _h_approach_response(state, side, args, rng) -> dict[str, Any]:
     entry = pending[idx]
     info = entry["info"]
     locale_name = info["locale"]
-    lord = state["lords"][lid]
     response_entries = [entry]
-    avoid_changes = {}
+    response_changes = {}
     post_decisions = args.get("post_battle_decisions")
 
     if choice == "avoid":
@@ -3142,39 +3195,20 @@ def _h_approach_response(state, side, args, rng) -> dict[str, Any]:
             if bypass:
                 moving["flags"]["bypassing"] = dest_name
         _sweep_freed_stronghold(state, locale_name)
-        avoid_changes = {"avoided": group, "destination": dest_name,
-                         "way_type": preview["way_type"], "discarded_as_spoils": pool,
-                         "spoils_allocation": allocation, "bypassing": bypass}
+        response_changes = {"avoided": group, "destination": dest_name,
+                            "way_type": preview["way_type"], "discarded_as_spoils": pool,
+                            "spoils_allocation": allocation, "bypassing": bypass}
         if provender_decisions:
-            avoid_changes["provender_decisions"] = provender_decisions
+            response_changes["provender_decisions"] = provender_decisions
         if decision_context.trace:
-            avoid_changes["spoils_decisions"] = decision_context.trace
+            response_changes["spoils_decisions"] = decision_context.trace
 
     elif choice == "withdraw":
-        # 4.3.4 WITHDRAW: into a Friendly Stronghold at this Locale.
-        loc = state["locales"][locale_name]
-        if loc.get("ruins"):
-            raise IllegalAction("WITHDRAW_INTO_RUINS", "Cannot withdraw into Ruins.", "4.3.4")
-        if not _is_friendly_locale(state, loc, side):
-            raise IllegalAction("WITHDRAW_NOT_FRIENDLY", f"{locale_name} not Friendly to {side}.", "4.3.4")
-        # Stronghold Size limit (1/2/3)
-        size_map = {"castle": 1, "town": 2, "city": 3, "outpost": 0}
-        max_in = size_map.get(loc["type"], 0)
-        if max_in == 0:
-            raise IllegalAction("NO_WITHDRAW_HERE", f"{loc['type']} has no Stronghold for Withdraw.", "4.3.4")
-        # Count already-withdrawn Lords (Phase 3b uses a flag)
-        already_in = sum(
-            1 for other_id in loc.get("lords_present", [])
-            if state["lords"][other_id].get("flags", {}).get("in_stronghold")
-            and state["lords"][other_id]["side"] == side
-        )
-        if already_in >= max_in:
-            raise IllegalAction(
-                "STRONGHOLD_FULL",
-                f"{loc['type']} {locale_name} has {already_in} withdrawn; max {max_in}.",
-                "4.3.4",
-            )
-        lord.setdefault("flags", {})["in_stronghold"] = True
+        group, response_entries = _withdraw_preview(state, side, locale_name, lid)
+        for member in group:
+            state["lords"][member].setdefault("flags", {})["in_stronghold"] = True
+        if len(group) > 1:
+            response_changes["withdrawn"] = group
         # Withdrawal does NOT mark Moved/Fought (per 4.3.4).
 
     else:  # stand
@@ -3202,13 +3236,13 @@ def _h_approach_response(state, side, args, rng) -> dict[str, Any]:
     if remaining:
         return {
             "state_changes": {"lord_id": lid, "choice": choice,
-                              "remaining_responses": len(remaining), **avoid_changes},
+                              "remaining_responses": len(remaining), **response_changes},
             "rule_citation": "4.3.4",
         }
 
     # All responses gathered. Determine whether Battle resolves.
     result = _finalize_approach(state, locale_name, info["approaching_lord"], side)
-    result["state_changes"].update(avoid_changes)
+    result["state_changes"].update(response_changes)
     return result
 
 
@@ -3426,15 +3460,15 @@ def _retreat_candidates(state, lid, battle_locale, loser_side,
     (outside a Stronghold), AND no un-Besieged/un-Bypassed Enemy Stronghold.
     Defenders may NOT retreat back along the Way the Attackers approached.
     Marching Attackers MUST retreat to the Locale whence they approached. No
-    Sail retreats (Ways are land-only here). Ordering: Friendly Locales first,
-    then alphabetical. The full option set is exposed so the choice can be
-    surfaced to the operator; _retreat_destination() keeps the deterministic
-    leftmost pick used as the default and by the Sally path."""
+    Sail retreats (Ways are land-only here). Order Friendly Locales first,
+    then alphabetically for the default Retreat."""
     enemy = "ghibelline" if loser_side == "guelph" else "guelph"
 
     def dest_ok(name):
         loc = state["locales"].get(name)
         if loc is None or loc.get("ruins"):
+            return False
+        if loc.get("type") == "outpost" and name not in state["lords"][lid].get("seats", []):
             return False
         for oid in loc.get("lords_present", []):
             ol = state["lords"].get(oid)
@@ -3465,12 +3499,10 @@ def _retreat_candidates(state, lid, battle_locale, loser_side,
 
 def _retreat_destination(state, lid, battle_locale, loser_side,
                          is_marching_attacker, approached_from, approached_via):
-    """The deterministic default Retreat Locale (leftmost legal target) or None
-    if none exists (-> Removed). The full ordered option set, for surfacing the
-    choice to an operator, is _retreat_candidates()."""
-    cands = _retreat_candidates(state, lid, battle_locale, loser_side,
-                                is_marching_attacker, approached_from, approached_via)
-    return cands[0] if cands else None
+    """Return the default legal Retreat Locale, if any."""
+    candidates = _retreat_candidates(state, lid, battle_locale, loser_side,
+                                     is_marching_attacker, approached_from, approached_via)
+    return candidates[0] if candidates else None
 
 
 def _can_withdraw_into_stronghold(state, lid, battle_locale) -> bool:
@@ -3606,8 +3638,10 @@ def _apply_post_battle(state, result, attackers: list[str], defenders: list[str]
     )
     _retreated_for_shift: list[str] = []
     retreat_spoils: dict[tuple[str, str], list[str]] = {}
+    paired_movers: set[str] = set()
+    is_marching_attacker = not is_sally and loser == "attacker"
     for lid in losers_ids:
-        if lid not in state["lords"]:
+        if lid in paired_movers or lid not in state["lords"]:
             continue
         if state["lords"][lid].get("status") != "mustered":
             continue
@@ -3622,75 +3656,127 @@ def _apply_post_battle(state, result, attackers: list[str], defenders: list[str]
             # Withdrew into Stronghold: keep Assets, no Service shift.
             take_spoils(lid, retreated=False, conceded=False, withdrew=True)
         else:
-            is_marching_attacker = not is_sally and loser == "attacker"
-            _default_dest = _retreat_destination(
+            partner = _co_located_lieutenant_partner(state, lid)
+            if partner not in losers_ids or partner in paired_movers:
+                partner = None
+            if partner is not None:
+                companion = state["lords"][partner]
+                if companion.get("flags", {}).get("in_stronghold"):
+                    partner = None
+                elif not (sum(companion.get("forces", {}).values())
+                          or sum(companion.get("routed_units", {}).values())):
+                    _remove_lord(partner, losing_battle_side=True)
+                    partner = None
+
+            candidates = _retreat_candidates(
                 state, lid, battle_locale, lord["side"],
                 is_marching_attacker, _approached_from, _approached_via)
+            default_dest = _retreat_destination(
+                state, lid, battle_locale, lord["side"],
+                is_marching_attacker, _approached_from, _approached_via)
+            if default_dest is not None and default_dest not in candidates:
+                candidates.insert(0, default_dest)
+            shared_candidates = candidates
+            if partner is not None:
+                companion_candidates = _retreat_candidates(
+                    state, partner, battle_locale, lord["side"],
+                    is_marching_attacker, _approached_from, _approached_via)
+                shared_candidates = [dest for dest in candidates if dest in companion_candidates]
+                if loser == "attacker":
+                    candidates = shared_candidates
             eligible_withdraw = (
                 loser == "defender" and not is_sally and _wd_count < _wd_cap
                 and _can_withdraw_into_stronghold(state, lid, battle_locale)
             )
-            fate = "retreat" if _default_dest is not None else "remove"
-            if loser == "defender" and (_default_dest is not None or eligible_withdraw):
-                options = ["retreat"] if _default_dest is not None else []
+            room_for_pair = _wd_count + 2 <= _wd_cap
+            fate = "retreat" if candidates else "remove"
+            decision_type = "post_battle_withdraw" if eligible_withdraw else "post_battle_fate"
+            if loser == "defender" and (candidates or eligible_withdraw):
+                options = ["retreat"] if candidates else []
                 if eligible_withdraw:
                     options.append("withdraw")
-                    if lid in withdraw_elected:
+                    if ((partner is None and lid in withdraw_elected)
+                            or (room_for_pair and withdraw_elected.intersection((lid, partner)))):
                         fate = "withdraw"
                 options.append("remove")
-                # Preserve the legacy script's choice point for eligible
-                # withdrawals, including when earlier defenders cannot Withdraw.
-                decision_type = "post_battle_withdraw" if eligible_withdraw else "post_battle_fate"
+                info = {"lord_id": lid, "locale": battle_locale}
+                if partner is not None:
+                    info["partner_id"] = partner
+                    info["requires_partner_removal"] = [
+                        option for option, can_follow in (("retreat", shared_candidates),
+                                                          ("withdraw", room_for_pair))
+                        if option in options and not can_follow
+                    ]
                 fate = bdc.decide_optional(
                     decision_type, lord["side"], options=options, default=fate,
-                    info={"lord_id": lid, "locale": battle_locale})
+                    info=info)
             if fate == "remove":
                 _remove_lord(lid, losing_battle_side=True)
                 continue
+
+            if fate == "retreat":
+                route_info = {"lord_id": lid}
+                if partner is not None:
+                    route_info["lord_ids"] = [lid, partner]
+                    solo_destinations = [dest for dest in candidates if dest not in shared_candidates]
+                    if solo_destinations:
+                        route_info["requires_partner_removal"] = solo_destinations
+                preferred = shared_candidates or candidates
+                dest = bdc.decide_optional(
+                    "retreat_destination", lord["side"], options=candidates,
+                    default=default_dest if default_dest in preferred else preferred[0],
+                    info=route_info)
+                ways = list(dict.fromkeys(w for n, w in sd.adjacent_to(battle_locale)
+                                          if n == dest and w in ("road", "track")))
+                if not is_marching_attacker and dest == _approached_from:
+                    ways = [w for w in ways if w != _approached_via]
+                retreat_way = (_approached_via if is_marching_attacker and _approached_via in ways
+                               else (ways[0] if ways else "road"))
+                if len(ways) > 1:
+                    retreat_way = bdc.decide_optional(
+                        "retreat_way", lord["side"], options=ways, default=retreat_way,
+                        info={**route_info, "destination": dest})
+
+            group = [lid]
+            if partner is not None:
+                companion_fate = fate
+                if loser == "defender":
+                    can_follow = room_for_pair if fate == "withdraw" else dest in shared_candidates
+                    choices = [fate, "remove"] if can_follow else ["remove"]
+                    companion_fate = bdc.decide_optional(
+                        decision_type, lord["side"], options=choices, default=choices[0],
+                        info={"lord_id": partner, "locale": battle_locale,
+                              "partner_id": lid, "partner_fate": fate})
+                if companion_fate == "remove":
+                    _remove_lord(partner, losing_battle_side=True)
+                else:
+                    group.append(partner)
+                    paired_movers.add(partner)
+
             if fate == "withdraw":
                 # Withdraw INSIDE: keep Assets, no Service shift, stay put.
-                lord.setdefault("flags", {})["in_stronghold"] = True
-                _wd_count += 1
-                take_spoils(lid, retreated=False, conceded=False, withdrew=True)
+                for member in group:
+                    state["lords"][member].setdefault("flags", {})["in_stronghold"] = True
+                    take_spoils(member, retreated=False, conceded=False, withdrew=True)
+                _wd_count += len(group)
                 continue
-            # RETREAT to a legal adjacent Locale (4.4.3).
-            _cands = _retreat_candidates(
-                state, lid, battle_locale, lord["side"],
-                is_marching_attacker, _approached_from, _approached_via)
-            if _default_dest not in _cands:
-                _cands = [_default_dest] + _cands
-            dest = bdc.decide_optional(
-                "retreat_destination", lord["side"], options=_cands,
-                default=_default_dest, info={"lord_id": lid})
-            # Retreated.
-            ways = list(dict.fromkeys(w for n, w in sd.adjacent_to(battle_locale)
-                                      if n == dest and w in ("road", "track")))
-            if not is_marching_attacker and dest == _approached_from:
-                ways = [w for w in ways if w != _approached_via]
-            retreat_way = (_approached_via if is_marching_attacker and _approached_via in ways
-                           else (ways[0] if ways else "road"))
-            if len(ways) > 1:
-                retreat_way = bdc.decide_optional(
-                    "retreat_way", lord["side"], options=ways, default=retreat_way,
-                    info={"lord_id": lid, "destination": dest})
-            if conceded:
-                retreat_spoils.setdefault((dest, retreat_way), []).append(lid)
-            else:
-                take_spoils(lid, retreated=True, conceded=False, withdrew=False)
-            # Relocate the Lord OFF the battle Locale to the chosen destination.
-            if battle_locale and battle_locale in state["locales"]:
-                bl = state["locales"][battle_locale]
-                if lid in bl.get("lords_present", []):
-                    bl["lords_present"].remove(lid)
-            lord["location"] = dest
-            lord["flags"].pop("bypassing", None)  # 4.3.6: left the bypassed Stronghold.
-            state["locales"][dest].setdefault("lords_present", []).append(lid)
+            # Move the surviving group along the chosen Retreat route.
+            for member in group:
+                if conceded:
+                    retreat_spoils.setdefault((dest, retreat_way), []).append(member)
+                else:
+                    take_spoils(member, retreated=True, conceded=False, withdrew=False)
+                if _wd_loc and member in _wd_loc.get("lords_present", []):
+                    _wd_loc["lords_present"].remove(member)
+                state["lords"][member]["location"] = dest
+                state["lords"][member]["flags"].pop("bypassing", None)
+                state["locales"][dest].setdefault("lords_present", []).append(member)
             _any_retreat_off = True
             # Service shift deferred: CONF-028 (RoP 4.4.3 EXCEPTION) is
             # SIDE-scoped — "EACH Lord of a side that Conceded and Retreated
             # with a Carroccio shifts Service just one box left" — so the
             # 1-box shift is decided only once every loser's fate is known.
-            _retreated_for_shift.append(lid)
+            _retreated_for_shift.extend(group)
     # Conceding Lords who Retreat together Share Carts (1.5.2 / 4.3.2).
     from .battle import unladen_prov_to_keep
     for (dest, way), members in retreat_spoils.items():

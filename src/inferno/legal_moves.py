@@ -1276,12 +1276,13 @@ def _enum_approach_response(state, pending) -> list[dict[str, Any]]:
 
     Defensive enumeration: only emit options the handler would accept.
     """
+    from .actions import IllegalAction, _avoid_preview, _withdraw_preview
+
     info = pending["info"]
     lid = info["lord_id"]
     locale_name = info["locale"]
     side = pending["side"]
     lord = state["lords"].get(lid)
-    loc = state["locales"].get(locale_name, {})
     out: list[dict[str, Any]] = []
 
     # Stand is always available
@@ -1301,7 +1302,6 @@ def _enum_approach_response(state, pending) -> list[dict[str, Any]]:
     # Loot/excess food is part of Avoid, so a loaded mat is not excluded.
     if lord and not lord.get("flags", {}).get("ambush_forced"):
         from itertools import combinations
-        from .actions import IllegalAction, _avoid_preview
         for neighbour, way_type in dict.fromkeys(sd.adjacent_to(locale_name)):
             if way_type not in ("road", "track"):
                 continue
@@ -1314,6 +1314,7 @@ def _enum_approach_response(state, pending) -> list[dict[str, Any]]:
                       and (target.get("type") != "outpost"
                            or neighbour in state["lords"][p["info"]["lord_id"]].get("seats", []))]
             ways = {w for n, w in sd.adjacent_to(locale_name) if n == neighbour}
+            seen_groups = set()
             for count in range(len(others) + 1):
                 for companions in combinations(others, count):
                     args = {"lord_id": lid, "choice": "avoid", "destination": neighbour}
@@ -1325,8 +1326,15 @@ def _enum_approach_response(state, pending) -> list[dict[str, Any]]:
                         preview = _avoid_preview(state, side, info, args)
                     except IllegalAction:
                         continue
+                    group = preview["group"]
+                    key = frozenset(group)
+                    if key in seen_groups:
+                        continue
+                    seen_groups.add(key)
+                    if len(group) > 1:
+                        args["with_lords"] = group[1:]
                     decision_types = list(_SPOILS_DECISIONS)
-                    description = f"{', '.join([lid, *companions])} Avoid to {neighbour} ({way_type})."
+                    description = f"{', '.join(group)} Avoid to {neighbour} ({way_type})."
                     if preview["can_choose_provender"]:
                         decision_types.insert(0, "keep_provender")
                         description += " Discard preview uses the default Provender allocation."
@@ -1340,27 +1348,18 @@ def _enum_approach_response(state, pending) -> list[dict[str, Any]]:
                         "rule_citation": "4.3.4 / 1.7.2",
                     })
 
-    # SMOKE-Inferno-012: Withdraw pre-check — friendly Stronghold, room.
+    # SMOKE-Inferno-012: apply the same room check as the response handler.
     try:
-        if (lord and loc and not loc.get("ruins")
-                and _is_friendly_locale_quiet(state, loc, side)):
-            size_map = {"castle": 1, "town": 2, "city": 3, "outpost": 0}
-            cap = size_map.get(loc.get("type"), 0)
-            if cap > 0:
-                in_count = sum(
-                    1 for oid in loc.get("lords_present", [])
-                    if state["lords"][oid]["side"] == side
-                    and state["lords"][oid].get("flags", {}).get("in_stronghold")
-                )
-                if in_count < cap:
-                    out.append({
-                        "action": "approach_response", "side": side,
-                        "args": {"lord_id": lid, "choice": "withdraw"},
-                        "description": f"{lid} Withdraws into {locale_name} ({loc.get('type')}, cap {cap}).",
-                        "rule_citation": "4.3.4",
-                    })
-    except (KeyError, AttributeError, TypeError):
+        group, _ = _withdraw_preview(state, side, locale_name, lid)
+    except (IllegalAction, KeyError, AttributeError, TypeError):
         pass
+    else:
+        out.append({
+            "action": "approach_response", "side": side,
+            "args": {"lord_id": lid, "choice": "withdraw"},
+            "description": f"{', '.join(group)} Withdraw into {locale_name}.",
+            "rule_citation": "4.3.4",
+        })
     return out
 
 
