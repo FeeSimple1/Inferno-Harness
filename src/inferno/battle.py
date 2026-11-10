@@ -520,6 +520,17 @@ def _resolve_step(state, step: str, positions, reserve, conceded: str | None,
                 break
 
 
+def _armor_range(state, lord_id: str, unit: str, routed_per_lord: dict) -> list[int]:
+    protection = list(sd.UNITS[unit].get("protection", []))
+    if unit == "Armigieri":
+        # Palvesari's Armor bonus ends at the third Rout, even if a unit recovers.
+        routed = state["lords"][lord_id].get("routed_units", {}).get(unit, 0)
+        past_routs = routed_per_lord.get(lord_id, []).count(unit)
+        if max(routed, past_routs) < 3 and _lord_has_capability(state, lord_id, "Palvesari"):
+            return list(range(1, min(6, len(protection) + 2) + 1))
+    return protection
+
+
 def _absorb_hits(state, lord_id: str, n_hits: int, rng_caller,
                  hit_log: list, routed_per_lord: dict,
                  crossbow_hits: int = 0, armor_penalty: int = 2,
@@ -592,13 +603,7 @@ def _absorb_hits(state, lord_id: str, n_hits: int, rng_caller,
                 forces.pop("Villici", None)
             hit_log.append({"lord_id": lord_id, "unit": "Villici", "removed": True})
             return True
-        u = sd.UNITS[unit]
-        prot = list(u.get("protection", []))
-        if (unit == "Armigieri" and routed.get("Armigieri", 0) < 3
-                and _lord_has_capability(state, lord_id, "Palvesari")):
-            # F13-F15: +2 Armor to this Lord's Armigieri. Apply BEFORE
-            # any Crossbow penalty; never mutate the inherent Forces table.
-            prot = list(range(1, min(6, len(prot) + 2) + 1))
+        prot = _armor_range(state, lord_id, unit, routed_per_lord)
         # Crossbow -2 Armor has a MIN of 1 (Battle&Storm 10.3): a unit always
         # rolls vs at least Armor 1, so never auto-removed by the -2 alone.
         eff = prot[:max(1, len(prot) - penalty)] if penalty else prot
@@ -834,6 +839,67 @@ def _check_rout_recovery(state, lord_id: str, rng_roll) -> dict | None:
                 lord["forces"][unit] = lord["forces"].get(unit, 0) + 1
                 recovered[unit] = recovered.get(unit, 0) + 1
     return {"recovered": recovered}
+
+
+def _distringitores_recovery(
+    state, positions, reserve, bdc, rng_roll, hit_log, routed_per_lord, round_n,
+    *, relief_front=(), relief_reserve=(),
+) -> None:
+    """F21 lets one Guelph Podestà or Comune in the Array recover after Archery."""
+    from .actions import _CAP_PLACEMENT_ELIGIBLE
+
+    eligible = {}
+    for lid in (*positions["attacker"].values(), *positions["defender"].values(),
+                *reserve["attacker"], *reserve["defender"], *relief_front, *relief_reserve):
+        if lid not in _CAP_PLACEMENT_ELIGIBLE["F21"]:
+            continue
+        lord = state["lords"][lid]
+        if (lord["side"] != "guelph" or _all_units_routed(lord)
+                or not _lord_has_capability(state, lid, "Distringitores")):
+            continue
+        units = {unit: count for unit, count in lord.get("routed_units", {}).items()
+                 if count > 0 and len(sd.UNITS[unit].get("protection", [])) >= 2}
+        if units:
+            eligible[lid] = units
+    if not eligible:
+        return
+    lid = bdc.decide_optional(
+        "distringitores_lord", "guelph", options=["pass", *eligible], default="pass",
+        info={"round": round_n})
+    if lid == "pass":
+        return
+
+    # Choose all pieces before rolling. Each piece can be selected once.
+    available = eligible[lid]
+    selected = []
+    for _ in range(2):
+        if not available:
+            break
+        unit = bdc.decide_optional(
+            "distringitores_unit", "guelph", options=["pass", *available], default="pass",
+            info={"round": round_n, "lord_id": lid, "selected": list(selected)})
+        if unit == "pass":
+            break
+        selected.append(unit)
+        available[unit] -= 1
+        if available[unit] == 0:
+            del available[unit]
+
+    lord = state["lords"][lid]
+    routed = lord["routed_units"]
+    for unit in selected:
+        protection = _armor_range(state, lid, unit, routed_per_lord)
+        roll = rng_roll(f"distringitores_{lid}_{unit}")
+        recovered = roll.value in protection
+        if recovered:
+            routed[unit] -= 1
+            if routed[unit] == 0:
+                del routed[unit]
+            lord["forces"][unit] = lord["forces"].get(unit, 0) + 1
+        hit_log.append({"distringitores": {
+            "lord_id": lid, "unit": unit, "die": roll.value,
+            "protection": protection, "recovered": recovered,
+        }})
 
 
 def _clear_battle_modifiers(state) -> None:
@@ -1134,7 +1200,8 @@ def _resolve_battle_strikes(
         _resolve_relief_substep(
             state, step, relief_front, relief_reserve, positions, reserve, conceded,
             bdc, rng_roll, hit_log, removed_lords, routed_per_lord, round_n,
-            relief_siegeworks, locale_name, defender_faction, **options,
+            relief_siegeworks() if relief_siegeworks is not None else [],
+            locale_name, defender_faction, **options,
         )
 
     if round_n == 1:
@@ -1163,6 +1230,11 @@ def _resolve_battle_strikes(
         strike(step, exclude_slots=opened_slots.get(step))
         if relief_front or relief_reserve:
             relief_strike(step, exclude_lord=opened_relief.get(step))
+        if step == "atk_archery":
+            _distringitores_recovery(
+                state, positions, reserve, bdc, rng_roll, hit_log, routed_per_lord, round_n,
+                relief_front=relief_front or (), relief_reserve=relief_reserve or (),
+            )
 
 
 # =====================================================================
@@ -1202,7 +1274,7 @@ def resolve_battle(state, attacker_ids: list[str], defender_ids: list[str],
     relief_front: list[str] = []
     relief_reserve: list[str] = []
     relief_cap = 1
-    relief_siegeworks: list[int] = []
+    relief_siege_count = 0
     if relief:
         _rloc = state["locales"].get(locale_name, {})
         relief_cap = max(1, sd.STRONGHOLDS.get(_rloc.get("type"), {}).get("size", 1))
@@ -1215,13 +1287,14 @@ def resolve_battle(state, attacker_ids: list[str], defender_ids: list[str],
                 _rf = relief[0]
         relief_front = [_rf]
         relief_reserve = [r for r in relief if r != _rf]
-        # "Siegeworks benefits apply to Strikes by Sallying Attackers only":
-        # the Besieging Defender rolls its Siege markers as Walls vs relief
-        # Strikes (less any Sally Trebuchets reduction by the relief Lords).
-        _sc = sum(m.get("count", 1) for m in _rloc.get("siege", []))
-        _sc -= _trebuchets_walls_reduction(state, locale_name, defender_ids,
-                                           relief, "sally")
-        relief_siegeworks = list(range(1, max(0, _sc) + 1))
+        relief_siege_count = sum(m.get("count", 1) for m in _rloc.get("siege", []))
+
+    def relief_siegeworks():
+        # Trebuchets reduces Siegeworks for relief Strikes while its bearer is Unrouted.
+        reduction = _trebuchets_walls_reduction(state, locale_name, defender_ids,
+                                                relief, "sally")
+        return list(range(1, relief_siege_count - reduction + 1))
+
     # RNG helper that delegates back to the harness RNG via dispatch.
     # In testing we'll inject the rolls via state.meta.rng_seed + advance.
     from .rng import HarnessRNG
@@ -1616,6 +1689,11 @@ def resolve_storm(state, attackers: list[str], defenders: list[str],
                                 bdc, rng.roll, hit_log_round, removed_lords,
                                 routed_per_lord, _def_side, walls_die, siegeworks_die,
                                 locale_name)
+            if step == "atk_archery":
+                _distringitores_recovery(
+                    state, positions, reserve, bdc, rng.roll, hit_log_round,
+                    routed_per_lord, round_n,
+                )
         round_log["hit_log"] = hit_log_round
         round_log["positions"] = _snapshot_positions(positions)
         rounds.append(round_log)
@@ -1749,6 +1827,16 @@ def resolve_sally(state, sallying: list[str], besiegers: list[str],
                 return s
         return None
 
+    def _advance_reserve(side: str, slot: str, decision_type: str, round_n: int):
+        available = reserve[side]
+        lord_id = available[0]
+        if len(available) > 1:
+            lord_id = bdc.decide_optional(
+                decision_type, side, options=list(available), default=lord_id,
+                info={"slot": slot, "round": round_n})
+        available.remove(lord_id)
+        positions[side][slot] = lord_id
+
     removed_lords: set = set()
     pre_modifiers = _apply_pre_battle_modifiers(
         state, sallying, besiegers, positions, reserve, _rng_roll, removed_lords)
@@ -1795,13 +1883,13 @@ def resolve_sally(state, sallying: list[str], besiegers: list[str],
                     if add == "yes":
                         slot = _empty_slot(s_side)
                         if slot:
-                            positions[s_side][slot] = reserve[s_side].pop(0)
+                            _advance_reserve(s_side, slot, "sally_reserve_lord", round_n)
 
         # Forced promotion: if a side's Front is empty but it has Reserve, a
         # Reserve Lord MUST move to Front.
         for s_side in ("attacker", "defender"):
             if _front_count(s_side) == 0 and reserve[s_side]:
-                positions[s_side]["center"] = reserve[s_side].pop(0)
+                _advance_reserve(s_side, "center", "sally_forced_front", round_n)
 
         hit_log_round: list = []
         _resolve_battle_strikes(

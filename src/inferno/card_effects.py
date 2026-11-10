@@ -1061,7 +1061,7 @@ register_capability("F17", {})  # Foreign Help Capability
 register_capability("F18", {"ravage_extra_loot": True, "this_lord": True})  # La Cavallata
 register_capability("F19", {"ravage_extra_provender": True, "this_lord": True})  # Gualdana
 register_capability("F20", {"ravage_extra_loot": True, "this_lord": True})  # Masnadieri
-register_capability("F21", {"distringitores": True, "this_lord": True})  # flagged
+register_capability("F21", {"distringitores": True})
 register_capability("F22", {"tau_company": True, "applies_to_side": "guelph",
                             "lordship_bonus_for": ["firenze", "lucca"], "lordship_value": 1})
 register_capability("F23", {"via_francigena": True, "applies_to_side": "guelph"})

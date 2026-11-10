@@ -203,6 +203,19 @@ first `concede` decision. The `choice` is a besieger's Lord ID. Operator
 scripts can omit the entry to use the first besieger as the default. The
 Sallying Active Lord starts in the attacking Front.
 
+In later Sally rounds, `sally_reserve_lord` selects a Reserve Lord after
+accepting `sally_reserve_add`. `sally_forced_front` selects a replacement
+when the Front is empty and a Reserve must advance. Both choices use a Lord ID
+and default to the first eligible Reserve when omitted from a script.
+
+With F21 Distringitores in play, after Archery in Battle, Sally, or Storm,
+the Guelph player may choose one eligible Podestà or Comune still in the Array
+with `distringitores_lord`. Choose up to two of that mat's Routed Armored units
+with `distringitores_unit`. Each choice names a unit type. A type can be chosen
+twice when two pieces of that type are available. Use `pass` to decline or
+finish choosing. The engine rolls the selected pieces' modified Armor before
+Melee. Omitted choices default to `pass`.
+
 In Storm, `absorb_target` lets the owner assign each non-Select-Target Hit.
 Armored units on the target attacker absorb first while any remain. Hits
 against the defender go to the Garrison while it has units. Garrison
