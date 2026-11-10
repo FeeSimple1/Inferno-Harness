@@ -203,6 +203,12 @@ first `concede` decision. The `choice` is a besieger's Lord ID. Operator
 scripts can omit the entry to use the first besieger as the default. The
 Sallying Active Lord starts in the attacking Front.
 
+In Storm, `absorb_target` lets the owner assign each non-Select-Target Hit.
+Armored units on the target attacker absorb first while any remain. Hits
+against the defender go to the Garrison while it has units. Garrison
+decisions include the Locale and its remaining Garrison Forces. The
+striking side uses `select_target_unit` for Select-Target Hits.
+
 `cmd_sally` accepts `post_battle_decisions` with
 `post_battle_fate`, `retreat_destination`, `retreat_way` and `keep_provender`
 entries for losing Besiegers, plus
