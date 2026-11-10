@@ -480,10 +480,9 @@ def _resolve_step(state, step: str, positions, reserve, conceded: str | None,
         cb_nosel_n = cb_total - cb_sel_n
         # SMOKE-Inferno-056: Siegeworks-as-Walls for the protected side (Sally).
         if walls_by_side and walls_by_side.get(target_side):
-            n_hits = _apply_walls(int(n_hits), walls_by_side[target_side], rng_caller,
-                                  f"siegeworks_{locale_name}_{slot}")
-            cb_sel_n = min(cb_sel_n, n_hits)
-            cb_nosel_n = min(cb_nosel_n, n_hits - cb_sel_n)
+            n_hits, cb_sel_n, cb_nosel_n = _apply_walls_to_hit_groups(
+                int(n_hits), cb_sel_n, cb_nosel_n, walls_by_side[target_side],
+                rng_caller, f"siegeworks_{locale_name}_{slot}")
             if n_hits <= 0:
                 continue
         sel_n = (int(n_hits) - int(cb_sel_n) - int(cb_nosel_n)) if select_target else 0
@@ -568,12 +567,7 @@ def _absorb_hits(state, lord_id: str, n_hits: int, rng_caller,
     def _absorb_one(order, penalty, choose_by=None):
         present = [u for u in order if forces.get(u, 0) > 0]
         if not present:
-            rr = _check_rout_recovery(state, lord_id, rng_caller)
-            if rr and rr.get("recovered"):
-                hit_log.append({"lord_id": lord_id, "bloody_red_stream_recovered": rr["recovered"]})
-                present = [u for u in order if forces.get(u, 0) > 0]
-            if not present:
-                return False
+            return False
         # 4.5.2 STORM ATTACK: "Hits against a side Attacking in Storm must
         # select Armored before Unarmored units, REGARDLESS of who is choosing
         # what" — while any Armored unit remains, only Armored are choosable.
@@ -602,22 +596,28 @@ def _absorb_hits(state, lord_id: str, n_hits: int, rng_caller,
             if forces["Villici"] <= 0:
                 forces.pop("Villici", None)
             hit_log.append({"lord_id": lord_id, "unit": "Villici", "removed": True})
-            return True
-        prot = _armor_range(state, lord_id, unit, routed_per_lord)
-        # Crossbow -2 Armor has a MIN of 1 (Battle&Storm 10.3): a unit always
-        # rolls vs at least Armor 1, so never auto-removed by the -2 alone.
-        eff = prot[:max(1, len(prot) - penalty)] if penalty else prot
-        r = rng_caller(f"protect_{lord_id}_{unit}")
-        survived = r.value in eff
-        hit_log.append({"lord_id": lord_id, "unit": unit, "die": r.value,
-                        "protection": eff, "survived": survived,
-                        "crossbow": penalty > 0})
-        if not survived:
-            forces[unit] -= 1
-            if forces[unit] <= 0:
-                forces.pop(unit, None)
-            routed[unit] = routed.get(unit, 0) + 1
-            routed_per_lord.setdefault(lord_id, []).append(unit)
+        else:
+            prot = _armor_range(state, lord_id, unit, routed_per_lord)
+            # Crossbow -2 Armor has a MIN of 1 (Battle&Storm 10.3): a unit always
+            # rolls vs at least Armor 1, so never auto-removed by the -2 alone.
+            eff = prot[:max(1, len(prot) - penalty)] if penalty else prot
+            r = rng_caller(f"protect_{lord_id}_{unit}")
+            survived = r.value in eff
+            hit_log.append({"lord_id": lord_id, "unit": unit, "die": r.value,
+                            "protection": eff, "survived": survived,
+                            "crossbow": penalty > 0})
+            if not survived:
+                forces[unit] -= 1
+                if forces[unit] <= 0:
+                    forces.pop(unit, None)
+                routed[unit] = routed.get(unit, 0) + 1
+                routed_per_lord.setdefault(lord_id, []).append(unit)
+        # F16 pauses at the Hit that would Rout the Lord, including the final
+        # Hit of a step. Recover before removing him or assigning another Hit.
+        if _all_units_routed(lord):
+            rr = _check_rout_recovery(state, lord_id, rng_caller)
+            if rr and rr.get("recovered"):
+                hit_log.append({"lord_id": lord_id, "bloody_red_stream_recovered": rr["recovered"]})
         return True
 
     cb = max(0, min(crossbow_hits, n_hits))
@@ -1141,10 +1141,9 @@ def _resolve_relief_substep(state, step, relief_front, relief_reserve,
             if tgt not in options:
                 tgt = options[0]
         if walls:
-            n_hits = _apply_walls(int(n_hits), walls, rng_caller,
-                                  f"relief_siegeworks_{locale_name}_{sid}")
-            cb_sel = min(cb_sel, n_hits)
-            cb_nos = min(cb_nos, max(0, n_hits - cb_sel))
+            n_hits, cb_sel, cb_nos = _apply_walls_to_hit_groups(
+                int(n_hits), cb_sel, cb_nos, walls, rng_caller,
+                f"relief_siegeworks_{locale_name}_{sid}")
         if n_hits <= 0:
             return
         _absorb_hits(state, tgt, int(n_hits), rng_caller, hit_log, routed_per_lord,
@@ -2027,11 +2026,13 @@ def _resolve_storm_step(state, step, positions, reserve, conceded,
         cb_nosel_n = cb_total - cb_sel_n
         # Apply Walls/Siegeworks roll before unit-Protection.
         if target_side == "defender" and walls_die:
-            n_hits = _apply_walls(int(n_hits), walls_die, rng_roll, f"walls_{locale_name}")
+            n_hits, cb_sel_n, cb_nosel_n = _apply_walls_to_hit_groups(
+                int(n_hits), cb_sel_n, cb_nosel_n, walls_die,
+                rng_roll, f"walls_{locale_name}")
         elif target_side == "attacker" and siegeworks_die:
-            n_hits = _apply_walls(int(n_hits), siegeworks_die, rng_roll, f"siegeworks_{locale_name}")
-        cb_sel_n = min(cb_sel_n, n_hits)
-        cb_nosel_n = min(cb_nosel_n, n_hits - cb_sel_n)
+            n_hits, cb_sel_n, cb_nosel_n = _apply_walls_to_hit_groups(
+                int(n_hits), cb_sel_n, cb_nosel_n, siegeworks_die,
+                rng_roll, f"siegeworks_{locale_name}")
         # Defender: assign Hits to GARRISON first until exhausted (Crossbow -2 too).
         if target_side == "defender" and locale_name in state["storm_garrison"]:
             absorbed = int(n_hits)
@@ -2055,6 +2056,21 @@ def _resolve_storm_step(state, step, positions, reserve, conceded,
             if _all_units_routed(state["lords"][target_id]):
                 removed_lords.add(target_id)
                 positions[target_side][slot] = None
+
+
+def _apply_walls_to_hit_groups(n_hits: int, crossbow_hits: int,
+                              crossbow_noselect_hits: int, walls_range: list[int],
+                              rng_roll, ctx: str) -> tuple[int, int, int]:
+    """Roll separately for selecting Crossbows, other Crossbows, then other Hits.
+
+    4.4.2: differently modified Hits roll Walls separately. Preserve each
+    surviving group's Armor and Select-Target properties through absorption.
+    """
+    cb_sel = _apply_walls(crossbow_hits, walls_range, rng_roll, f"{ctx}_crossbow_select")
+    cb_nosel = _apply_walls(crossbow_noselect_hits, walls_range, rng_roll, f"{ctx}_crossbow")
+    normal = _apply_walls(n_hits - crossbow_hits - crossbow_noselect_hits,
+                          walls_range, rng_roll, ctx)
+    return cb_sel + cb_nosel + normal, cb_sel, cb_nosel
 
 
 def _apply_walls(n_hits: int, walls_range: list[int], rng_roll, ctx: str) -> int:
