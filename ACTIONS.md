@@ -133,6 +133,21 @@ separate `battle_decision`, `concede`, or `retreat` actions. In-Battle choices
 and **concession** (4.4.4) — flow through the `BattleDecisionContext` via the
 `scripted_decisions` / callback channel above.
 
+In Battle and Sally, `flanker_absorb` lets the receiving side select a Lord
+by ID before Protection. The options include the original target and any
+Friendly Flanking Lord who flanks every enemy contributing Hits to that pool.
+An omitted election defaults to the original target.
+
+F12/S12 Camp Attack is played at the outset. In Round 1 its owner gets
+`camp_attack_timing` after Concede and between Strike steps. Choose `now`
+or `wait`. A card still pending after the last Strike takes effect then.
+`camp_attack_take` and `camp_attack_remove` each select one available Asset
+type from the named enemy Lord, up to two of each as directed by the card.
+Ships can be removed. Captured Assets use the owner's `spoils_recipient`
+and `spoils_amount` elections among participating Lords. Omitted operator
+choices default to the first timing and a fixed Asset order with capped
+round-robin distribution.
+
 The losing side's Retreat / Withdraw / Removed fate (4.4.5) is applied
 automatically in the post-Battle step, with player choices available.
 `approach_response` accepts an optional

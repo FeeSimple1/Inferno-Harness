@@ -39,10 +39,15 @@ from .flow import current_campaign_step, current_side, current_step
 # never affects the move-replay sweep. Decision-type catalogs mirror the
 # BattleDecisionContext usage in inferno.battle / inferno.actions; see ACTIONS.md.
 _DISTRINGITORES_DECISIONS = ["distringitores_lord", "distringitores_unit"]
+_SPOILS_DECISIONS = ["spoils_recipient", "spoils_amount"]
+_CAMP_ATTACK_DECISIONS = [
+    "camp_attack_timing", "camp_attack_take", "camp_attack_remove", *_SPOILS_DECISIONS,
+]
 _FIELD_BATTLE_DECISIONS = [
     "initial_placement_attacker", "initial_placement_defender",
-    "reserve_advance", "center_fill", "flanker_target",
-    "select_target_unit", "absorb_target", "concede", *_DISTRINGITORES_DECISIONS,
+    "reserve_advance", "center_fill", "flanker_target", "flanker_absorb",
+    "select_target_unit", "absorb_target", "concede",
+    *_DISTRINGITORES_DECISIONS, *_CAMP_ATTACK_DECISIONS,
 ]
 _STORM_DECISIONS = [
     "concede", "storm_reserve_add", "select_target_unit", "absorb_target",
@@ -50,9 +55,9 @@ _STORM_DECISIONS = [
 ]
 _SALLY_DECISIONS = [
     "sally_defender_front", "concede", "sally_reserve_add", "sally_reserve_lord",
-    "sally_forced_front", "select_target_unit", "absorb_target", *_DISTRINGITORES_DECISIONS,
+    "sally_forced_front", "flanker_absorb", "select_target_unit", "absorb_target",
+    *_DISTRINGITORES_DECISIONS, *_CAMP_ATTACK_DECISIONS,
 ]
-_SPOILS_DECISIONS = ["spoils_recipient", "spoils_amount"]
 _SALLY_POST_BATTLE_DECISIONS = [
     "post_battle_fate", "retreat_destination", "retreat_way", "keep_provender",
     *_SPOILS_DECISIONS,

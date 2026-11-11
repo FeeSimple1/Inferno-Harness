@@ -542,7 +542,7 @@ class TestPhase5SwampSkip:
 
 
 class TestPhase5CampAttack:
-    def test_camp_attack_transfers_assets_pre_battle(self):
+    def test_camp_attack_transfers_assets_in_round_one(self):
         """Camp Attack takes 2 Assets per Enemy + removes 2 more in R1."""
         from inferno.battle import resolve_battle
         from inferno.scenarios import load_scenario
@@ -562,7 +562,6 @@ class TestPhase5CampAttack:
         siena_after = s["lords"]["siena"]["assets"]
         delta = sum(siena_before.values()) - sum(siena_after.values())
         assert delta == 4
-        # pre_modifiers should record the action
         assert result.get("pre_modifiers", {}).get("camp_attack")
 
 

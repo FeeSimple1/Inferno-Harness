@@ -543,9 +543,7 @@ def F11_event(state, side, args, rng):
 
 @register_event("F12")
 def F12_event(state, side, args, rng):
-    """F12 CAMP ATTACK (Hold) — R1 Asset transfer/removal. Registers
-    pre-Battle modifier; engine consumes at 4.4.1 Events phase.
-    """
+    """F12 CAMP ATTACK (Hold) — register the Round 1 Asset transfer."""
     state.setdefault("battle_modifiers_pending", []).append({
         "id": "F12", "side": "guelph",
         "effect": "camp_attack_r1_asset_transfer",

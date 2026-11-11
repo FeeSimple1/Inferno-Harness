@@ -8,6 +8,7 @@ from inferno import actions
 from inferno.card_data import AOW_CARDS_BY_ID
 from inferno.invariants import check_all_invariants
 from inferno.legal_moves import enumerate_legal
+from inferno.llm.interface import DecisionView, play_with_interface
 from tests.test_cross_game_escape import place
 from tests.test_cross_game_sally import give_card, position, sally
 from tests.test_phase3c import _to_command_with
@@ -162,6 +163,175 @@ def test_camp_attack_in_sally_distributes_to_a_mat_with_room():
     assert state["lords"]["siena"]["assets"]["Coin"] == 16
     assert state["lords"]["firenze"]["assets"]["Coin"] == 0
     assert not state.get("battle_modifiers_pending")
+
+
+def flanking_approach():
+    state = _to_command_with("A", seed=1, lord_id="firenze")
+    for lid, locale, forces, coin in (
+            ("firenze", "Firenze", {"Militia": 1}, 0),
+            ("arezzo", "Firenze", {"Cavalieri": 1}, 0),
+            ("siena", "Figline", {"Cavalieri": 1}, 2)):
+        lord = place(state, lid, locale, Coin=coin, Provender=4, Cart=2)
+        lord["forces"] = forces
+        state["decks"][lord["side"]]["aow_deck"].extend(lord["capabilities"])
+        lord["capabilities"] = []
+    state["meta"].update(rng_seed=1, rng_advance=0)
+    actions.dispatch(state, {"action": "cmd_march", "side": "guelph", "args": {
+        "lord_id": "firenze", "destination": "Figline", "way_type": "road",
+        "with_lords": ["arezzo"]}})
+    check_all_invariants(state)
+    return state
+
+
+def stand_with_player_choices(state, decide):
+    def choose(view):
+        if isinstance(view, DecisionView):
+            rows = view.query({"request": "actions"})["records"]
+            options = [row["move"]["args"]["choice"] for row in rows]
+            value = decide(view, view.overview(), options)
+            row = rows[options.index(value)]
+        elif view.can_yield:
+            return {"yield": True, "state_version": view.version}
+        else:
+            rows = view.query({"request": "actions", "category": "approach_response"})["records"]
+            row = next(r for r in rows if r["move"]["args"].get("choice") == "stand")
+        return {"action_id": row["action_id"], "state_version": view.version}
+
+    result = play_with_interface(state, choose).applied["state_changes"]["battle_result"]
+    check_all_invariants(state)
+    return result
+
+
+@pytest.mark.parametrize("absorber", ["firenze", "arezzo"])
+def test_flanking_lord_can_absorb_the_opposed_lords_hits(absorber):
+    state = flanking_approach()
+    elections = []
+
+    def decide(view, overview, options):
+        kind = overview["decision"]
+        if kind == "concede":
+            return "yes" if view.side == "ghibelline" else "no"
+        if kind == "flanker_absorb":
+            assert view.side == "guelph"
+            assert options == ["firenze", "arezzo"]
+            assert overview["context"]["striking_lords"] == ["siena"]
+            elections.append(kind)
+            return absorber
+        return options[0]
+
+    result = stand_with_player_choices(state, decide)
+    hit = result["rounds"][0]["hit_log"][0]
+    assert elections == ["flanker_absorb"]
+    assert hit["lord_id"] == absorber and hit["die"] == 2
+    assert hit["survived"] == (absorber == "arezzo")
+
+
+def test_two_striking_lords_prevent_flanking_absorption():
+    from inferno.battle import BattleDecisionContext, _resolve_step
+    from inferno.rng import HarnessRNG
+
+    state = flanking_approach()
+    place(state, "pisa", "Figline")["forces"] = {"Cavalieri": 1}
+    positions = {"attacker": {"left": "arezzo", "center": "firenze", "right": None},
+                 "defender": {"left": None, "center": "siena", "right": "pisa"}}
+    elections = []
+
+    def choose(decision):
+        elections.append(decision["type"])
+        return decision["options"][0]
+
+    bdc = BattleDecisionContext(callback=choose)
+    log = []
+    _resolve_step(state, "def_horse_melee", positions, {}, "defender",
+                  bdc, HarnessRNG(seed=1).roll, log, set(), {})
+    assert log[0]["lord_id"] == "firenze"
+    assert "flanker_absorb" not in elections
+
+
+def test_camp_attack_owner_can_wait_take_carts_and_concentrate_spoils():
+    state = flanking_approach()
+    play_event(state, "F12")
+    timing = []
+    choices = []
+
+    def decide(view, overview, options):
+        kind = overview["decision"]
+        context = overview["context"]
+        if kind == "concede":
+            assert overview["participating_mats"]["siena"]["assets"]["Cart"] == 2
+            return "yes" if view.side == "ghibelline" else "no"
+        if kind == "camp_attack_timing":
+            assert view.side == "guelph"
+            timing.append(context["after"])
+            if context["after"] == "def_horse_melee":
+                assert context["hits"][0]["die"] == 2
+                return "now"
+            return "wait"
+        if kind in {"camp_attack_take", "camp_attack_remove"}:
+            assert view.side == "guelph" and context["enemy"] == "siena"
+            choices.append(kind)
+            return "Cart" if kind == "camp_attack_take" else "Provender"
+        if kind == "spoils_recipient" and context["asset"] == "Cart":
+            assert view.side == "guelph"
+            return "arezzo"
+        if kind == "spoils_amount":
+            return max(options)
+        if kind == "flanker_absorb":
+            return "arezzo"
+        return options[0]
+
+    result = stand_with_player_choices(state, decide)
+    assert timing == ["concede", "def_archery", "atk_archery", "def_horse_melee"]
+    assert choices == ["camp_attack_take"] * 2 + ["camp_attack_remove"] * 2
+    event, = result["pre_modifiers"]["camp_attack"]
+    assert event["after"] == "def_horse_melee"
+    assert event["taken"] == {"Cart": 2} and event["removed"] == {"Provender": 2}
+    assert event["allocation"]["distributed"] == {"arezzo": {"Cart": 2}}
+    assert not state.get("battle_modifiers_pending")
+
+
+def test_camp_attack_default_ignores_asset_dict_insertion_order():
+    from copy import deepcopy
+
+    state = flanking_approach()
+    play_event(state, "F12")
+    alternate = deepcopy(state)
+    assets = alternate["lords"]["siena"]["assets"]
+    alternate["lords"]["siena"]["assets"] = dict(reversed(list(assets.items())))
+    assert alternate == state
+    script = [{"type": "initial_placement_attacker", "choice": "left"},
+              {"type": "initial_placement_attacker", "choice": "arezzo"},
+              {"type": "concede", "choice": "yes"}]
+    first = stand(state, scripted_decisions=script)
+    second = stand(alternate, scripted_decisions=deepcopy(script))
+    assert first["pre_modifiers"] == second["pre_modifiers"]
+    assert state == alternate
+
+
+def test_waiting_camp_attack_can_follow_the_opponents_event_before_the_first_strike():
+    state = flanking_approach()
+    play_event(state, "F12")
+    play_event(state, "S12")
+    timing = []
+
+    def decide(view, overview, options):
+        kind = overview["decision"]
+        if kind == "concede":
+            return "yes"
+        if kind == "camp_attack_timing":
+            assert overview["context"]["hits"] == []
+            timing.append((view.side, overview["context"]["after"]))
+            if len(timing) == 1:
+                return "wait"
+            if view.side == "guelph":
+                assert overview["participating_mats"]["siena"]["assets"]["Provender"] == 8
+            return "now"
+        return options[0]
+
+    result = stand_with_player_choices(state, decide)
+    assert timing == [("guelph", "concede"), ("ghibelline", "concede"), ("guelph", "concede")]
+    assert [event["enemy"] for event in result["pre_modifiers"]["camp_attack"]] == [
+        "firenze", "arezzo", "siena"]
 
 
 def test_bocca_in_sally_rolls_each_cavalieri_and_transfers_one_routed_knight():

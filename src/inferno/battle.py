@@ -14,9 +14,8 @@ Per BRIEF "Engine / Operator Split":
     reserve_advance            — Reserve advances into empty Front slot
     center_fill                — Left/Right Lord slides to fill empty Center
     flanker_target             — Center Flanker tie-break (Left or Right)
-    flanker_absorb             — Flanking Lord may absorb Hits aimed elsewhere
-    hit_allocation             — Flanker vs directly-opposed when both reachable
-    concede                    — side declares Concede at start of Round (>= 2)
+    flanker_absorb             — owner chooses between opposed and Flanking Lords
+    concede                    — side declares Concede at start of Round
 
   The full decision trace is returned under result["decisions"].
 """
@@ -26,6 +25,7 @@ from __future__ import annotations
 import copy
 import math
 from dataclasses import dataclass, field
+from functools import partial
 from typing import Any, Callable
 
 from . import static_data as sd
@@ -397,7 +397,8 @@ def _resolve_step(state, step: str, positions, reserve, conceded: str | None,
                   walls_by_side: dict | None = None, locale_name: str | None = None,
                   only_slots: set | None = None, exclude_slots: set | None = None,
                   select_target: bool = False,
-                  defender_faction: str | None = None) -> None:
+                  defender_faction: str | None = None,
+                  relief_front: list[str] | None = None) -> None:
     """Resolve one Strike sub-step. Consults Phase-5 Battle hooks for
     F4 Sudden Clash, F6/S6 Hills, F8/S8 Swamp.
 
@@ -470,7 +471,8 @@ def _resolve_step(state, step: str, positions, reserve, conceded: str | None,
     # Crossbows, in favor of the Selecting portion).
     per_target_hits = {k: math.ceil(v) for k, v in per_target_hits.items()}
 
-    # Apply hits to each target Lord
+    # Apply hits to each target Lord.
+    need_new_flanks = False
     for slot, n_hits in per_target_hits.items():
         if n_hits <= 0:
             continue
@@ -478,25 +480,23 @@ def _resolve_step(state, step: str, positions, reserve, conceded: str | None,
                                  + per_target_cb_nosel.get(slot, 0)), n_hits)
         cb_sel_n = min(math.ceil(per_target_cb_sel.get(slot, 0)), cb_total)
         cb_nosel_n = cb_total - cb_sel_n
-        # SMOKE-Inferno-056: Siegeworks-as-Walls for the protected side (Sally).
-        if walls_by_side and walls_by_side.get(target_side):
-            n_hits, cb_sel_n, cb_nosel_n = _apply_walls_to_hit_groups(
-                int(n_hits), cb_sel_n, cb_nosel_n, walls_by_side[target_side],
-                rng_caller, f"siegeworks_{locale_name}_{slot}")
-            if n_hits <= 0:
-                continue
         sel_n = (int(n_hits) - int(cb_sel_n) - int(cb_nosel_n)) if select_target else 0
         remaining = {"n_hits": int(n_hits), "crossbow_hits": int(cb_sel_n),
                      "crossbow_noselect_hits": int(cb_nosel_n), "select_hits": int(sel_n)}
         target_slot = slot
+        walls = (walls_by_side or {}).get(target_side)
+        sources = per_target_sources[slot]
         while remaining["n_hits"]:
+            if need_new_flanks:
+                flanks = _flanking_relationships(positions, bdc)
+                need_new_flanks = False
             if positions[target_side][target_slot] is None:
                 # 4.4.2: a Rout creates a NEW Flanking situation. Retarget
                 # already-generated Hits, preserving their Crossbow/Select
                 # properties; do not generate or round Strikes a second time.
-                new_flanks = dict(_flanking_relationships(positions, bdc)[striking_side])
+                new_flanks = dict(flanks[striking_side])
                 choices = []
-                for source in per_target_sources[slot]:
+                for source in sources:
                     candidate = source if positions[target_side][source] else new_flanks.get(source)
                     if candidate is not None and candidate not in choices:
                         choices.append(candidate)
@@ -507,14 +507,46 @@ def _resolve_step(state, step: str, positions, reserve, conceded: str | None,
                     target_slot = bdc.decide_optional(
                         "flanker_target", striking_side, options=choices,
                         default=choices[0], info={"remaining_hits": remaining["n_hits"]})
-            target_id = positions[target_side][target_slot]
+            opposed_id = positions[target_side][target_slot]
+            absorbing_slot = target_slot
+            target_id = opposed_id
+            if bdc is not None:
+                flankers = {positions[target_side][flanker]: flanker
+                            for flanker, enemy in flanks[target_side]
+                            if sources == [enemy] and flanker != target_slot}
+                # With no Reserve facing them, Relief Front Lords flank all
+                # main Front Defenders under 4.4.1.
+                if relief_front and target_side == "attacker" and not reserve["defender"]:
+                    flankers.update(dict.fromkeys(relief_front))
+                if flankers:
+                    target_id = bdc.decide_optional(
+                        "flanker_absorb", target_side,
+                        options=[opposed_id, *flankers], default=opposed_id,
+                        info={"target": opposed_id, "step": step, "hits": remaining["n_hits"],
+                              "striking_lords": [positions[striking_side][s] for s in sources]})
+                    absorbing_slot = flankers.get(target_id, target_slot)
+            if walls:
+                hits, cb_sel, cb_nosel = _apply_walls_to_hit_groups(
+                    remaining["n_hits"], remaining["crossbow_hits"],
+                    remaining["crossbow_noselect_hits"], walls, rng_caller,
+                    f"siegeworks_{locale_name}_{slot}")
+                walls = None
+                if not hits:
+                    break
+                remaining = {"n_hits": hits, "crossbow_hits": cb_sel,
+                             "crossbow_noselect_hits": cb_nosel,
+                             "select_hits": hits - cb_sel - cb_nosel if select_target else 0}
             remaining = _absorb_hits(
                 state, target_id, rng_caller=rng_caller, hit_log=hit_log,
                 routed_per_lord=routed_per_lord, bdc=bdc,
                 allow_striker_select=True, **remaining)
             if _all_units_routed(state["lords"][target_id]):
                 removed_lords.add(target_id)
-                positions[target_side][target_slot] = None
+                if absorbing_slot is None:
+                    relief_front.remove(target_id)
+                else:
+                    positions[target_side][absorbing_slot] = None
+                need_new_flanks = True
             else:
                 break
 
@@ -684,57 +716,60 @@ def _has_battle_modifier(state, effect_key: str, predicate=None) -> bool:
     return False
 
 
+CAMP_ATTACK_EFFECT = "camp_attack_r1_asset_transfer"
+CAMP_ATTACK_ASSETS = ("Coin", "Loot", "Provender", "Cart", "Ship")
+
+
+def _camp_attack_assets(state, enemy, bdc, side, *, taking):
+    assets = state["lords"][enemy]["assets"]
+    order = CAMP_ATTACK_ASSETS[:-1] if taking else CAMP_ATTACK_ASSETS
+    kind = "camp_attack_take" if taking else "camp_attack_remove"
+    selected: dict[str, int] = {}
+    for remaining in (2, 1):
+        options = [asset for asset in order if assets.get(asset, 0) > 0]
+        if not options:
+            break
+        asset = options[0]
+        if len(options) > 1:
+            asset = bdc.decide_optional(
+                kind, side, options=options, default=asset,
+                info={"enemy": enemy, "remaining": remaining})
+        assets[asset] -= 1
+        selected[asset] = selected.get(asset, 0) + 1
+    return selected
+
+
+def _resolve_camp_attacks(state, participants, bdc, receipts, *, after, conceded,
+                          hits, final=False):
+    """Offer one use of each played Camp Attack within the first Round."""
+    waited: set[str] = set()
+    while event := next((mod for mod in _get_battle_modifiers(state)
+                         if mod.get("effect") == CAMP_ATTACK_EFFECT
+                         and mod["side"] not in waited), None):
+        side = event["side"]
+        if not final and bdc.decide_optional(
+                "camp_attack_timing", side, options=["now", "wait"], default="now",
+                info={"round": 1, "after": after, "conceded": conceded, "hits": hits}
+        ) == "wait":
+            waited.add(side)
+            continue
+        _consume_battle_modifier(state, CAMP_ATTACK_EFFECT, lambda pending: pending is event)
+        own = [lid for lid in participants if state["lords"][lid]["side"] == side]
+        enemies = [lid for lid in participants if state["lords"][lid]["side"] != side]
+        for enemy in enemies:
+            taken = _camp_attack_assets(state, enemy, bdc, side, taking=True)
+            removed = _camp_attack_assets(state, enemy, bdc, side, taking=False)
+            allocation = distribute_spoils(state, taken, own, decisions=bdc)
+            receipts.append({"enemy": enemy, "taken": taken, "removed": removed,
+                             "allocation": allocation, "after": after})
+        # The rival event may have changed the eligible Assets this window.
+        waited.clear()
+
+
 def _apply_pre_battle_modifiers(state, attackers, defenders, positions, reserve,
                                 rng_roll, removed_lords) -> dict:
-    """Apply pre-Battle Hold-Event modifiers at 4.4.1 Events phase.
-
-    F12/S12 Camp Attack: R1 Asset transfer from each Enemy + remove 2 more.
-    S16 Bocca degli Abati: Each Cavalieri on target Guelph Lord takes 1 Hit.
-    """
+    """Apply pre-Battle Hold-Event modifiers at 4.4.1 Events phase."""
     summary: dict = {"camp_attack": [], "bocca": []}
-    # Camp Attack
-    while cap := _consume_battle_modifier(state, "camp_attack_r1_asset_transfer"):
-        playing_side = cap.get("side")
-        enemy_side = "ghibelline" if playing_side == "guelph" else "guelph"
-        enemy_ids = [a for a in attackers + defenders
-                     if state["lords"].get(a, {}).get("side") == enemy_side]
-        own_ids = [a for a in attackers + defenders
-                   if state["lords"].get(a, {}).get("side") == playing_side]
-        for eid in enemy_ids:
-            elord = state["lords"].get(eid)
-            if not elord:
-                continue
-            # Take up to 2 Assets (excluding Ship), distribute to own side.
-            taken: dict[str, int] = {}
-            assets = list(elord.get("assets", {}).items())
-            to_take = 2
-            for a, c in assets:
-                if a == "Ship" or c <= 0:
-                    continue
-                t = min(to_take, c)
-                if t > 0:
-                    elord["assets"][a] = c - t
-                    taken[a] = taken.get(a, 0) + t
-                    to_take -= t
-                if to_take == 0:
-                    break
-            allocation = distribute_spoils(state, taken, own_ids)
-            # Remove 2 more (Ships allowed)
-            removed: dict[str, int] = {}
-            assets = list(elord.get("assets", {}).items())
-            to_remove = 2
-            for a, c in assets:
-                if c <= 0:
-                    continue
-                t = min(to_remove, c)
-                elord["assets"][a] = c - t
-                removed[a] = removed.get(a, 0) + t
-                to_remove -= t
-                if to_remove == 0:
-                    break
-            summary["camp_attack"].append({
-                "enemy": eid, "taken": taken, "removed": removed, "allocation": allocation,
-            })
 
     # S16 Bocca degli Abati: target Guelph Lord; each Cavalieri takes 1 Hit
     cap = _consume_battle_modifier(state, "bocca_cavalieri_auto_hit")
@@ -1195,6 +1230,7 @@ def _resolve_battle_strikes(
     state, positions, reserve, conceded, bdc, rng_roll, hit_log, removed_lords,
     routed_per_lord, round_n, attacker_faction, defender_faction, locale_name, *,
     walls=None, relief_front=None, relief_reserve=None, relief_siegeworks=None,
+    camp_attack=None,
 ) -> None:
     """Use the same Battle initiative and Events in the field and in Sally."""
     opened_slots = {}
@@ -1205,7 +1241,7 @@ def _resolve_battle_strikes(
             state, step, positions, reserve, conceded, bdc, rng_roll, hit_log,
             removed_lords, routed_per_lord, round_n,
             walls_by_side=walls() if walls is not None else None, locale_name=locale_name,
-            defender_faction=defender_faction, **options,
+            defender_faction=defender_faction, relief_front=relief_front, **options,
         )
 
     def relief_strike(step, **options):
@@ -1216,6 +1252,8 @@ def _resolve_battle_strikes(
             locale_name, defender_faction, **options,
         )
 
+    if camp_attack is not None:
+        camp_attack(after="concede", conceded=conceded, hits=[])
     if round_n == 1:
         # Defender goes first if both factions played Sudden Clash.
         for role, faction, step in (("defender", defender_faction, "def_horse_melee"),
@@ -1228,6 +1266,7 @@ def _resolve_battle_strikes(
                 continue
             slot = _slot_of(positions, role, lid)
             rear = relief_front if role == "attacker" else reserve["defender"]
+            log_start = len(hit_log)
             if slot is not None:
                 strike(step, only_slots={slot}, select_target=True)
                 opened_slots[step] = {slot}
@@ -1237,11 +1276,18 @@ def _resolve_battle_strikes(
             else:
                 continue
             hit_log.append({"sudden_clash": lid, "side": role})
+            if camp_attack is not None:
+                camp_attack(after=f"{step}_sudden_clash", conceded=conceded,
+                            hits=hit_log[log_start:])
 
     for step in BATTLE_STRIKE_ORDER:
+        log_start = len(hit_log)
         strike(step, exclude_slots=opened_slots.get(step))
         if relief_front or relief_reserve:
             relief_strike(step, exclude_lord=opened_relief.get(step))
+        if camp_attack is not None:
+            camp_attack(after=step, conceded=conceded, hits=hit_log[log_start:],
+                        final=step == BATTLE_STRIKE_ORDER[-1])
         if step == "atk_archery":
             _distringitores_recovery(
                 state, positions, reserve, bdc, rng_roll, hit_log, routed_per_lord, round_n,
@@ -1386,11 +1432,15 @@ def resolve_battle(state, attacker_ids: list[str], defender_ids: list[str],
                 relief_front.append(_pick)
 
         hit_log_round: list = []
+        camp_attack = None
+        if round_n == 1 and _has_battle_modifier(state, CAMP_ATTACK_EFFECT):
+            camp_attack = partial(_resolve_camp_attacks, state, attacker_ids + defender_ids,
+                                  bdc, pre_modifiers["camp_attack"])
         _resolve_battle_strikes(
             state, positions, reserve, conceded, bdc, _rng_roll, hit_log_round,
             removed_lords, routed_per_lord, round_n, attacker_faction, defender_faction,
             locale_name, relief_front=relief_front, relief_reserve=relief_reserve,
-            relief_siegeworks=relief_siegeworks,
+            relief_siegeworks=relief_siegeworks, camp_attack=camp_attack,
         )
         round_log["hit_log"] = hit_log_round
         round_log["positions"] = _snapshot_positions(positions)
@@ -1904,10 +1954,14 @@ def resolve_sally(state, sallying: list[str], besiegers: list[str],
                 _advance_reserve(s_side, "center", "sally_forced_front", round_n)
 
         hit_log_round: list = []
+        camp_attack = None
+        if round_n == 1 and _has_battle_modifier(state, CAMP_ATTACK_EFFECT):
+            camp_attack = partial(_resolve_camp_attacks, state, sallying + besiegers,
+                                  bdc, pre_modifiers["camp_attack"])
         _resolve_battle_strikes(
             state, positions, reserve, conceded, bdc, _rng_roll, hit_log_round,
             removed_lords, routed_per_lord, round_n, attacker_faction, defender_faction,
-            locale_name, walls=siegeworks,
+            locale_name, walls=siegeworks, camp_attack=camp_attack,
         )
         round_log["hit_log"] = hit_log_round
         round_log["positions"] = _snapshot_positions(positions)
