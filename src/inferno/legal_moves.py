@@ -1460,7 +1460,9 @@ def _enum_end_campaign(state, side) -> list[dict[str, Any]]:
                                  "ransom_coin_recipient", "ransom_coin_amount"]},
                              "rule_citation": "4.9.2"})
             opts.append({"action": "end_ransom", "side": side, "args": {"pay": False},
-                         "description": f"Languish: skip Ransom; enemy adds {cost} Treachery/Revolt.",
+                         "description": f"Decline Ransom. The captor splits {cost} rewards between "
+                                        "Treachery and Revolt.",
+                         "accepts_decisions": {"ransom_decisions": ["languish_treachery"]},
                          "rule_citation": "4.9.2"})
             return opts
         else:

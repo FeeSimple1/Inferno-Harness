@@ -5108,9 +5108,9 @@ def _h_end_ransom(state, side, args, rng) -> dict[str, Any]:
     recover: {own_on_map_lord_id: {captured_unit_type: count}}. Recover half
       of the total captives, rounded up. Other captives return to the pool.
     distribute_to: legacy list of own on-map Lords for default recovery.
-    ransom_decisions: trusted replay choices for the captor's Coin recipient
-      and Coin amount. Player mode asks the captor.
-    languish_treachery: Treachery count when declining payment.
+    ransom_decisions: trusted replay choices for the captor's Coin allocation
+      or Languish rewards. Player mode asks the captor.
+    languish_treachery: legacy trusted Treachery count when declining payment.
     """
     from .battle import BattleDecisionContext, ScriptedDecisionError
 
@@ -5148,8 +5148,20 @@ def _h_end_ransom(state, side, args, rng) -> dict[str, Any]:
         if lost:
             changes["coin_lost_to_cap"] = lost
     else:
-        # Per 4.9.2 each group of six captives yields a Revolt or Treachery.
-        treachery = max(0, min(_int_arg(args, "languish_treachery", 0), cost))
+        # The captor chooses one reward per six captives, rounded up.
+        max_treachery = min(cost, len(state["decks"][enemy]["treachery_set_aside"]))
+        if "languish_treachery" in args:
+            treachery = max(0, min(_int_arg(args, "languish_treachery", 0), max_treachery))
+        elif max_treachery:
+            treachery = decisions.decide(
+                "languish_treachery", enemy, list(range(max_treachery + 1)),
+                {"reward_count": cost,
+                 "meaning": "Choose the number of Treachery cards. Each remaining reward is a Revolt roll."},
+            )
+            if type(treachery) is not int:
+                raise IllegalAction("BAD_DECISION", "Treachery count must be an integer.", "4.9.2")
+        else:
+            treachery = 0
         revolts = cost - treachery
         if revolts:
             _revolt.trigger_revolts(state, losing_side=side, count=revolts,

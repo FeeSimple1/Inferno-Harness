@@ -158,3 +158,74 @@ def test_captor_allocates_coin_through_owner_views_and_can_replay_after_reload()
     replay = copy.deepcopy(before)
     actions.dispatch(replay, state["history"][-1])
     assert replay == state
+
+
+@pytest.mark.parametrize("hidden_mats", [False, True])
+def test_captor_chooses_languish_split_through_saved_owner_decision(tmp_path, hidden_mats):
+    state = _ransom_position()
+    state["meta"]["hidden_mats"] = hidden_mats
+    before = copy.deepcopy(state)
+    view = PlayerView(state, "guelph")
+    page = view.query({"request": "actions", "category": "end_ransom"})
+    entry = next(record for record in page["records"] if not record["move"]["args"]["pay"])
+    selection = {"action_id": entry["action_id"], "state_version": view.version}
+    forged = {**selection, "args": {"pay": False, "languish_treachery": 1}}
+    with pytest.raises(actions.IllegalAction, match="OWNER_DECISION_REQUIRED"):
+        selection_session(state, "guelph", forged)
+    assert state == before
+
+    pending = selection_session(state, "guelph", selection, decision_request={"request": "actions"})
+    assert pending["status"] == "awaiting_decision" and pending["perspective"] == "ghibelline"
+    assert state == before
+    page = pending["response"]
+    options = {record["move"]["args"]["choice"]: record["action_id"] for record in page["records"]}
+    assert set(options) == {0, 1, 2}
+
+    saved = tmp_path / "languish.json"
+    saved.write_text(json.dumps(state), encoding="utf-8")
+    state = load_saved_state(saved)
+    decision = {"action_id": options[1], "state_version": page["state_version"]}
+    with pytest.raises(actions.IllegalAction, match="BAD_DECISION"):
+        selection_session(state, "guelph", selection,
+                          decisions=[{**decision, "state_version": "stale"}])
+    assert state == before
+
+    result = selection_session(state, "guelph", selection, decisions=[decision])
+    assert result["status"] == "accepted" and result["decisions_applied"] == 1
+    assert state["captured_knights"]["guelph"] == {}
+    assert state["meta"]["rng_advance"] == before["meta"]["rng_advance"] + 2
+    assert (len(state["decks"]["ghibelline"]["command_deck"])
+            == len(before["decks"]["ghibelline"]["command_deck"]) + 1)
+    last = state["history"][-1]
+    assert last["state_changes"]["treachery_added"] == last["state_changes"]["revolt_rolls"] == 1
+    assert last["args"]["ransom_decisions"] == [
+        {"type": "languish_treachery", "side": "ghibelline", "choice": 1},
+    ]
+    replay = copy.deepcopy(before)
+    actions.dispatch(replay, last)
+    assert replay == state
+
+
+@pytest.mark.parametrize("available", [0, 1])
+def test_languish_rolls_rewards_that_cannot_be_taken_as_treachery(available):
+    state = _ransom_position()
+    deck = state["decks"]["ghibelline"]
+    deck["command_deck"].extend(deck["treachery_set_aside"][available:])
+    deck["treachery_set_aside"] = deck["treachery_set_aside"][:available]
+    view = PlayerView(state, "guelph")
+    entry = next(record for record in view.query({"request": "actions", "category": "end_ransom"})["records"]
+                 if not record["move"]["args"]["pay"])
+    selection = {"action_id": entry["action_id"], "state_version": view.version}
+    result = selection_session(state, "guelph", selection, decision_request={"request": "actions"})
+    if available:
+        assert result["perspective"] == "ghibelline"
+        page = result["response"]
+        options = {record["move"]["args"]["choice"]: record["action_id"] for record in page["records"]}
+        assert set(options) == {0, 1}
+        result = selection_session(state, "guelph", selection, decisions=[
+            {"action_id": options[1], "state_version": page["state_version"]},
+        ])
+    assert result["status"] == "accepted"
+    changes = state["history"][-1]["state_changes"]
+    assert changes["treachery_added"] == available
+    assert changes["revolt_rolls"] == 2 - available

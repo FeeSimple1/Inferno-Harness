@@ -506,6 +506,12 @@ The dispatcher applies the 16 Coin per mat limit. Trusted replay input
 scripted elections. A raw call without elections allocates to the first
 eligible receiving mat with room, then uses the remaining eligible mats.
 
+With `pay:false`, the captor's `languish_treachery` election chooses how many
+of the rewards to take as available Treachery cards. The remainder are
+mandatory Revolt rolls. Trusted replays can record that election in
+`ransom_decisions` or use the legacy `languish_treachery` count. A raw call
+with no election resolves all rewards as Revolts.
+
 ### Voluntary Reset discards (4.9.6)
 
 After Waste, `end_reset` runs the compulsory Reset cleanup once: set aside
