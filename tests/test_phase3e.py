@@ -8,6 +8,7 @@ import pytest
 
 from inferno.actions import IllegalAction, dispatch
 from inferno.legal_moves import enumerate_legal_validated
+from inferno.llm.interface import PlayerView, selection_session
 from inferno.scenarios import _init_vp_from_markers, load_scenario
 from inferno.state import load_saved_state
 
@@ -226,6 +227,92 @@ class TestRepair:
         new_total = sum(s_["count"] for s_ in s["locales"]["Vicopisano"]["siege"])
         assert new_total == 4
         assert "Vicopisano" not in r["state_changes"]["repaired"]
+
+
+def _to_waste():
+    state = _to_end_campaign("A", seed=1)
+    for action in ("end_grow_skip", "end_ransom"):
+        for side in ("guelph", "ghibelline"):
+            dispatch(state, {"action": action, "side": side})
+    for action in ("end_game_check", "end_repair"):
+        dispatch(state, {"action": action, "side": "guelph"})
+    return state
+
+
+@pytest.mark.parametrize("choice", [
+    {},
+    None,
+    "Cart",
+    {"discard": "Cart"},
+    {"asset": "Cart", "capability": "F13"},
+    {"asset": []},
+    {"asset": "Ship"},
+    {"capability": "F13"},
+])
+def test_waste_rejects_malformed_or_unowned_choice_atomically(choice):
+    state = _to_waste()
+    before = deepcopy(state)
+    # Arezzo precedes Firenze in Waste order and would otherwise lose a Cart.
+    with pytest.raises(IllegalAction) as exc:
+        dispatch(state, {"action": "end_waste", "side": "guelph", "args": {
+            "discards": {"arezzo": {"asset": "Cart"}, "firenze": choice},
+        }})
+    assert exc.value.code == "BAD_DISCARD"
+    assert state == before
+
+
+@pytest.mark.parametrize("discards", [None, [], {"siena": {"asset": "Cart"}}])
+def test_waste_requires_a_mapping_of_eligible_lords(discards):
+    state = _to_waste()
+    before = deepcopy(state)
+    with pytest.raises(IllegalAction) as exc:
+        dispatch(state, {"action": "end_waste", "side": "guelph", "args": {"discards": discards}})
+    assert exc.value.code == "BAD_DISCARD"
+    assert state == before
+
+
+def test_waste_rejects_empty_versioned_selection_after_reload(tmp_path):
+    state = _to_waste()
+    save = tmp_path / "waste.json"
+    save.write_text(json.dumps(state), encoding="utf-8")
+
+    for position in (state, load_saved_state(save)):
+        before = deepcopy(position)
+        view = PlayerView(position, "guelph")
+        entry = next(row for row in view.query({"request": "actions"})["records"]
+                     if row["move"]["action"] == "end_waste")
+        selection = {"action_id": entry["action_id"], "state_version": view.version}
+        with pytest.raises(IllegalAction) as exc:
+            selection_session(position, "guelph", {
+                **selection, "args": {"discards": {"arezzo": {}, "firenze": {}}},
+            })
+        assert exc.value.code == "BAD_DISCARD"
+        assert position == before
+
+        # The same selection can now spend a singleton Coin and default Firenze's Cart.
+        result = selection_session(position, "guelph", {
+            **selection, "args": {"discards": {"arezzo": {"asset": "Coin"}}},
+        })
+        assert result["status"] == "accepted"
+        assert position["lords"]["arezzo"]["assets"]["Coin"] == 0
+        assert position["lords"]["firenze"]["assets"]["Cart"] == 1
+        assert position["meta"]["active_player"] == "ghibelline"
+
+
+def test_waste_can_discard_a_single_personal_capability():
+    from tests.test_cross_game_sally import give_card
+
+    state = _to_waste()
+    firenze = state["lords"]["firenze"]
+    assert not firenze["capabilities"]
+    give_card(state, "F13", firenze["capabilities"])
+    assets = dict(firenze["assets"])
+    result = dispatch(state, {"action": "end_waste", "side": "guelph", "args": {
+        "discards": {"firenze": {"capability": "F13"}},
+    }})
+    assert {"lord_id": "firenze", "discarded_capability": "F13"} in result["state_changes"]["waste"]
+    assert firenze["assets"] == assets and not firenze["capabilities"]
+    assert "F13" in state["decks"]["guelph"]["aow_deck"]
 
 
 class TestReset:

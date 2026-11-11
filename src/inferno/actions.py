@@ -5251,50 +5251,50 @@ def _h_end_waste(state, side, args, rng) -> dict[str, Any]:
 
     args:
       discards: dict {lord_id: {"asset": "Coin"} OR {"capability": "F12"}}
+        Omit a Lord's entry to use that Lord's default discard.
     """
     _require_end_campaign_substep(state, "waste", "4.9.5")
     discards = args.get("discards", {})
-    own_lords = sorted(
-        ((lid, l) for lid, l in state["lords"].items()
-         if l["side"] == side and l["status"] == "mustered"),
-        key=lambda pair: pair[0],
-    )
+    if not isinstance(discards, dict):
+        raise IllegalAction("BAD_DISCARD", "Waste discards must be an object keyed by Lord ID.", "4.9.5")
+    eligible_lords = {
+        lid: lord for lid, lord in state["lords"].items()
+        if lord["side"] == side and lord["status"] == "mustered"
+        and (any(count > 1 for count in lord.get("assets", {}).values())
+             or len(lord.get("capabilities", [])) > 1)
+    }
+    if any(lid not in eligible_lords for lid in discards):
+        raise IllegalAction("BAD_DISCARD", "Name only your Lords who owe a Waste discard.", "4.9.5")
+
     waste_log = []
-    for lid, lord in own_lords:
-        # Eligible if has >1 of any Asset type or >1 'This Lord' Capability
-        has_multi_asset = any(c > 1 for c in lord.get("assets", {}).values())
-        has_multi_cap = len(lord.get("capabilities", [])) > 1
-        if not (has_multi_asset or has_multi_cap):
-            continue
-        choice = discards.get(lid)
-        if choice is None:
-            # Default: discard the first Asset with count > 1
-            eligible_assets = sorted(a for a, c in lord["assets"].items() if c > 1)
-            if eligible_assets:
-                a = eligible_assets[0]
-                lord["assets"][a] -= 1
-                waste_log.append({"lord_id": lid, "discarded_asset": a})
-            else:
-                # Fall back to discarding a Capability
-                if lord.get("capabilities"):
-                    cap_id = sorted(lord["capabilities"])[0]
-                    lord["capabilities"].remove(cap_id)
-                    state["decks"][side]["aow_deck"].append(cap_id)
-                    waste_log.append({"lord_id": lid, "discarded_capability": cap_id})
+    for lid in sorted(eligible_lords):
+        lord = eligible_lords[lid]
+        assets = lord.get("assets", {})
+        capabilities = lord.get("capabilities", [])
+        if lid in discards:
+            choice = discards[lid]
+            if (not isinstance(choice, dict) or len(choice) != 1
+                    or not all(kind in ("asset", "capability") and isinstance(item, str)
+                               for kind, item in choice.items())):
+                raise IllegalAction("BAD_DISCARD",
+                                    f"Choose one Asset or one personal Capability for {lid}.", "4.9.5")
+            kind, item = next(iter(choice.items()))
         else:
-            if "asset" in choice:
-                a = choice["asset"]
-                if lord["assets"].get(a, 0) <= 0:
-                    raise IllegalAction("BAD_DISCARD", f"{lid} has no {a} to discard.", "4.9.5")
-                lord["assets"][a] -= 1
-                waste_log.append({"lord_id": lid, "discarded_asset": a})
-            elif "capability" in choice:
-                cap_id = choice["capability"]
-                if cap_id not in lord.get("capabilities", []):
-                    raise IllegalAction("BAD_DISCARD", f"{lid} has no '{cap_id}' Capability.", "4.9.5")
-                lord["capabilities"].remove(cap_id)
-                state["decks"][side]["aow_deck"].append(cap_id)
-                waste_log.append({"lord_id": lid, "discarded_capability": cap_id})
+            # Prefer the first repeated Asset, then the first personal Capability.
+            default_asset = min((asset for asset, count in assets.items() if count > 1), default=None)
+            kind, item = ("asset", default_asset) if default_asset is not None else ("capability", min(capabilities))
+
+        if kind == "asset":
+            if assets.get(item, 0) <= 0:
+                raise IllegalAction("BAD_DISCARD", f"{lid} has no {item} to discard.", "4.9.5")
+            assets[item] -= 1
+            waste_log.append({"lord_id": lid, "discarded_asset": item})
+        else:
+            if item not in capabilities:
+                raise IllegalAction("BAD_DISCARD", f"{lid} has no '{item}' Capability.", "4.9.5")
+            capabilities.remove(item)
+            state["decks"][side]["aow_deck"].append(item)
+            waste_log.append({"lord_id": lid, "discarded_capability": item})
     if side == "ghibelline":
         state["meta"]["end_substep_done"] = state["meta"].get("end_substep_done", []) + ["waste"]
     advance_campaign_side_or_step(state)
