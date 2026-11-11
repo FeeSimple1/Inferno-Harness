@@ -81,6 +81,43 @@ def test_relief_trebuchets_expires_when_the_bearer_routs():
     assert result["rounds"] == resolve(control)["rounds"]
 
 
+def test_storm_restores_walls_when_trebuchets_bearer_routs():
+    state = _tactical("firenze", "Volterra", seed=1)
+    _put(state, "firenze", "Volterra", {"Militia": 1})
+    _put(state, "arezzo", "Volterra", {
+        "Cavalieri": 1, "Berrovieri": 3, "Armigieri": 3, "Men-at-Arms": 1,
+    })
+    _besiege(state, "Volterra", "guelph", 3)
+
+    def choose(decision):
+        if decision["type"] == "concede":
+            return "no"
+        if decision["type"] == "storm_reserve_add":
+            return "yes"
+        return decision["options"][0]
+
+    def storm(bearer=None):
+        position = deepcopy(state)
+        if bearer is not None:
+            give_card(position, "F4", position["lords"][bearer]["capabilities"])
+        position["battle_callback"] = choose
+        result = _dispatch(position, "cmd_storm", "guelph", lord_id="firenze")
+        position.pop("battle_callback")
+        check_all_invariants(position)
+        return result["storm_result"]
+
+    routed_bearer = storm("firenze")
+    opening_hit = routed_bearer["rounds"][0]["hit_log"][0]
+    assert opening_hit["lord_id"] == "firenze" and not opening_hit["survived"]
+    assert routed_bearer == storm()
+
+    # The same Round 2 Walls rolls include a 4. It cancels a Hit only
+    # when Arezzo attacks without a surviving Trebuchets bearer.
+    live_bearer = storm("arezzo")
+    assert sum("garrison_unit" in hit for hit in routed_bearer["rounds"][1]["hit_log"]) == 2
+    assert sum("garrison_unit" in hit for hit in live_bearer["rounds"][1]["hit_log"]) == 3
+
+
 @pytest.mark.parametrize("forced", [False, True])
 def test_sally_owner_selects_the_reserve_lord(forced):
     state = _tactical("siena", "Siena", seed=1)

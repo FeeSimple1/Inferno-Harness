@@ -1608,9 +1608,7 @@ def resolve_storm(state, attackers: list[str], defenders: list[str],
         raise ValueError("Storm round limit must be an integer from 1 to 4.")
     siegeworks_die = list(range(1, siege_count + 1))  # 1..N nullifies a hit
     walls_die = list(sd.STRONGHOLDS.get(stronghold_type, {}).get("walls_die", []))
-    # Capability: storm_walls_minus reduces effective Walls for the Attacker
-    # (e.g., F3 Siege Towers, F5 War Engineers). Phase 4: applied as Attacker's
-    # adjusted Siegeworks die range.
+    # Apply the persistent Storm modifiers to the Defender's Walls.
     from . import card_effects as ce
     storm_walls_minus = sum(c["value"] for c in ce.active_capabilities_for(state, "storm_walls_minus"))
     pending_wm = [m for m in state.get("battle_modifiers_pending", [])
@@ -1620,15 +1618,6 @@ def resolve_storm(state, attackers: list[str], defenders: list[str],
         state["battle_modifiers_pending"].remove(m)
     if storm_walls_minus and walls_die:
         walls_die = walls_die[:-storm_walls_minus] if len(walls_die) > storm_walls_minus else []
-    # Phase 6: Trebuchets — Storm Attacker reduces Defender Walls by 1 if
-    # the attackers control a Lord with Trebuchets and there are 3-4 Sieges.
-    trebuchets_reduction = _trebuchets_walls_reduction(
-        state, locale_name, defenders, attackers, "storm",
-    )
-    if trebuchets_reduction and walls_die:
-        walls_die = walls_die[:-trebuchets_reduction] if len(walls_die) > trebuchets_reduction else []
-    if locale.get("walls_plus_one"):
-        walls_die = walls_die + [max(walls_die) + 1 if walls_die else 5]
 
     # Garrison Forces (separate from Defending Lord(s)). Defender = the side
     # holding the Stronghold (opposite the Storming attacker).
@@ -1747,9 +1736,20 @@ def resolve_storm(state, attackers: list[str], defenders: list[str],
         # 4-step Storm Strike
         hit_log_round: list = []
         for step in STORM_STRIKE_ORDER:
+            effective_walls = walls_die
+            if step.startswith("atk"):
+                # A defending Strike can Rout the last Trebuchets bearer
+                # before the next attacking Strike, even in the same Round.
+                reduction = _trebuchets_walls_reduction(
+                    state, locale_name, defenders, attackers, "storm",
+                )
+                if reduction:
+                    effective_walls = effective_walls[:-reduction]
+                if locale.get("walls_plus_one"):
+                    effective_walls = effective_walls + [max(effective_walls) + 1 if effective_walls else 5]
             _resolve_storm_step(state, step, positions, reserve, conceded,
                                 bdc, rng.roll, hit_log_round, removed_lords,
-                                routed_per_lord, _def_side, walls_die, siegeworks_die,
+                                routed_per_lord, _def_side, effective_walls, siegeworks_die,
                                 locale_name)
             if step == "atk_archery":
                 _distringitores_recovery(
