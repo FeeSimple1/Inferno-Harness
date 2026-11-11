@@ -35,6 +35,7 @@ from .flow import (
     mark_first_levy_aow_drawn,
 )
 from .rng import HarnessRNG
+from .state import same_lieutenant_position
 from .visibility import combat_view_scope, friars_active
 
 
@@ -752,8 +753,9 @@ def _co_located_lieutenant_partner(state, lid: str) -> str | None:
         if partner_id is None or partner_id == lid:
             continue
         partner = state["lords"].get(partner_id, {})
-        if (partner.get("status") == "mustered" and partner.get("side") == lord.get("side")
-                and partner.get("location") == lord.get("location")
+        if (partner.get("status") == lord.get("status") == "mustered"
+                and partner.get("side") == lord.get("side")
+                and same_lieutenant_position(lord, partner)
                 and partner.get("flags", {}).get(reciprocal) == lid):
             return partner_id
     return None
@@ -4844,44 +4846,40 @@ def _h_cmd_sortie(state, side, args, rng) -> dict[str, Any]:
     }
 
 
-def _h_plan_attach_lieutenant(state, side, args, rng) -> dict[str, Any]:
-    """4.1.3 During Plan step: stack one Lord's cylinder on another
-    Friendly Lord at the same Locale. Upper = Lieutenant, lower = Lower
-    Lord. Persists during Campaign.
-
-    Constraints (4.1.3):
-      - Same Locale.
-      - Both Mustered.
-      - Neither is Commander or Comune.
-      - One Lower Lord max per Lieutenant; Lower Lord may not be a
-        Lieutenant.
-
-    args:
-      lieutenant: Lord ID
-      lower_lord: Lord ID
-    """
-    from .flow import current_campaign_step
-    if current_campaign_step(state) != "plan":
-        raise IllegalAction("WRONG_STEP", "attach_lieutenant only during plan step.", "4.1.3")
-    lt = args.get("lieutenant")
-    ll = args.get("lower_lord")
+def _require_lieutenant_assignment(state, side, lt, ll):
+    """Validate the two unoccupied endpoints of a proposed stack (4.1.3)."""
+    if not isinstance(lt, str) or not isinstance(ll, str):
+        raise IllegalAction("UNKNOWN_LORD", "lieutenant or lower_lord not found.", "4.1.3")
     lt_lord = state["lords"].get(lt)
     ll_lord = state["lords"].get(ll)
     if lt_lord is None or ll_lord is None:
         raise IllegalAction("UNKNOWN_LORD", "lieutenant or lower_lord not found.", "4.1.3")
+    if lt == ll:
+        raise IllegalAction("SELF_STACK", "Choose two distinct Lords.", "4.1.3")
     if lt_lord["side"] != side or ll_lord["side"] != side:
         raise IllegalAction("WRONG_SIDE", "Both Lords must be own-side.", "4.1.3")
     if lt_lord["status"] != "mustered" or ll_lord["status"] != "mustered":
         raise IllegalAction("NOT_MUSTERED", "Both Lords must be Mustered.", "4.1.3")
-    if lt_lord.get("location") != ll_lord.get("location"):
-        raise IllegalAction("DIFFERENT_LOCALES", "Both Lords must be at same Locale.", "4.1.3")
+    if not same_lieutenant_position(lt_lord, ll_lord):
+        raise IllegalAction("DIFFERENT_LOCALES", "Both Lords must occupy the same position at a Locale.", "4.1.3")
     if lt_lord.get("commander") or lt_lord.get("comune_of") or ll_lord.get("commander") or ll_lord.get("comune_of"):
         raise IllegalAction("COMMANDER_NOT_ELIGIBLE", "Commander/Comune cannot be Lieutenant/Lower Lord.", "4.1.3")
-    # No nesting
-    if lt_lord.get("flags", {}).get("lower_lord_of") or ll_lord.get("flags", {}).get("lieutenant_for"):
+    lt_flags = lt_lord.get("flags", {})
+    ll_flags = ll_lord.get("flags", {})
+    if lt_flags.get("lower_lord_of") or ll_flags.get("lower_lord_of"):
         raise IllegalAction("ALREADY_STACKED", "One Lord already in a Lieutenant relationship.", "4.1.3")
-    if ll_lord.get("flags", {}).get("has_lower_lord"):
-        raise IllegalAction("ALREADY_HAS_LOWER", f"{ll} already has a Lower Lord.", "4.1.3")
+    for lid, flags in ((lt, lt_flags), (ll, ll_flags)):
+        if flags.get("has_lower_lord"):
+            raise IllegalAction("ALREADY_HAS_LOWER", f"{lid} already has a Lower Lord.", "4.1.3")
+    return lt_lord, ll_lord
+
+
+def _h_plan_attach_lieutenant(state, side, args, rng) -> dict[str, Any]:
+    """4.1.3 During Plan, assign args.lieutenant above args.lower_lord."""
+    if current_campaign_step(state) != "plan":
+        raise IllegalAction("WRONG_STEP", "attach_lieutenant only during plan step.", "4.1.3")
+    lt, ll = args.get("lieutenant"), args.get("lower_lord")
+    lt_lord, ll_lord = _require_lieutenant_assignment(state, side, lt, ll)
     lt_lord.setdefault("flags", {})["has_lower_lord"] = ll
     ll_lord.setdefault("flags", {})["lower_lord_of"] = lt
     return {

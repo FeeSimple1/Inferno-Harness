@@ -22,6 +22,7 @@ from .render import (
     render_verbose,
 )
 from .scenarios import SCENARIO_IDS, list_scenarios, load_scenario
+from .state import load_saved_state
 
 
 PHASE_NOT_IMPLEMENTED = (
@@ -384,7 +385,7 @@ def _load_state(path: Path) -> dict[str, Any]:
     if not path.is_file():
         from .actions import IllegalAction
         raise IllegalAction("STATE_NOT_FOUND", "No saved game at this path. Use new to initialize a scenario; no synthetic game was created.")
-    return json.loads(path.read_text())
+    return load_saved_state(path)
 
 
 if __name__ == "__main__":

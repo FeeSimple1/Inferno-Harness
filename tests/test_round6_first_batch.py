@@ -9,6 +9,7 @@ from inferno.legal_moves import enumerate_legal
 from inferno.llm.filter import hide_for_side
 from inferno.llm.interface import PlayerView, selection_session
 from inferno.scenarios import load_scenario
+from inferno.state import load_saved_state
 from tests._helpers import _finish_pending_choices, _place
 from tests.test_phase3a import _skip_capability_discard, _skip_levy
 from tests.test_phase3e import _to_end_campaign
@@ -24,7 +25,7 @@ def _act(state, name, side="guelph", **args):
     ("arezzo", 0, True),
 ])
 def test_surviving_lord_activates_after_either_lieutenant_partner_disbands(
-        expired, offset, legacy_save):
+        expired, offset, legacy_save, tmp_path):
     state = load_scenario("D", seed=1)
     _skip_levy(state)
     _skip_capability_discard(state)
@@ -45,7 +46,10 @@ def test_surviving_lord_activates_after_either_lieutenant_partner_disbands(
     assert link not in state["lords"][survivor]["flags"]
     if legacy_save:
         state["lords"][survivor]["flags"][link] = expired
-    state = json.loads(json.dumps(state))
+    saved = tmp_path / "game.json"
+    saved.write_text(json.dumps(state), encoding="utf-8")
+    state = load_saved_state(saved)
+    assert link not in state["lords"][survivor]["flags"]
     _act(state, "command_reveal", "ghibelline")
     _finish_pending_choices(state)
     result = _act(state, "command_reveal")

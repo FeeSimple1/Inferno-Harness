@@ -11,6 +11,9 @@ pending sub-decision structure).
 
 from __future__ import annotations
 
+import json
+from collections import Counter
+from pathlib import Path
 from typing import Any, Literal, TypedDict
 
 Side = Literal["guelph", "ghibelline"]
@@ -174,3 +177,50 @@ class State(TypedDict, total=False):
     pending: list[PendingDecision]
     history: list[ActionResult]
     vp: dict[str, float]
+
+
+def same_lieutenant_position(first: LordState, second: LordState) -> bool:
+    """Two cylinders can stack only at the same position within a Locale."""
+    return (first.get("location") is not None
+            and first.get("location") == second.get("location")
+            and bool(first.get("flags", {}).get("in_stronghold"))
+            == bool(second.get("flags", {}).get("in_stronghold")))
+
+
+def valid_lieutenant_pairs(state: State) -> dict[str, str]:
+    """Return the unambiguous reciprocal upper-to-lower links (4.1.3)."""
+    lords = state.get("lords", {})
+    candidates = {}
+    for upper_id, upper in lords.items():
+        lower_id = upper.get("flags", {}).get("has_lower_lord")
+        if not isinstance(lower_id, str) or lower_id == upper_id or lower_id not in lords:
+            continue
+        lower = lords[lower_id]
+        if (lower.get("flags", {}).get("lower_lord_of") == upper_id
+                and upper.get("status") == lower.get("status") == "mustered"
+                and upper.get("side") == lower.get("side")
+                and same_lieutenant_position(upper, lower)
+                and not any(lord.get("commander") or lord.get("comune_of") for lord in (upper, lower))):
+            candidates[upper_id] = lower_id
+    memberships = Counter(lid for pair in candidates.items() for lid in pair)
+    return {upper: lower for upper, lower in candidates.items()
+            if memberships[upper] == memberships[lower] == 1}
+
+
+def restore_lieutenant_links(state: State) -> None:
+    """Clear stale links from a loaded save while retaining intact pairs."""
+    lowers = valid_lieutenant_pairs(state)
+    uppers = {lower: upper for upper, lower in lowers.items()}
+    for lid, lord in state.get("lords", {}).items():
+        flags = lord.get("flags", {})
+        if flags.get("has_lower_lord") != lowers.get(lid):
+            flags.pop("has_lower_lord", None)
+        if flags.get("lower_lord_of") != uppers.get(lid):
+            flags.pop("lower_lord_of", None)
+
+
+def load_saved_state(path: Path) -> State:
+    """Read a saved game and repair broken Lieutenant links from older versions."""
+    state = json.loads(path.read_text(encoding="utf-8"))
+    restore_lieutenant_links(state)
+    return state

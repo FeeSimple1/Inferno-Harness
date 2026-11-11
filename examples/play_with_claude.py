@@ -22,6 +22,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
 from inferno.actions import IllegalAction
 from inferno.llm import PlayerView, play_with_interface, build_self_critique_prompt, StrategicMemory
 from inferno.scenarios import load_scenario
+from inferno.state import load_saved_state
 
 SYSTEM_PROMPT = """You are playing Inferno as {side}.
 You receive a complete essential briefing and an exhaustive action-category
@@ -183,7 +184,7 @@ def main(argv=None):
     if not args.stub and not args.model:
         parser.error('Supply --model or ANTHROPIC_MODEL for live provider calls.')
     meter=[]
-    state=json.loads(args.resume.read_text()) if args.resume else load_scenario(args.scenario,seed=args.seed)
+    state = load_saved_state(args.resume) if args.resume else load_scenario(args.scenario, seed=args.seed)
     journal = None if args.no_strategy_memory or args.stub else StrategicMemory()
     if args.strategy_journal and journal is None:
         parser.error('--strategy-journal requires live play with strategic memory enabled.')

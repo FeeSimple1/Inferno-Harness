@@ -731,28 +731,24 @@ def _enum_plan(state, side) -> list[dict[str, Any]]:
             "rule_citation": "4.1.2",
         })
     # SMOKE-Inferno-017: Lieutenants (4.1.3) — pair eligible Lords at same Locale.
-    try:
-        own_mustered = _own_lords(state, side, status="mustered")
-        by_loc = {}
-        for lid_l, l_ in own_mustered.items():
-            if l_.get("commander") or l_.get("comune_of"):
+    from .actions import IllegalAction, _require_lieutenant_assignment
+    own_mustered = _own_lords(state, side, status="mustered")
+    lords = sorted(own_mustered)
+    for lt in lords:
+        for ll in lords:
+            if lt == ll:
                 continue
-            if l_.get("flags", {}).get("has_lower_lord") or l_.get("flags", {}).get("lower_lord_of"):
+            try:
+                _require_lieutenant_assignment(state, side, lt, ll)
+            except IllegalAction:
                 continue
-            by_loc.setdefault(l_.get("location"), []).append(lid_l)
-        for loc_name, lords in by_loc.items():
-            if len(lords) < 2:
-                continue
-            for i, lt in enumerate(lords):
-                for ll in lords[i+1:]:
-                    moves.append({
-                        "action": "plan_attach_lieutenant", "side": side,
-                        "args": {"lieutenant": lt, "lower_lord": ll},
-                        "description": f"Stack {ll} under {lt} at {loc_name} (Lieutenant/Lower Lord).",
-                        "rule_citation": "4.1.3",
-                    })
-    except (KeyError, AttributeError, TypeError):
-        pass
+            loc_name = own_mustered[lt]["location"]
+            moves.append({
+                "action": "plan_attach_lieutenant", "side": side,
+                "args": {"lieutenant": lt, "lower_lord": ll},
+                "description": f"Stack {ll} under {lt} at {loc_name} (Lieutenant/Lower Lord).",
+                "rule_citation": "4.1.3",
+            })
     return moves
 
 

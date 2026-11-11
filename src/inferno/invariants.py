@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import collections
 
+from .state import valid_lieutenant_pairs
+
 
 def assert_vp_cap(s):
     for side in ("guelph", "ghibelline"):
@@ -297,6 +299,15 @@ def assert_meta_sanity(s):
         f"active_player = {meta.get('active_player')!r}"
 
 
+def assert_lieutenant_links(s):
+    lowers = valid_lieutenant_pairs(s)
+    uppers = {lower: upper for upper, lower in lowers.items()}
+    for lid, lord in s["lords"].items():
+        flags = lord.get("flags", {})
+        assert flags.get("has_lower_lord") == lowers.get(lid), f"{lid} has an invalid Lower Lord link"
+        assert flags.get("lower_lord_of") == uppers.get(lid), f"{lid} has an invalid Lieutenant link"
+
+
 def check_all_invariants(s):
     """Run the full always-on battery. Cheap; call after every applied action."""
     assert_vp_cap(s)
@@ -305,6 +316,7 @@ def check_all_invariants(s):
     assert_calendar_box_keys(s)
     assert_lord_status_enum(s)
     assert_mustered_lord_has_location(s)
+    assert_lieutenant_links(s)
     assert_locale_lords_present_consistent(s)
     assert_assets_non_negative(s)
     assert_captured_knights_shape(s)
