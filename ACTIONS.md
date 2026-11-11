@@ -133,6 +133,11 @@ separate `battle_decision`, `concede`, or `retreat` actions. In-Battle choices
 and **concession** (4.4.4) — flow through the `BattleDecisionContext` via the
 `scripted_decisions` / callback channel above.
 
+In Battle and Sally, `strike_order` lets the striking player choose the next
+Lord or combined Flanking group by its intended target Lord ID. The decision
+offers the remaining groups in the current step and identifies their striking
+Lords. An omitted election uses the existing left-to-right order.
+
 In Battle and Sally, `flanker_absorb` lets the receiving side select a Lord
 by ID before Protection. The options include the original target and any
 Friendly Flanking Lord who flanks every enemy contributing Hits to that pool.

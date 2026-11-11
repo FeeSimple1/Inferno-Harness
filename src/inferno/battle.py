@@ -472,11 +472,27 @@ def _resolve_step(state, step: str, positions, reserve, conceded: str | None,
     # Crossbows, in favor of the Selecting portion).
     per_target_hits = {k: math.ceil(v) for k, v in per_target_hits.items()}
 
-    # Apply hits to each target Lord.
+    # Each opposed Lord and his Flankers are a single Strike group (4.4.2).
+    # Elect the order before rolling Protection or offering Flanking absorption.
+    slots_by_target = {positions[target_side][slot]: slot
+                       for slot, hits in per_target_hits.items() if hits > 0}
+    remaining_targets = list(slots_by_target)
+    ordered_targets = []
+    while bdc is not None and len(remaining_targets) > 1:
+        target = bdc.decide_optional(
+            "strike_order", striking_side, remaining_targets, remaining_targets[0],
+            info={"round": round_n, "step": step,
+                  "strikers": {lid: [positions[striking_side][s]
+                                     for s in per_target_sources[slots_by_target[lid]]]
+                               for lid in remaining_targets}},
+        )
+        ordered_targets.append(target)
+        remaining_targets.remove(target)
+
     need_new_flanks = False
-    for slot, n_hits in per_target_hits.items():
-        if n_hits <= 0:
-            continue
+    for target in ordered_targets + remaining_targets:
+        slot = slots_by_target[target]
+        n_hits = per_target_hits[slot]
         cb_total = min(math.ceil(per_target_cb_sel.get(slot, 0)
                                  + per_target_cb_nosel.get(slot, 0)), n_hits)
         cb_sel_n = min(math.ceil(per_target_cb_sel.get(slot, 0)), cb_total)
