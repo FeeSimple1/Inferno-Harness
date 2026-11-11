@@ -1946,109 +1946,134 @@ def _h_cmd_ravage(state, side, args, rng) -> dict[str, Any]:
     }, state, side, citation="4.7.2")
 
 
+def _supply_ships(state, lid) -> int:
+    """4.6.2: Pisa's Ships can supply any Friendly Lord Sharing at his Locale."""
+    if sd.SEASON_BY_BOX.get(state["meta"]["turn"], "winter") == "winter":
+        return 0
+    lord = state["lords"][lid]
+    pisa = state["lords"].get("pisa")
+    if (pisa is None or pisa.get("status") != "mustered"
+            or pisa.get("side") != lord["side"]
+            or pisa.get("location") != lord.get("location")):
+        return 0
+    return pisa["assets"].get("Ship", 0)
+
+
+def _supply_source(state, side, lid, source, ships) -> dict[str, Any]:
+    """Independent Seat and Port yields and the Cart cost of their Route."""
+    from .battle import _lord_has_capability
+
+    lord = state["lords"][lid]
+    origin = lord.get("location")
+    if not origin:
+        raise IllegalAction("NO_LOCATION", f"{lid} has no map Locale.", "4.6")
+    if not isinstance(source, str):
+        raise IllegalAction("BAD_SOURCE", "A Supply source must name a Locale.", "4.6.1")
+    source_loc = state["locales"].get(source)
+    if source_loc is None:
+        raise IllegalAction("BAD_SOURCE", f"Unknown Supply Source {source!r}.", "4.6.1")
+    seat = source in lord.get("seats", [])
+    stores = seat and _lord_has_capability(state, lid, "Stores & Well Water")
+    stores_here = stores and source == origin
+    port_yield = ships if source_loc.get("port") else 0
+    if not seat and not port_yield:
+        raise IllegalAction("BAD_SOURCE",
+                            f"{source!r} must be an own Seat or a Port supplied by Pisa's Ships.",
+                            "4.6.1")
+    if source_loc.get("ruins") and source_loc["type"] != "outpost" and not stores:
+        raise IllegalAction("SOURCE_RUINED", "Ruined Stronghold cannot be a Source.", "4.6.1")
+
+    besieged = lord.get("flags", {}).get("in_stronghold") and state["locales"][origin].get("siege")
+    if besieged and not stores_here:
+        raise IllegalAction("SUPPLIER_BESIEGED",
+                            f"{lid} can Supply while Besieged only from his Seat using Stores & Well Water.",
+                            "4.6")
+    distance = 0 if stores_here else _find_supply_route_distance(state, origin, source, side)
+    if distance is None:
+        raise IllegalAction("NO_SUPPLY_ROUTE", f"No valid Supply Route from {origin} to {source}.",
+                            "4.6.1")
+    size = {"castle": 1, "town": 2, "city": 3, "outpost": 1}
+    seat_yield = (4 if stores else size.get(source_loc["type"], 1)) if seat else 0
+    return {"source": source, "way_count": distance, "seat_yield": seat_yield,
+            "ship_yield": 0 if besieged else port_yield}
+
+
+def _supply_limit(source, carts: int, ships: int) -> int:
+    yield_limit = source["seat_yield"] + min(source["ship_yield"], ships)
+    ways = source["way_count"]
+    return min(yield_limit, carts // ways) if ways else yield_limit
+
+
 def _supply_preview(state, side, args) -> dict[str, Any]:
-    """Validate Supply and calculate its yield without changing state (4.6)."""
+    """Validate Supply without changing state. A sources list allocates exact amounts."""
     lid = _require_active_lord(state, side, args.get("lord_id"))
     lord = state["lords"][lid]
-    loc_name = lord.get("location")
-    if not loc_name:
-        raise IllegalAction("NO_LOCATION", f"{lid} has no map Locale.", "4.6")
-    # CONF-016: Pisa's Ships do not operate in Winter (4.6.2 "not in Winter",
-    # mirroring Sail 4.7.3) — so a Port may only be a Ship-Source in non-Winter.
-    season = sd.SEASON_BY_BOX.get(state["meta"]["turn"], "winter")
-    ships_ok = season != "winter"
-    # Determine Source: first try args.source, else Lord's Locale if his Seat
-    source = args.get("source") or loc_name
-    if source not in lord.get("seats", []):
-        # Maybe Pisa via Ships at Port
-        is_pisa_via_ships = (
-            ships_ok
-            and lord["name"] == "Pisa Podestà"
-            and state["locales"].get(source, {}).get("port")
-            and lord["assets"].get("Ship", 0) > 0
-        )
-        if not is_pisa_via_ships:
-            raise IllegalAction(
-                "BAD_SOURCE",
-                f"Source {source!r} must be Lord's Seat (or Pisa-with-Ships at a Port).",
-                "4.6.1",
-            )
-    source_loc = state["locales"].get(source)
-    if not source_loc:
-        raise IllegalAction("UNKNOWN_SOURCE", f"Source {source} not found.", "4.6.1")
-    from .battle import _lord_has_capability
-    if (source_loc.get("ruins") and source_loc["type"] != "outpost"
-            and not _lord_has_capability(state, lid, "Stores & Well Water")):
-        raise IllegalAction("SOURCE_RUINED", "Ruined Stronghold Seat cannot be a Source.", "4.6.1")
+    ships = _supply_ships(state, lid)
+    carts = _share_available(state, lid, "Cart")
+    room = max(0, 16 - lord["assets"].get("Provender", 0))
+    if "sources" not in args:
+        # Existing one-source commands request an amount up to the available yield.
+        source = args.get("source") or lord.get("location")
+        profile = _supply_source(state, side, lid, source, ships)
+        maximum = _supply_limit(profile, carts, ships)
+        if maximum < 1:
+            raise IllegalAction("INSUFFICIENT_CARTS",
+                                f"Need {profile['way_count']} Carts per Provender from {source}.",
+                                "4.6.1")
+        requested = _int_arg(args, "provender", maximum)
+        added = min(room, max(1, min(requested, maximum)))
+        return {"supply_added": added, "from": source, "way_count": profile["way_count"],
+                "carts_required": added * profile["way_count"]}
 
-    # Find the route from lord_loc to source (BFS), with route restrictions
-    from .battle import _lord_has_capability
-    stores_at_seat = (loc_name == source and source in lord.get("seats", [])
-                      and _lord_has_capability(state, lid, "Stores & Well Water"))
-    way_count = 0 if stores_at_seat else _find_supply_route_distance(state, loc_name, source, side)
-    if way_count is None:
-        raise IllegalAction(
-            "NO_SUPPLY_ROUTE",
-            f"No valid Supply Route from {loc_name} to {source}.",
-            "4.6.1",
-        )
-
-    # SMOKE-Inferno-026: Stores & Well Water allows Supply while Besieged at own Seat.
-    at_own_seat = (loc_name == source) and (source in lord.get("seats", []))
-    cur_loc = state["locales"][loc_name]
-    if lord.get("flags", {}).get("in_stronghold") and cur_loc.get("siege") and not (
-        at_own_seat and _lord_has_capability(state, lid, "Stores & Well Water")
-    ):
-        raise IllegalAction(
-            "SUPPLIER_BESIEGED",
-            f"{lid} Besieged at {loc_name}; cannot Supply (unless Stores & Well Water at own Seat).",
-            "4.6",
-        )
-
-    # Max Provender from this Source:
-    #   Stores & Well Water: 4 per Seat
-    #   Else: Castle=1, Town=2, City=3, Outpost=1
-    size_map = {"castle": 1, "town": 2, "city": 3, "outpost": 1}
-    if _lord_has_capability(state, lid, "Stores & Well Water"):
-        max_from_source = 4
-    else:
-        max_from_source = size_map.get(source_loc["type"], 1)
-
-    # Transport requirement: 1 Cart per Provender per Way (no Carts at own Seat or Pisa-Ships-Port)
-    carts_avail = _share_available(state, lid, "Cart")
-    requested = _int_arg(args, "provender", max_from_source)
-    requested = max(1, min(requested, max_from_source))
-    if way_count == 0:
-        carts_needed = 0
-    elif (ships_ok
-          and lord["name"] == "Pisa Podestà"
-          and source_loc.get("port")
-          and lord["assets"].get("Ship", 0) > 0):
-        # Pisa Sail-Supply via Ship-Port: no Carts but limited by Ships
-        max_ship_supply = lord["assets"]["Ship"]
-        requested = min(requested, max_ship_supply)
-        carts_needed = 0
-    else:
-        carts_needed = way_count * requested
-        if carts_avail < carts_needed:
-            # Try shrinking requested
-            requested = max(0, carts_avail // way_count) if way_count > 0 else 0
-            carts_needed = way_count * requested
-        if requested == 0:
-            raise IllegalAction(
-                "INSUFFICIENT_CARTS",
-                f"Need {way_count} Carts per Provender; {lid} has {carts_avail}.",
-                "4.6.1",
-            )
-    return {"supply_added": requested, "from": source,
-            "way_count": way_count, "carts_required": carts_needed}
+    sources = args["sources"]
+    if ("source" in args or "provender" in args or not isinstance(sources, list) or not sources):
+        raise IllegalAction("BAD_SOURCES",
+                            "Use a nonempty sources list of source and provender objects.", "4.6")
+    seen = set()
+    draws = []
+    total = carts_needed = ships_needed = 0
+    for row in sources:
+        if (not isinstance(row, dict) or set(row) != {"source", "provender"}
+                or not isinstance(row["source"], str) or type(row["provender"]) is not int
+                or row["provender"] < 1 or row["source"] in seen):
+            raise IllegalAction("BAD_SOURCES", "Use each Source once with a positive whole amount.",
+                                "4.6")
+        source, amount = row["source"], row["provender"]
+        profile = _supply_source(state, side, lid, source, ships)
+        if amount > profile["seat_yield"] + profile["ship_yield"]:
+            raise IllegalAction("SOURCE_LIMIT", f"{source} cannot Supply {amount} Provender.",
+                                "4.6.2")
+        ways = profile["way_count"]
+        ship_draw = max(0, amount - profile["seat_yield"])
+        carts_needed += ways * amount
+        ships_needed += ship_draw
+        total += amount
+        seen.add(source)
+        draws.append({"source": source, "provender": amount, "way_count": ways,
+                      "ship_provender": ship_draw})
+    if carts_needed > carts:
+        raise IllegalAction("INSUFFICIENT_CARTS",
+                            f"These Sources need {carts_needed} Carts and {carts} are available.",
+                            "4.6.1")
+    if ships_needed > ships:
+        raise IllegalAction("INSUFFICIENT_SHIPS", "Each Ship adds only one Provender per action.",
+                            "4.6.2")
+    if total > room:
+        raise IllegalAction("PROVENDER_LIMIT", f"The Lord can take only {room} more Provender.",
+                            "1.7.3")
+    return {"supply_added": total, "sources": draws, "carts_required": carts_needed}
 
 
 def _h_cmd_supply(state, side, args, rng) -> dict[str, Any]:
-    """4.6: Supply from a legal Source using own or Shared Transport."""
+    """4.6: Supply from one source or allocate exact Provender among sources.
+
+    Use source and optional provender for one Locale, or sources containing
+    objects with source (Locale name) and provender (positive integer).
+    All draws together must fit Shared Carts, Pisa's Ships and the mat limit.
+    """
     payload = _supply_preview(state, side, args)
     lord = state["lords"][state["current_lord_id"]]
-    lord["assets"]["Provender"] = min(lord["assets"].get("Provender", 0) + payload["supply_added"], 16)
+    lord["assets"]["Provender"] = lord["assets"].get("Provender", 0) + payload["supply_added"]
     state["actions_remaining"] -= 1
     return _maybe_end_card(payload, state, side, citation="4.6.2")
 

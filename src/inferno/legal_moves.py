@@ -900,28 +900,50 @@ def _enum_command_phase(state, side) -> list[dict[str, Any]]:
                 "description": f"{lid} Ravages {target_name} ({target['type']}; costs {cost} actions).",
                 "rule_citation": "4.7.2",
             })
-    # SMOKE-Inferno-006: Supply from every reachable own Seat, including remote sources using
-    # Shared Carts. Use the handler's non-mutating preview to avoid drift.
+    # SMOKE-Inferno-006: 4.6 Supply uses each eligible Source's yield and Shared transport.
     from . import actions as _a
-    sources = list(lord.get("seats", []))
-    if lord.get("name") == "Pisa Podestà":
-        sources.extend(n for n, v in state["locales"].items() if v.get("port"))
-    seen_supply = set()
-    for source in dict.fromkeys(sources):
-        for amount in range(1, 5):
-            supply_args = {"lord_id": lid, "source": source, "provender": amount}
+    if actions_remaining >= 1:
+        sources = list(lord.get("seats", []))
+        ships = _a._supply_ships(state, lid)
+        carts = _a._share_available(state, lid, "Cart")
+        room = max(0, 16 - lord["assets"].get("Provender", 0))
+        if ships:
+            sources.extend(n for n, v in state["locales"].items() if v.get("port"))
+        profiles = []
+        for source in dict.fromkeys(sources):
             try:
-                preview = _a._supply_preview(state, side, supply_args)
+                profile = _a._supply_source(state, side, lid, source, ships)
             except _a.IllegalAction:
                 continue
-            actual = preview["supply_added"]
-            if (source, actual) in seen_supply:
-                continue
-            seen_supply.add((source, actual))
-            supply_args["provender"] = actual
+            limit = min(room, _a._supply_limit(profile, carts, ships))
+            if limit:
+                profiles.append(profile)
+            for amount in range(1, limit + 1):
+                moves.append({
+                    "action": "cmd_supply", "side": side,
+                    "args": {"lord_id": lid, "source": source, "provender": amount},
+                    "description": f"{lid} Supplies {amount} Provender from {source} ({profile['way_count']} Ways).",
+                    "rule_citation": "4.6",
+                })
+        if len(profiles) > 1 and room > 1:
+            # Give the template an executable default. Cheaper Routes first
+            # leave more Carts for other Sources. Players may replace the allocation.
+            remaining, available_carts, available_ships = room, carts, ships
+            allocation = []
+            for profile in sorted(profiles, key=lambda p: p["way_count"]):
+                amount = min(remaining, _a._supply_limit(profile, available_carts, available_ships))
+                if amount < 1:
+                    continue
+                allocation.append({"source": profile["source"], "provender": amount})
+                available_carts -= profile["way_count"] * amount
+                available_ships -= max(0, amount - profile["seat_yield"])
+                remaining -= amount
             moves.append({
-                "action": "cmd_supply", "side": side, "args": supply_args,
-                "description": f"{lid} Supplies {actual} Provender from {source} ({preview['way_count']} Ways).",
+                "action": "cmd_supply", "side": side,
+                "args": {"lord_id": lid, "sources": allocation}, "parameterized": True,
+                "parameters": {"source_limits": profiles, "carts_available": carts,
+                               "ships_available": ships, "provender_room": room},
+                "description": "Allocate Provender among the listed Sources for one Supply action.",
                 "rule_citation": "4.6",
             })
     # SMOKE-Inferno-007: Sail pre-check — Pisa, Port, non-Winter, dest is friendly Port.

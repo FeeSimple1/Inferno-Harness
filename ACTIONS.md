@@ -42,7 +42,14 @@ response to a pending decision owed by the other side).
 - `cmd_tax` — 4.7.2 (entire card)
 - `cmd_forage` — 4.6.2
 - `cmd_ravage` — 4.7.1
-- `cmd_supply` — 4.6
+- `cmd_supply` — 4.6. Use `source` and optional `provender` for a single
+  Locale, or `sources` with an exact list such as
+  `[{"source":"Firenze","provender":3},{"source":"Prato","provender":2}]`.
+  Each Source may appear once. All draws share the Cart budget, at one Cart
+  per Provender per Way. In non-Winter, a Port can add one Provender per
+  available Ship on co-located friendly Pisa's mat. The same Ship counts
+  only once across the action. The Supply menu provides the source yields
+  and shared limits for custom allocations.
 - `cmd_sail` — 4.7.3 (Pisa Podestà only, entire card). Destinations
   include enemy Ports free of Unbesieged Enemy Lords (arrival at an
   Unbesieged Enemy Stronghold places a Siege marker). Optional arg
