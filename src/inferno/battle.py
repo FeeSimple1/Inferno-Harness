@@ -26,6 +26,7 @@ import copy
 import math
 from dataclasses import dataclass, field
 from functools import partial
+from itertools import count
 from typing import Any, Callable
 
 from . import static_data as sd
@@ -1374,9 +1375,8 @@ def resolve_battle(state, attacker_ids: list[str], defender_ids: list[str],
     pursuit_marker: str | None = None
     rounds: list[dict] = []
     routed_per_lord: dict = {}
-    max_rounds = 12  # safety bound
-
-    for round_n in range(1, max_rounds + 1):
+    # 4.4.2: each side may continue while it has Unrouted Lords.
+    for round_n in count(1):
         round_log: dict[str, Any] = {"round": round_n}
         # CONF-023 (RoP 4.4.2 CONCEDE THE FIELD?): "At the START of EACH Battle
         # Round, the Attacker then the Defender may declare that the Battle will
@@ -1456,19 +1456,15 @@ def resolve_battle(state, attacker_ids: list[str], defender_ids: list[str],
             break
 
     # Determine winner / loser
-    atk_alive = (any(positions["attacker"][s] is not None for s in SLOTS)
-                 or reserve["attacker"] or relief_front or relief_reserve)
     def_alive = any(positions["defender"][s] is not None for s in SLOTS) or reserve["defender"]
     if conceded == "attacker":
         winner, loser = "defender", "attacker"
     elif conceded == "defender":
         winner, loser = "attacker", "defender"
-    elif atk_alive and not def_alive:
-        winner, loser = "attacker", "defender"
-    elif def_alive and not atk_alive:
+    elif def_alive:
         winner, loser = "defender", "attacker"
     else:
-        winner, loser = "attacker", "defender"  # both alive after max rounds (rare)
+        winner, loser = "attacker", "defender"
 
     # Persist RNG advance
     rolls_consumed = rng.advance_count - rolls_before
@@ -1733,9 +1729,16 @@ def resolve_storm(state, attackers: list[str], defenders: list[str],
                 reserve[side].remove(lord_pick)
                 positions[side]["center"] = lord_pick
 
-        # 4-step Storm Strike
+        # Siege Towers moves this Front Lord's two Strikes ahead of the
+        # normal initiative. It does not add a second Strike later.
         hit_log_round: list = []
-        for step in STORM_STRIKE_ORDER:
+        first = _siege_towers_strike_first_in_storm(
+            state, "attacker", round_n, positions,
+        )
+        steps = [(step, None) for step in STORM_STRIKE_ORDER]
+        if first is not None:
+            steps = [("atk_archery", first), ("atk_all_melee", first)] + steps
+        for step, only_lord in steps:
             effective_walls = walls_die
             if step.startswith("atk"):
                 # A defending Strike can Rout the last Trebuchets bearer
@@ -1750,8 +1753,9 @@ def resolve_storm(state, attackers: list[str], defenders: list[str],
             _resolve_storm_step(state, step, positions, reserve, conceded,
                                 bdc, rng.roll, hit_log_round, removed_lords,
                                 routed_per_lord, _def_side, effective_walls, siegeworks_die,
-                                locale_name)
-            if step == "atk_archery":
+                                locale_name, only_lord=only_lord,
+                                exclude_lord=first if only_lord is None else None)
+            if step == "atk_archery" and only_lord is None:
                 _distringitores_recovery(
                     state, positions, reserve, bdc, rng.roll, hit_log_round,
                     routed_per_lord, round_n,
@@ -1915,9 +1919,8 @@ def resolve_sally(state, sallying: list[str], besiegers: list[str],
     pursuit_marker: str | None = None
     rounds: list[dict] = []
     routed_per_lord: dict = {}
-    max_rounds = 12  # safety bound
-
-    for round_n in range(1, max_rounds + 1):
+    # 4.5.3 uses Battle's ending conditions.
+    for round_n in count(1):
         round_log: dict[str, Any] = {"round": round_n}
 
         # CONF-023: Concede at the start of EACH Round including Round 1
@@ -1982,11 +1985,7 @@ def resolve_sally(state, sallying: list[str], besiegers: list[str],
         winner, loser = "attacker", "defender"
     elif atk_alive and not def_alive:
         winner, loser = "attacker", "defender"
-    elif def_alive and not atk_alive:
-        winner, loser = "defender", "attacker"
     else:
-        # Inconclusive (both still present after the safety bound): the Sally
-        # failed to break the Siege -> the Besiegers hold (Sallying side loses).
         winner, loser = "defender", "attacker"
 
     state["meta"]["rng_advance"] = state["meta"].get("rng_advance", 0) + (rng.advance_count - rolls_before)
@@ -2022,7 +2021,7 @@ def resolve_sally(state, sallying: list[str], besiegers: list[str],
 def _resolve_storm_step(state, step, positions, reserve, conceded,
                         bdc, rng_roll, hit_log, removed_lords,
                         routed_per_lord, defender_side, walls_die, siegeworks_die,
-                        locale_name):
+                        locale_name, *, only_lord=None, exclude_lord=None):
     """One Storm Strike step. Garrison contributes to Defender Strikes
     and absorbs Hits aimed at Defender first per 4.5.2."""
     striking_side = "attacker" if step.startswith("atk") else "defender"
@@ -2033,7 +2032,9 @@ def _resolve_storm_step(state, step, positions, reserve, conceded,
     per_target_cb_nosel: dict[str, float] = {s: 0.0 for s in SLOTS}
     for slot in SLOTS:
         striker_id = positions[striking_side][slot]
-        if striker_id is None:
+        if striker_id is None or striker_id == exclude_lord:
+            continue
+        if only_lord is not None and striker_id != only_lord:
             continue
         lord_units = _live_units(state["lords"][striker_id])
         # Lord units: Storm melee + Capability archery (no base Lord archery).
