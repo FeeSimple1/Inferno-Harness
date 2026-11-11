@@ -4768,8 +4768,10 @@ def _h_cmd_sortie(state, side, args, rng) -> dict[str, Any]:
     ]
     if not enemy_bypassers:
         raise IllegalAction("NO_BYPASSERS", f"No Bypassing Enemy at {locale_name}.", "4.3.6")
-    # Sortie out of Stronghold, then Approach.
+    # Sortie is a March out of the Stronghold (4.3.6). Mark the Lord for
+    # Feed even if the Bypassing Enemy Avoids and no Battle follows.
     lord["flags"].pop("in_stronghold", None)
+    lord["flags"]["moved_fought"] = True
     # Trigger Approach pending decisions for each Enemy Bypasser
     pendings = []
     for eid in enemy_bypassers:
