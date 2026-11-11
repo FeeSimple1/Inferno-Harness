@@ -52,10 +52,16 @@ response to a pending decision owed by the other side).
   and shared limits for custom allocations.
 - `cmd_sail` — 4.7.3 (Pisa Podestà only, entire card). Destinations
   include enemy Ports free of Unbesieged Enemy Lords (arrival at an
-  Unbesieged Enemy Stronghold places a Siege marker). Optional arg
-  `discard`: `{"Provender": n, "Loot": m}` discarded per Greed (1.7.2)
-  before the Ship-capacity check; the enumerator offers a deterministic
-  minimal-discard variant when cargo exceeds Ships.
+  Unbesieged Enemy Stronghold places a Siege marker). Pisa's Lower Lord
+  automatically Sails with him, and Pisa's Ships carry both Lords' Horses,
+  Provender and Loot. Use `discard` for Pisa's excess cargo, or
+  `discard_by_lord` for a choice such as `{"giordano":{"Loot":1}}`.
+  Each discard must be needed to fit the available Ships. The menu offers
+  a legal allocation and shows the cargo available on each sailing mat.
+- `cmd_sortie` — 4.3.6 (one March action from a Bypassed Friendly
+  Stronghold). The Lieutenant's Lower Lord or the Commander's Comune
+  joins automatically. A Commander may specify other Lords inside the
+  Stronghold with `with_lords`, as for March.
 - `cmd_pass` — 4.7.7
 
 ### End-of-card Feed choices

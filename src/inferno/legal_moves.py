@@ -946,63 +946,55 @@ def _enum_command_phase(state, side) -> list[dict[str, Any]]:
                 "description": "Allocate Provender among the listed Sources for one Supply action.",
                 "rule_citation": "4.6",
             })
-    # SMOKE-Inferno-007: Sail pre-check — Pisa, Port, non-Winter, dest is friendly Port.
+    # SMOKE-Inferno-007: pre-check the Horses and cargo of every sailing Lord.
     if lord["name"] == "Pisa Podestà":
         try:
             season = sd.SEASON_BY_BOX.get(state["meta"]["turn"], "winter")
-            ships = lord["assets"].get("Ship", 0)
-            horse_units = sum(c for u, c in lord.get("forces", {}).items()
-                              if sd.UNITS.get(u, {}).get("cat") == "horse")
-            ships_needed = horse_units + lord["assets"].get("Provender", 0) + 2 * lord["assets"].get("Loot", 0)
-            # SMOKE-Inferno-060: Sail needs Ships >= Horse + Provender + 2*Loot (4.7.3).
-            # 1.7.2 Greed: excess Provender/Loot MAY be discarded to fit the
-            # Ships; Horse units cannot be left behind, so Ships >= Horse is a
-            # hard floor. Offer a deterministic minimal-discard variant when
-            # cargo exceeds capacity (operator may pass a custom `discard`).
-            _excess = ships_needed - ships
-            _discard = None
-            if _excess > 0 and ships >= horse_units:
-                _d_prov = min(lord["assets"].get("Provender", 0), _excess)
-                _rem = _excess - _d_prov
-                _d_loot = (_rem + 1) // 2  # each Loot frees 2 Ships
-                if _d_loot <= lord["assets"].get("Loot", 0):
-                    _discard = {}
-                    if _d_prov: _discard["Provender"] = _d_prov
-                    if _d_loot: _discard["Loot"] = _d_loot
-            # CONF-035: Sail must START at a FRIENDLY, Unbesieged Port (4.7.3).
+            group = _a._sailing_lords(state, lid)
+            ships, horses, prov, loot = _a._sail_load(state, group)
             if (season != "winter" and loc and loc.get("port") and not loc.get("siege")
                     and _is_friendly_locale_quiet(state, loc, side)
-                    and (ships_needed <= ships or _discard is not None)):
-                _es = "ghibelline" if side == "guelph" else "guelph"
+                    and ships >= horses):
+                excess = max(0, horses + prov + 2 * loot - ships)
+                discard = _sail_discard_to_fit(state, group, prov, excess)
+                paired = len(group) > 1
+                cargo_args = {}
+                cargo_choices = {}
+                discard_note = ""
+                if discard:
+                    arg_name = "discard_by_lord" if paired else "discard"
+                    cargo_args[arg_name] = discard if paired else discard[lid]
+                    limits = {
+                        member: {asset: state["lords"][member]["assets"].get(asset, 0)
+                                 for asset in ("Provender", "Loot")}
+                        for member in group
+                    }
+                    cargo_choices = {"parameterized": True, "parameters": {
+                        arg_name: limits if paired else limits[lid], "ship_shortfall": excess,
+                    }}
+                    discard_note = f", discarding {cargo_args[arg_name]}"
+                sailing = f"{lid} with {group[1]}" if paired else lid
+                enemy = "ghibelline" if side == "guelph" else "guelph"
                 for dest_name, dest in state["locales"].items():
-                    if dest_name == lord.get("location"):
+                    if not dest.get("port") or dest_name == lord.get("location"):
                         continue
-                    # SMOKE-Inferno-067: cannot Sail into a Locale with an Unbesieged Enemy Lord.
-                    if any(state["lords"][o]["side"] == _es
+                    if any(state["lords"][o]["side"] == enemy
                            and state["lords"][o]["status"] == "mustered"
                            and not state["lords"][o].get("flags", {}).get("in_stronghold")
                            for o in dest.get("lords_present", [])):
                         continue
-                    # 4.7.3: "Move directly to any other Port that is free of
-                    # Unbesieged Enemy Lords" — NOT only Friendly Ports. Sailing
-                    # to an Unbesieged Enemy Stronghold places a Siege marker
-                    # (Besiege), mirroring the handler (SMOKE-Inferno-027).
-                    if dest.get("port"):
-                        _args = {"lord_id": lid, "dest_locale": dest_name}
-                        if ships_needed > ships:
-                            _args["discard"] = dict(_discard)
-                        _to_enemy = (not _is_friendly_locale_quiet(state, dest, side)
-                                     and dest.get("type") != "outpost"
-                                     and not dest.get("ruins") and not dest.get("siege"))
-                        moves.append({
-                            "action": "cmd_sail", "side": side,
-                            "args": _args,
-                            "description": (f"{lid} Sails from {lord['location']} to {dest_name} (entire card"
-                                            + (", Besieges on arrival" if _to_enemy else "")
-                                            + (f", discarding {_args.get('discard')}" if ships_needed > ships else "")
-                                            + ")."),
-                            "rule_citation": "4.7.3",
-                        })
+                    besieges = (not _is_friendly_locale_quiet(state, dest, side)
+                                and dest.get("type") != "outpost"
+                                and not dest.get("ruins") and not dest.get("siege"))
+                    siege_note = ", Besieges on arrival" if besieges else ""
+                    moves.append({
+                        "action": "cmd_sail", "side": side,
+                        "args": {"lord_id": lid, "dest_locale": dest_name, **cargo_args},
+                        "description": (f"{sailing} Sails from {lord['location']} to {dest_name} "
+                                        f"(entire card{siege_note}{discard_note})."),
+                        "rule_citation": "4.7.3",
+                        **cargo_choices,
+                    })
         except (KeyError, AttributeError):
             pass
     # SMOKE-Inferno-010 / SMOKE-Inferno-067: use the SAME group-aware cost,
@@ -1127,19 +1119,29 @@ def _enum_command_phase(state, side) -> list[dict[str, Any]]:
                 "rule_citation": "4.3.6",
             })
             # Depart: enumerated via cmd_march above (with bypassing flag)
-        _enemy_side = "ghibelline" if side == "guelph" else "guelph"
-        _has_bypassing_enemy = bool(loc) and any(
-            state["lords"][oid]["side"] == _enemy_side
-            and state["lords"][oid].get("flags", {}).get("bypassing") == lord.get("location")
-            for oid in (loc.get("lords_present", []) if loc else []))
-        # SMOKE-Inferno-060: Sortie needs a Bypassing Enemy Lord outside (not just a marker).
-        if (lord.get("flags", {}).get("in_stronghold") and loc and loc.get("bypass")
-                and _has_bypassing_enemy and actions_remaining >= 1):
-            moves.append({
-                "action": "cmd_sortie", "side": side, "args": {"lord_id": lid},
-                "description": f"{lid} Sorties from {lord['location']}.",
-                "rule_citation": "4.3.6",
-            })
+        if lord.get("flags", {}).get("in_stronghold") and loc and loc.get("bypass"):
+            inside_followers = [oid for oid in followers
+                                if state["lords"][oid].get("flags", {}).get("in_stronghold")]
+            seen_sorties = set()
+            for count in range(len(inside_followers) + 1):
+                for chosen in combinations(inside_followers, count):
+                    args = {"lord_id": lid}
+                    if chosen:
+                        args["with_lords"] = list(chosen)
+                    try:
+                        source, group, _ = _a._sortie_group(state, side, args)
+                    except _a.IllegalAction:
+                        continue
+                    key = tuple(sorted(group))
+                    if key in seen_sorties:
+                        continue
+                    seen_sorties.add(key)
+                    companions = f" with {', '.join(group[1:])}" if len(group) > 1 else ""
+                    moves.append({
+                        "action": "cmd_sortie", "side": side, "args": args,
+                        "description": f"{lid}{companions} Sorties from {source}.",
+                        "rule_citation": "4.3.6",
+                    })
     except (KeyError, AttributeError, TypeError):
         pass
 
@@ -1243,6 +1245,22 @@ def _enum_command_phase(state, side) -> list[dict[str, Any]]:
 
 
 # ----------------------------------------------------------------- helpers
+def _sail_discard_to_fit(state, group: list[str], prov: int, excess: int) -> dict:
+    """One Greed-legal cargo choice. Custom choices may discard from either mat."""
+    prov_to_drop = min(prov, excess)
+    loot_to_drop = (excess - prov_to_drop + 1) // 2
+    if prov_to_drop and prov_to_drop + 2 * loot_to_drop > excess:
+        prov_to_drop -= 1  # The last discarded Loot frees two Ships.
+    discards = {}
+    for asset, remaining in (("Provender", prov_to_drop), ("Loot", loot_to_drop)):
+        for lid in group:
+            amount = min(remaining, state["lords"][lid]["assets"].get(asset, 0))
+            if amount:
+                discards.setdefault(lid, {})[asset] = amount
+                remaining -= amount
+    return discards
+
+
 def _own_lords(state, side, status: str | None = None) -> dict[str, dict]:
     out = {}
     for lid, l in state["lords"].items():

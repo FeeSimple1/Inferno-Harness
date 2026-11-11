@@ -2127,16 +2127,49 @@ def _find_supply_route_distance(state, src: str, target: str, side: str) -> int 
     return None
 
 
-def _h_cmd_sail(state, side, args, rng) -> dict[str, Any]:
-    """4.7.3 SAIL — Pisa Podestà only, entire-card, non-Winter, Port-to-Port.
+def _sailing_lords(state, lid: str) -> list[str]:
+    lower = state["lords"][lid].get("flags", {}).get("has_lower_lord")
+    if lower is not None and _co_located_lieutenant_partner(state, lid) == lower:
+        return [lid, lower]
+    return [lid]
 
-    v1.6 full implementation:
-      - Validates Ship transport: 1 Ship per Horse unit moving, 1 per
-        Provender, 2 per Loot. May NOT Approach Enemy Lord (cannot
-        start Battle by Sail). To Sail to an Unbesieged Enemy Stronghold,
-        places a Siege marker (Besiege).
-      - May NOT Sail to a Port with an Unbesieged Enemy Lord.
-    """
+
+def _sail_load(state, group: list[str]) -> tuple[int, int, int, int]:
+    lords = [state["lords"][lid] for lid in group]
+    ships = lords[0]["assets"].get("Ship", 0)  # Pisa supplies the Ships (4.7.3).
+    horse = sum(n for lord in lords for unit, n in lord.get("forces", {}).items()
+                if sd.UNITS.get(unit, {}).get("cat") == "horse")
+    prov = sum(lord["assets"].get("Provender", 0) for lord in lords)
+    loot = sum(lord["assets"].get("Loot", 0) for lord in lords)
+    return ships, horse, prov, loot
+
+
+def _sail_discards(state, group: list[str], args: dict) -> dict[str, dict[str, int]]:
+    discards = args.get("discard_by_lord", {})
+    if not isinstance(discards, dict) or any(lid not in group for lid in discards):
+        raise IllegalAction("BAD_DISCARD", "Sail discards must name only sailing Lords.", "1.7.2")
+    if "discard" in args:
+        if group[0] in discards:
+            raise IllegalAction("BAD_DISCARD", "Specify Pisa's discard only once.", "1.7.2")
+        discards = {**discards, group[0]: args["discard"] or {}}
+    validated = {}
+    for lid, assets in discards.items():
+        if not isinstance(assets, dict) or set(assets) - {"Provender", "Loot"}:
+            raise IllegalAction("BAD_DISCARD", "Only Provender and Loot may be discarded to Sail.", "1.7.2")
+        for asset in assets:
+            amount = _int_arg(assets, asset, 0)
+            available = state["lords"][lid]["assets"].get(asset, 0)
+            if not 0 <= amount <= available:
+                raise IllegalAction("BAD_DISCARD",
+                                    f"Cannot discard {amount} {asset} from {lid}; has {available}.",
+                                    "1.7.2")
+            if amount:
+                validated.setdefault(lid, {})[asset] = amount
+    return validated
+
+
+def _h_cmd_sail(state, side, args, rng) -> dict[str, Any]:
+    """4.7.3: Pisa and his Lower Lord may Sail together on Pisa's Ships."""
     _require_entire_card(state)
     lid = _require_active_lord(state, side, args.get("lord_id"))
     lord = state["lords"][lid]
@@ -2164,6 +2197,8 @@ def _h_cmd_sail(state, side, args, rng) -> dict[str, Any]:
         raise IllegalAction("UNKNOWN_DEST", f"Destination {dest_name!r} not found.", "4.7.3")
     if not dest.get("port"):
         raise IllegalAction("DEST_NOT_PORT", f"{dest_name} is not a Port.", "4.7.3")
+    if dest_name == src_name:
+        raise IllegalAction("SAIL_SAME_PORT", "Sail must move to another Port.", "4.7.3")
     # Cannot Sail to Approach Enemy Lord (no Battle via Sail).
     enemy = "ghibelline" if side == "guelph" else "guelph"
     for oid in dest.get("lords_present", []):
@@ -2175,55 +2210,39 @@ def _h_cmd_sail(state, side, args, rng) -> dict[str, Any]:
                 f"May NOT Sail into Locale with Unbesieged Enemy Lord {oid}.",
                 "4.7.3",
             )
-    # 1.7.2 Greed: optional pre-Sail discard of Provender/Loot that cannot
-    # be transported ("must be discarded or left behind"). Horse units cannot
-    # be left behind, so they remain a hard requirement below.
-    discard = args.get("discard") or {}
-    if discard:
-        for asset in ("Provender", "Loot"):
-            n = int(discard.get(asset, 0) or 0)
-            if n < 0:
-                raise IllegalAction("BAD_DISCARD", f"Negative {asset} discard.", "1.7.2")
-            if n > lord["assets"].get(asset, 0):
-                raise IllegalAction(
-                    "BAD_DISCARD",
-                    f"Cannot discard {n} {asset}; {lid} has {lord['assets'].get(asset, 0)}.",
-                    "1.7.2",
-                )
-        unknown = set(discard) - {"Provender", "Loot"}
-        if unknown:
-            raise IllegalAction("BAD_DISCARD",
-                                f"Only Provender/Loot may be discarded to Sail, got {sorted(unknown)}.",
-                                "1.7.2")
-    # Ship transport validation per 4.7.3, against POST-discard cargo —
-    # validate fully BEFORE mutating (the discard is applied only once the
-    # whole Sail is known to be legal).
-    d_prov = int(discard.get("Provender", 0) or 0)
-    d_loot = int(discard.get("Loot", 0) or 0)
-    ships = lord["assets"].get("Ship", 0)
-    horse_units = sum(c for u, c in lord.get("forces", {}).items()
-                      if sd.UNITS.get(u, {}).get("cat") == "horse")
-    prov = lord["assets"].get("Provender", 0) - d_prov
-    loot = lord["assets"].get("Loot", 0) - d_loot
+    group = _sailing_lords(state, lid)
+    discards = _sail_discards(state, group, args)
+    ships, horse_units, prov, loot = _sail_load(state, group)
+    d_prov = sum(assets.get("Provender", 0) for assets in discards.values())
+    d_loot = sum(assets.get("Loot", 0) for assets in discards.values())
+    prov -= d_prov
+    loot -= d_loot
     ships_needed = horse_units + prov + 2 * loot
     if ships_needed > ships:
         raise IllegalAction(
             "INSUFFICIENT_SHIPS",
             f"Sail needs {horse_units} (Horse) + {prov} (Provender) + 2x{loot} (Loot) = "
             f"{ships_needed} Ships; {lid} has {ships}. Per 1.7.2 Greed, may discard "
-            f"excess Provender/Loot via the optional `discard` arg.",
+            f"excess Provender/Loot via `discard` for Pisa or `discard_by_lord` for the group.",
             "4.7.3",
         )
-    if d_prov:
-        lord["assets"]["Provender"] = lord["assets"].get("Provender", 0) - d_prov
-    if d_loot:
-        lord["assets"]["Loot"] = lord["assets"].get("Loot", 0) - d_loot
-    # Move
-    if src_name and lid in src.get("lords_present", []):
-        src["lords_present"].remove(lid)
-    lord["location"] = dest_name
-    dest.setdefault("lords_present", []).append(lid)
-    lord["flags"]["moved_fought"] = True
+    spare = ships - ships_needed
+    if (d_prov and spare >= 1) or (d_loot and spare >= 2):
+        raise IllegalAction("BAD_DISCARD", "Greed allows only discards needed to Sail.", "1.7.2")
+    for member, drops in discards.items():
+        for asset, amount in drops.items():
+            state["lords"][member]["assets"][asset] -= amount
+    for member in group:
+        sailing_lord = state["lords"][member]
+        if member in src.get("lords_present", []):
+            src["lords_present"].remove(member)
+        sailing_lord["location"] = dest_name
+        dest.setdefault("lords_present", []).append(member)
+        flags = sailing_lord.setdefault("flags", {})
+        flags.pop("in_stronghold", None)
+        flags.pop("bypassing", None)
+        flags["moved_fought"] = True
+    _sweep_freed_stronghold(state, src_name)
     # SMOKE-Inferno-027: If destination is an unbesieged enemy Stronghold,
     # place a Siege marker (Besiege) per 4.7.3.
     besieged_via_sail = False
@@ -2239,8 +2258,10 @@ def _h_cmd_sail(state, side, args, rng) -> dict[str, Any]:
     state["card_action_consumed_by_entire_card"] = True
     return _finish_card_with({
         "sailed_from": src_name, "to": dest_name,
+        "group": group,
         "ships_used": ships_needed, "besieged_via_sail": besieged_via_sail,
-        "discarded": {k: v for k, v in (discard or {}).items() if v},
+        "discarded": discards.get(lid, {}),
+        "discarded_by_lord": discards,
     }, state, side, reason="sail_entire_card", citation="4.7.3")
 
 
@@ -2793,6 +2814,38 @@ def _march_leg_profile(state, side: str, group: list[str], way_type: str,
     }
 
 
+def _march_group(state, lid: str, requested: list[str]) -> list[str]:
+    """Close a March or Sortie group over Lieutenant pairs and attached Comune."""
+    if not isinstance(requested, list) or any(not isinstance(x, str) for x in requested):
+        raise IllegalAction("GROUP_INVALID", "with_lords must be a list of Lord IDs.", "4.3.1")
+    leader = state["lords"][lid]
+    partner = _co_located_lieutenant_partner(state, lid)
+    group = [lid]
+    for member in requested:
+        lord = state["lords"].get(member)
+        if (not lord or lord["side"] != leader["side"] or lord["status"] != "mustered"
+                or lord.get("location") != leader.get("location")):
+            raise IllegalAction("GROUP_INVALID", f"{member} not eligible for Group March.", "4.3.1")
+        if member != lid and member != partner and not leader.get("commander"):
+            raise IllegalAction("GROUP_AUTHORITY",
+                                "Only a Commander may lead Lords outside his own pair.", "4.3.1")
+        if member not in group:
+            group.append(member)
+    for member in list(group):
+        partner = _co_located_lieutenant_partner(state, member)
+        if partner is not None and partner not in group:
+            group.append(partner)
+    for member in list(group):
+        lord = state["lords"][member]
+        for oid, other in state["lords"].items():
+            if (other.get("comune_of")
+                    and other["comune_of"] in (member, lord.get("name"))
+                    and other.get("status") == "mustered"
+                    and other.get("location") == lord.get("location") and oid not in group):
+                group.append(oid)
+    return group
+
+
 def _march_preview(state, side, args) -> dict[str, Any]:
     """Validate and price a March without changing state, history, or RNG.
 
@@ -2850,51 +2903,7 @@ def _march_preview(state, side, args) -> dict[str, Any]:
                     "line until Guelphs place a Siege or Ravage marker.",
                     "Scenario C / 1.3.1",
                 )
-    # Phase v1.5: resolve Group March participants (4.3.1) — include
-    # explicit with_lords + auto-pair Lieutenant/Lower Lord.
-    group = [lid]
-    requested = args.get("with_lords", [])
-    if not isinstance(requested, list) or any(not isinstance(x, str) for x in requested):
-        raise IllegalAction("GROUP_INVALID", "with_lords must be a list of Lord IDs.", "4.3.1")
-    lower = lord.get("flags", {}).get("has_lower_lord")
-    if any(x not in state["lords"] for x in requested):
-        raise IllegalAction("GROUP_INVALID", "Unknown Lord in March group.", "4.3.1")
-    for olid in requested:
-        if olid != lid and olid in state["lords"]:
-            ol = state["lords"][olid]
-            if (ol["side"] == side
-                    and ol["status"] == "mustered"
-                    and ol.get("location") == cur_loc_name):
-                if olid not in group:
-                    group.append(olid)
-            else:
-                raise IllegalAction(
-                    "GROUP_INVALID",
-                    f"{olid} not eligible for Group March (not same Locale or not Mustered).",
-                    "4.3.1",
-                )
-    if any(x != lid and x != lower for x in requested) and not lord.get("commander"):
-        raise IllegalAction("GROUP_AUTHORITY", "Only a Commander may lead other Lords; a Lieutenant may lead his Lower Lord.", "4.3.1 / 4.1.3")
-    # Auto-pair Lieutenant + Lower Lord (4.1.3)
-    for member_id in list(group):
-        m = state["lords"][member_id]
-        lower = m.get("flags", {}).get("has_lower_lord")
-        upper = m.get("flags", {}).get("lower_lord_of")
-        if lower and lower not in group:
-            ll = state["lords"].get(lower)
-            if ll and ll.get("location") == cur_loc_name:
-                group.append(lower)
-        if upper and upper not in group:
-            ul = state["lords"].get(upper)
-            if ul and ul.get("location") == cur_loc_name:
-                group.append(upper)
-    for member_id in list(group):
-        for oid, other in state["lords"].items():
-            if (other.get("comune_of")
-                    and other["comune_of"] in (member_id, state["lords"][member_id].get("name"))
-                    and other.get("status") == "mustered"
-                    and other.get("location") == cur_loc_name and oid not in group):
-                group.append(oid)
+    group = _march_group(state, lid, args.get("with_lords", []))
     for member_id in group:
         member = state["lords"][member_id]
         if (member.get("flags", {}).get("in_stronghold")
@@ -4770,33 +4779,45 @@ def _h_cmd_encamp(state, side, args, rng) -> dict[str, Any]:
                               reason="encamp_ends_card", citation="4.3.6")
 
 
-def _h_cmd_sortie(state, side, args, rng) -> dict[str, Any]:
-    """4.3.6 SORTIE: 1 action regardless of Laden for Lord inside a
-    Bypassed Friendly Stronghold to Approach the Bypassing Enemy outside.
-
-    Phase 3d: single-Lord Sortie; group Sortie (Commander/Lieutenant)
-    deferred.
-    """
+def _sortie_group(state, side, args) -> tuple[str, list[str], list[str]]:
+    """Validate a 4.3.6 Sortie and identify its attackers and defenders."""
     lid = _require_active_lord(state, side, args.get("lord_id"))
     lord = state["lords"][lid]
     if not lord.get("flags", {}).get("in_stronghold"):
         raise IllegalAction("NOT_INSIDE", f"{lid} not inside Stronghold.", "4.3.6")
     locale_name = lord.get("location")
     loc = state["locales"][locale_name]
+    if not _is_friendly_stronghold(state, loc, side):
+        raise IllegalAction("NOT_FRIENDLY", "Sortie requires a Friendly Stronghold.", "4.3.6")
     if not loc.get("bypass"):
         raise IllegalAction("NOT_BYPASSED", f"{locale_name} not Bypassed.", "4.3.6")
     enemy_side = "ghibelline" if side == "guelph" else "guelph"
     enemy_bypassers = [
         oid for oid in loc.get("lords_present", [])
         if state["lords"][oid]["side"] == enemy_side
+        and state["lords"][oid].get("status") == "mustered"
         and state["lords"][oid].get("flags", {}).get("bypassing") == locale_name
+        and not state["lords"][oid].get("flags", {}).get("in_stronghold")
     ]
     if not enemy_bypassers:
         raise IllegalAction("NO_BYPASSERS", f"No Bypassing Enemy at {locale_name}.", "4.3.6")
-    # Sortie is a March out of the Stronghold (4.3.6). Mark the Lord for
-    # Feed even if the Bypassing Enemy Avoids and no Battle follows.
-    lord["flags"].pop("in_stronghold", None)
-    lord["flags"]["moved_fought"] = True
+    group = _march_group(state, lid, args.get("with_lords", []))
+    for member in group:
+        if not state["lords"][member].get("flags", {}).get("in_stronghold"):
+            raise IllegalAction("NOT_INSIDE", f"{member} not inside {locale_name}.", "4.3.6")
+    return locale_name, group, enemy_bypassers
+
+
+def _h_cmd_sortie(state, side, args, rng) -> dict[str, Any]:
+    """4.3.6: the group moves out of the Stronghold and Approaches the enemy."""
+    locale_name, group, enemy_bypassers = _sortie_group(state, side, args)
+    lid = group[0]
+    enemy_side = "ghibelline" if side == "guelph" else "guelph"
+    # They Feed even when every Bypassing Enemy Lord Avoids.
+    for member in group:
+        flags = state["lords"][member]["flags"]
+        flags.pop("in_stronghold", None)
+        flags["moved_fought"] = True
     # Trigger Approach pending decisions for each Enemy Bypasser
     pendings = []
     for eid in enemy_bypassers:
@@ -4817,7 +4838,7 @@ def _h_cmd_sortie(state, side, args, rng) -> dict[str, Any]:
     state["meta"]["active_player"] = enemy_side
     state["actions_remaining"] -= 1
     return {
-        "state_changes": {"sortie_from": locale_name, "approach_triggered": True,
+        "state_changes": {"sortie_from": locale_name, "group": group, "approach_triggered": True,
                           "pending_responses": [p["info"]["lord_id"] for p in pendings]},
         "rule_citation": "4.3.6",
     }
@@ -4875,11 +4896,8 @@ def _h_plan_attach_lieutenant(state, side, args, rng) -> dict[str, Any]:
 def _is_lower_lord(state, lord_id: str) -> bool:
     lord = state["lords"].get(lord_id, {})
     lieutenant_id = lord.get("flags", {}).get("lower_lord_of")
-    lieutenant = state["lords"].get(lieutenant_id, {})
-    # Older saves can still carry a pointer to a Disbanded Lieutenant.
-    return (lieutenant.get("status") == "mustered"
-            and lieutenant.get("side") == lord.get("side")
-            and lieutenant.get("flags", {}).get("has_lower_lord") == lord_id)
+    # Old saves could have left the two Lords at different Ports after Sail.
+    return lieutenant_id is not None and _co_located_lieutenant_partner(state, lord_id) == lieutenant_id
 
 
 # Register Phase 3d handlers
