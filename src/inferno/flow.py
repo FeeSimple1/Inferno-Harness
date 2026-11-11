@@ -34,6 +34,7 @@ LEVY_STEPS: list[str] = ["3.1", "3.2", "3.3", "3.4", "3.5"]
 CAMPAIGN_STEPS: list[str] = [
     "capability_discard", "plan", "command_phase", "end_campaign",
 ]
+END_CAMPAIGN_SUBSTEPS = ("grow", "ransom", "game_check", "repair", "waste")
 SIDE_ORDER: list[Side] = ["guelph", "ghibelline"]
 
 
@@ -43,6 +44,12 @@ def current_step(state: dict[str, Any]) -> str | None:
 
 def current_campaign_step(state: dict[str, Any]) -> str | None:
     return state["meta"].get("campaign_step")
+
+
+def current_end_campaign_substep(state: dict[str, Any]) -> str:
+    """Return the first unfinished 4.9 substep within End Campaign."""
+    done = state["meta"].get("end_substep_done", [])
+    return next((step for step in END_CAMPAIGN_SUBSTEPS if step not in done), "reset")
 
 
 def current_side(state: dict[str, Any]) -> Side:

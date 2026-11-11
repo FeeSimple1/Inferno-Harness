@@ -10,10 +10,11 @@ from inferno.rng import HarnessRNG
 from inferno.scenarios import load_scenario
 
 
-def _at_end_campaign(s):
+def _at_end_campaign(s, *, completed=("grow",)):
     s["meta"]["phase"] = "campaign"
     s["meta"]["campaign_step"] = "end_campaign"
     s["meta"]["active_player"] = "guelph"
+    s["meta"]["end_substep_done"] = list(completed)
     return s
 
 
@@ -72,7 +73,7 @@ class TestLanguish:
 # =====================================================================
 class TestConformanceAnchors:
     def test_repair_excludes_castles(self):
-        s = _at_end_campaign(load_scenario("A", 1))
+        s = _at_end_campaign(load_scenario("A", 1), completed=("grow", "ransom", "game_check"))
         castle = next(n for n, l in s["locales"].items() if l["type"] == "castle")
         town = next(n for n, l in s["locales"].items() if l["type"] == "town")
         s["locales"][castle]["siege"] = [{"side": "guelph", "color": "purple", "count": 4}]

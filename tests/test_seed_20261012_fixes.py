@@ -194,7 +194,8 @@ def test_dispatch_does_not_duplicate_a_handler_reported_fealty_roll():
 def test_save_reload_order_cannot_change_exiles_feed_or_waste_defaults():
     state = load_scenario("F", seed=23)
     state["meta"].update(phase="campaign", campaign_step="end_campaign",
-                         active_player="guelph", end_substep="waste")
+                         active_player="guelph",
+                         end_substep_done=["grow", "ransom", "game_check", "repair"])
     relocate(state, "colle", "Colle")
     state["lords"]["colle"]["assets"] = {"Coin": 5, "Cart": 3}
     state["lords"]["firenze"]["assets"] = {"Coin": 3, "Cart": 4}

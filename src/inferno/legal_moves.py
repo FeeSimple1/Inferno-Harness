@@ -28,7 +28,7 @@ from typing import Any
 from . import static_data as sd
 from . import card_data as cd
 from .vassals import has_service
-from .flow import current_campaign_step, current_side, current_step
+from .flow import current_campaign_step, current_end_campaign_substep, current_side, current_step
 
 
 # ---------------------------------------------------------------------------
@@ -1414,28 +1414,28 @@ def _enum_end_campaign(state, side) -> list[dict[str, Any]]:
     The state.meta.end_substep_done list tracks per-side progress. Phase 3e
     presents the next eligible action.
     """
-    done = state["meta"].get("end_substep_done", [])
+    step = current_end_campaign_substep(state)
     turn = state["meta"]["turn"]
     # 4.9.1 Grow — only on Grow turns
-    if "grow" not in done:
-        if turn in sd.GROW_BOXES:
-            return [{
+    if step == "grow":
+        from .actions import _can_skip_grow, _grow_is_scheduled
+
+        moves = []
+        if _grow_is_scheduled(state):
+            moves.append({
                 "action": "end_grow", "side": side,
                 "description": f"4.9.1 Grow at Box {turn}: reduce enemy Ravage to ceil(N/2).",
                 "rule_citation": "4.9.1",
-            }, {
+            })
+        if _can_skip_grow(state, side):
+            moves.append({
                 "action": "end_grow_skip", "side": side,
-                "description": "Skip Grow (no enemy Ravages or default).",
+                "description": "Skip Grow because no Ravage markers must be removed.",
                 "rule_citation": "4.9.1",
-            }]
-        else:
-            return [{
-                "action": "end_grow_skip", "side": side,
-                "description": "Skip Grow (not a Grow turn).",
-                "rule_citation": "4.9.1",
-            }]
+            })
+        return moves
     # 4.9.2 Ransom
-    if "ransom" not in done:
+    if step == "ransom":
         captured = state.get("captured_knights", {}).get(side, {})
         total = sum(captured.values())
         if total > 0:
@@ -1467,21 +1467,21 @@ def _enum_end_campaign(state, side) -> list[dict[str, Any]]:
             return [{"action": "end_ransom", "side": side, "args": {"pay": True},
                      "description": "No captures; auto-advance.", "rule_citation": "4.9.2"}]
     # 4.9.3 Game-end check (run once for the campaign, not per-side)
-    if "game_check" not in done:
+    if step == "game_check":
         return [{
             "action": "end_game_check", "side": side,
             "description": "Check if last Turn — game end if so.",
             "rule_citation": "4.9.3",
         }]
     # 4.9.4 Repair (auto-applied via action call)
-    if "repair" not in done:
+    if step == "repair":
         return [{
             "action": "end_repair", "side": side,
             "description": "Repair: remove 1 Siege marker from any Town/City with 3-4 markers.",
             "rule_citation": "4.9.4",
         }]
     # 4.9.5 Waste — per-side; presents the action
-    if "waste" not in done:
+    if step == "waste":
         return [{
             "action": "end_waste", "side": side,
             "description": "Waste: each Lord with multi-Assets discards one.",

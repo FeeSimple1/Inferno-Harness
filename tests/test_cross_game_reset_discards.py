@@ -305,6 +305,7 @@ def test_unplayed_card_identity_does_not_appear_in_opponents_reset_view():
 
 def test_final_game_check_still_precedes_reset_and_leaves_cards_alone():
     state = position()
+    state["meta"]["end_substep_done"] = ["grow", "ransom"]
     hold(state, "guelph", "F4")
     capability(state, "guelph", "F22")
     state["calendar"]["end_box"] = 2

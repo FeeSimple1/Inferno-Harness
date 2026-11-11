@@ -27,8 +27,10 @@ from . import static_data as sd
 from . import vassals as vs
 from . import revolt as _revolt
 from .flow import (
+    advance_campaign_side_or_step,
     advance_to_next_side_or_step,
     current_campaign_step,
+    current_end_campaign_substep,
     current_side,
     current_step,
     is_first_levy,
@@ -4910,6 +4912,39 @@ _HANDLERS.update({
 # =====================================================================
 # Phase 3e: End-of-Campaign 4.9 substeps
 # =====================================================================
+def _require_end_campaign_substep(state, expected: str, rule: str) -> None:
+    if state["meta"].get("phase") != "campaign" or current_campaign_step(state) != "end_campaign":
+        raise IllegalAction("WRONG_STEP", "This action runs in End Campaign.", rule)
+    if state.get("pending_revolts") or state.get("pending_exiles"):
+        raise IllegalAction("PENDING_DECISION", "Resolve pending political choices first.", rule)
+    current = current_end_campaign_substep(state)
+    if current != expected:
+        raise IllegalAction("WRONG_STEP", f"Current End Campaign substep is {current}.", rule)
+
+
+def _grow_is_scheduled(state) -> bool:
+    meta = state["meta"]
+    # Scenario B's Reprisal War skips Grow in Autumn 1259 only.
+    return meta["turn"] in sd.GROW_BOXES and (meta["scenario"], meta["turn"]) != ("B", 5)
+
+
+def _grow_enemy_ravages(state, side) -> list[str]:
+    # 4.9.1 reduces the markers whose color scores for the opposing side.
+    enemy_color = "gold" if side == "guelph" else "purple"
+    return [name for name, loc in state["locales"].items() if loc.get("ravaged") == enemy_color]
+
+
+def _can_skip_grow(state, side) -> bool:
+    return not _grow_is_scheduled(state) or len(_grow_enemy_ravages(state, side)) <= 1
+
+
+def _finish_grow(state, side, changes) -> dict[str, Any]:
+    if side == "ghibelline":
+        state["meta"].setdefault("end_substep_done", []).append("grow")
+    advance_campaign_side_or_step(state)
+    return {"state_changes": changes, "rule_citation": "4.9.1"}
+
+
 def _h_end_grow(state, side, args, rng) -> dict[str, Any]:
     """4.9.1 GROW (only on certain Turns).
 
@@ -4925,37 +4960,16 @@ def _h_end_grow(state, side, args, rng) -> dict[str, Any]:
       keep:  list of locale names to KEEP enemy Ravage markers on (the
              rest are removed). The count of kept = ceil(N/2).
     """
-    from .flow import current_campaign_step, advance_campaign_side_or_step
-    if current_campaign_step(state) != "end_campaign":
-        raise IllegalAction("WRONG_STEP", "Grow runs in end_campaign step.", "4.9.1")
-    if (state["meta"]["scenario"] == "B" and state["meta"]["turn"] == 5):
-        # Reprisal War: skip Grow on Turn 5
-        if side == "ghibelline":
-            state["meta"]["end_substep_done"] = state["meta"].get("end_substep_done", []) + ["grow"]
-        advance_campaign_side_or_step(state)
-        return {"state_changes": {"grow": "skipped_reprisal_war"}, "rule_citation": "4.9.1"}
+    _require_end_campaign_substep(state, "grow", "4.9.1")
     if state["meta"]["turn"] not in sd.GROW_BOXES:
         raise IllegalAction("NOT_GROW_TURN", f"Box {state['meta']['turn']} is not a Grow turn.", "4.9.1")
+    if not _grow_is_scheduled(state):
+        return _finish_grow(state, side, {"grow": "skipped_reprisal_war"})
     enemy = "ghibelline" if side == "guelph" else "guelph"
-    # CONF-039: "the Enemy's Ravage markers" = markers whose COLOR scores for
-    # the enemy (4.7.2: color = opposite printed; ½VP to the marker's color
-    # side). Physical colors: Guelph = purple, Ghibelline = gold.
-    enemy_color = "purple" if enemy == "guelph" else "gold"
-    enemy_ravage_locales = [
-        n for n, l in state["locales"].items()
-        if l.get("ravaged") == enemy_color
-    ]
-    n = len(enemy_ravage_locales)
-    if n == 0:
-        from .flow import advance_campaign_side_or_step
-        if side == "ghibelline":
-            state["meta"]["end_substep_done"] = state["meta"].get("end_substep_done", []) + ["grow"]
-        advance_campaign_side_or_step(state)
-        return {"state_changes": {"grow": "no enemy ravages"}, "rule_citation": "4.9.1"}
-    keep_count = (n + 1) // 2  # rounded UP (per 4.9.1, "halved rounded UP" means N - ceil(N/2) are removed? Re-read)
-    # Re-read 4.9.1: "reduce the ENEMY'S Ravage markers on the map to 1/2
-    # their total, rounded UP." So we REDUCE TO ceil(N/2). Keep = ceil(N/2).
-    # That means side selects the (N - keep_count) to remove.
+    enemy_ravage_locales = _grow_enemy_ravages(state, side)
+    if not enemy_ravage_locales:
+        return _finish_grow(state, side, {"grow": "no enemy ravages"})
+    keep_count = (len(enemy_ravage_locales) + 1) // 2
     keep = args.get("keep")
     if keep is None:
         # Default: keep the first keep_count locales (leftmost selection).
@@ -4967,26 +4981,15 @@ def _h_end_grow(state, side, args, rng) -> dict[str, Any]:
         state["locales"][loc_name]["ravaged"] = None
         # VP adjustment: enemy loses 1/2 VP per removed Ravage marker
         state["vp"][enemy] = max(state["vp"].get(enemy, 0) - 0.5, 0)
-    # After Ghibelline grow, mark grow done
-    if side == "ghibelline":
-        state["meta"]["end_substep_done"] = state["meta"].get("end_substep_done", []) + ["grow"]
-    from .flow import advance_campaign_side_or_step
-    advance_campaign_side_or_step(state)
-    return {
-        "state_changes": {"grow_removed": removed, "grow_kept": keep},
-        "rule_citation": "4.9.1",
-    }
+    return _finish_grow(state, side, {"grow_removed": removed, "grow_kept": keep})
 
 
 def _h_end_grow_skip(state, side, args, rng) -> dict[str, Any]:
-    """Skip Grow when not a Grow turn or no enemy Ravage markers."""
-    from .flow import current_campaign_step, advance_campaign_side_or_step
-    if current_campaign_step(state) != "end_campaign":
-        raise IllegalAction("WRONG_STEP", "Grow runs in end_campaign step.", "4.9.1")
-    if side == "ghibelline":
-        state["meta"]["end_substep_done"] = state["meta"].get("end_substep_done", []) + ["grow"]
-    advance_campaign_side_or_step(state)
-    return {"state_changes": {"grow": "skipped"}, "rule_citation": "4.9.1"}
+    """Skip Grow when no Ravage markers must be removed."""
+    _require_end_campaign_substep(state, "grow", "4.9.1")
+    if not _can_skip_grow(state, side):
+        raise IllegalAction("GROW_REQUIRED", "Reduce enemy Ravage markers before advancing.", "4.9.1")
+    return _finish_grow(state, side, {"grow": "skipped"})
 
 
 def _ransom_lords(state, side) -> list[str]:
@@ -5110,10 +5113,8 @@ def _h_end_ransom(state, side, args, rng) -> dict[str, Any]:
     languish_treachery: Treachery count when declining payment.
     """
     from .battle import BattleDecisionContext, ScriptedDecisionError
-    from .flow import advance_campaign_side_or_step
 
-    if current_campaign_step(state) != "end_campaign":
-        raise IllegalAction("WRONG_STEP", "Ransom runs in end_campaign.", "4.9.2")
+    _require_end_campaign_substep(state, "ransom", "4.9.2")
     pay = args.get("pay", True)
     if not isinstance(pay, bool):
         raise IllegalAction("BAD_RANSOM_PAYMENT", "pay must be true or false.", "4.9.2")
@@ -5178,9 +5179,7 @@ def _h_end_game_check(state, side, args, rng) -> dict[str, Any]:
       - Scenario E 'Resistance': double Guelph VP except from Ravaged.
       - Scenario C 'Alliance Treaty' (S22 Manfredi in play): +3 Ghib VP.
     """
-    from .flow import current_campaign_step
-    if current_campaign_step(state) != "end_campaign":
-        raise IllegalAction("WRONG_STEP", "Game-end check in end_campaign.", "4.9.3")
+    _require_end_campaign_substep(state, "game_check", "4.9.3")
     cal = state["calendar"]
     last_turn = min(16, cal["end_box"] - 1) if cal.get("end_box") else 16
     if state["meta"]["turn"] >= last_turn:
@@ -5212,9 +5211,7 @@ def _h_end_game_check(state, side, args, rng) -> dict[str, Any]:
 def _h_end_repair(state, side, args, rng) -> dict[str, Any]:
     """4.9.4 REPAIR (per Errata): Remove ONE Siege marker from each TOWN
     and CITY that has 3 or 4 Siege markers. Castles do NOT Repair."""
-    from .flow import current_campaign_step
-    if current_campaign_step(state) != "end_campaign":
-        raise IllegalAction("WRONG_STEP", "Repair in end_campaign.", "4.9.4")
+    _require_end_campaign_substep(state, "repair", "4.9.4")
     repaired = []
     for name, loc in state["locales"].items():
         if loc["type"] not in ("town", "city"):
@@ -5243,9 +5240,7 @@ def _h_end_waste(state, side, args, rng) -> dict[str, Any]:
     args:
       discards: dict {lord_id: {"asset": "Coin"} OR {"capability": "F12"}}
     """
-    from .flow import current_campaign_step, advance_campaign_side_or_step
-    if current_campaign_step(state) != "end_campaign":
-        raise IllegalAction("WRONG_STEP", "Waste in end_campaign.", "4.9.5")
+    _require_end_campaign_substep(state, "waste", "4.9.5")
     discards = args.get("discards", {})
     own_lords = sorted(
         ((lid, l) for lid, l in state["lords"].items()
@@ -5344,13 +5339,7 @@ def _h_end_reset(state, side, args, rng) -> dict[str, Any]:
     choosing; the default finishes this side's election while keeping all
     unselected cards. Calendar advance waits for the Ghibellines.
     """
-    from .flow import current_campaign_step
-    if state["meta"].get("phase") != "campaign" or current_campaign_step(state) != "end_campaign":
-        raise IllegalAction("WRONG_STEP", "Reset in end_campaign.", "4.9.6")
-    if state.get("pending_revolts") or state.get("pending_exiles"):
-        raise IllegalAction("PENDING_DECISION", "Resolve political choices before Reset.", "4.9.6")
-    if "waste" not in state["meta"].get("end_substep_done", []):
-        raise IllegalAction("WRONG_STEP", "Complete Waste before Reset.", "4.9.6")
+    _require_end_campaign_substep(state, "reset", "4.9.6")
     if not state["meta"].get("reset_started") and side != "guelph":
         raise IllegalAction("WRONG_TURN", "Guelphs elect Reset discards first.", "4.9.6")
     cards = args.get("reset_discard", [])

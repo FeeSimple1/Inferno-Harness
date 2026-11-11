@@ -1,16 +1,24 @@
 """Phase 3e tests: End-of-Campaign 4.9 substeps."""
 from __future__ import annotations
 
+import json
+from copy import deepcopy
+
 import pytest
 
 from inferno.actions import IllegalAction, dispatch
-from inferno.scenarios import load_scenario
+from inferno.legal_moves import enumerate_legal_validated
+from inferno.scenarios import _init_vp_from_markers, load_scenario
+from inferno.state import load_saved_state
 
 
 def _to_end_campaign(scenario="A", seed=1, turn_override=None):
     s = load_scenario(scenario, seed=seed)
     # Force turn to a Grow box for grow tests
     if turn_override is not None:
+        old_box = str(s["calendar"]["levy_box"])
+        s["calendar"]["boxes"][old_box]["markers"].remove("levy")
+        s["calendar"]["boxes"][str(turn_override)]["markers"].append("levy")
         s["meta"]["turn"] = turn_override
         s["calendar"]["levy_box"] = turn_override
     # Drive through Levy + Campaign skip
@@ -90,6 +98,96 @@ class TestGameCheck:
         # Game-end check triggers Victory since 2 >= end_box(3)-1 = 2
         dispatch(s, {"action": "end_game_check", "side": "guelph"})
         assert s["meta"]["phase"] == "victory"
+
+
+def test_final_scoring_requires_both_grow_and_ransom_elections():
+    state = _to_end_campaign("A", turn_override=2)
+    gold = ["Prato", "Empoli", "Cortona"]
+    purple = ["Volterra", "Asinalunga", "Montalcino", "Montepulciano"]
+    for color, names in (("gold", gold), ("purple", purple)):
+        for name in names:
+            state["locales"][name]["ravaged"] = color
+    state["vp"] = _init_vp_from_markers(state)
+    assert state["vp"] == {"guelph": 6, "ghibelline": 5.5}
+
+    def act(name, **args):
+        return dispatch(state, {"action": name, "side": state["meta"]["active_player"],
+                                "args": args})
+
+    def reject(name, code):
+        before = deepcopy(state)
+        with pytest.raises(IllegalAction) as error:
+            act(name)
+        assert error.value.code == code
+        assert state == before
+
+    for name in ("end_game_check", "end_ransom", "end_repair", "end_waste", "end_reset"):
+        reject(name, "WRONG_STEP")
+    for keep in (gold[1:], purple[2:]):
+        menu = enumerate_legal_validated(state)
+        assert not menu["dropped"]
+        assert "end_grow_skip" not in {m["action"] for m in menu["moves"]}
+        reject("end_grow_skip", "GROW_REQUIRED")
+        assert act("end_grow", keep=keep)["state_changes"]["grow_kept"] == keep
+
+    reject("end_grow", "WRONG_STEP")
+    reject("end_game_check", "WRONG_STEP")
+    act("end_ransom")
+    reject("end_game_check", "WRONG_STEP")
+    act("end_ransom")
+    assert act("end_game_check")["state_changes"] == {
+        "game_ended": True, "winner": None, "vp_g": 5, "vp_h": 5,
+    }
+
+
+def test_final_scoring_waits_for_saved_languish_revolt(tmp_path):
+    state = _to_end_campaign("A", seed=2, turn_override=2)
+    for side in ("guelph", "ghibelline"):
+        dispatch(state, {"action": "end_grow_skip", "side": side})
+    state["lords"]["siena"]["forces"]["Cavalieri"] -= 1
+    state.setdefault("captured_knights", {})["ghibelline"] = {"Cavalieri": 1}
+    dispatch(state, {"action": "end_ransom", "side": "guelph"})
+    dispatch(state, {"action": "end_ransom", "side": "ghibelline", "args": {"pay": False}})
+
+    save = tmp_path / "languish.json"
+    save.write_text(json.dumps(state), encoding="utf-8")
+    restored = load_saved_state(save)
+    check = {"action": "end_game_check", "side": "guelph"}
+    resolutions = (
+        {"action": "cmd_resolve_revolt", "side": "guelph", "args": {"choice": "Asinalunga"}},
+        {"action": "cmd_resolve_exiles", "side": "ghibelline",
+         "args": {"slides": [{"lord_id": "siena", "kind": "service"}]}},
+        {"action": "cmd_resolve_exiles", "side": "ghibelline", "args": {"slides": []}},
+    )
+    for candidate in (state, restored):
+        assert "ransom" in candidate["meta"]["end_substep_done"]
+        for resolution in resolutions:
+            before = deepcopy(candidate)
+            with pytest.raises(IllegalAction) as error:
+                dispatch(candidate, check)
+            assert error.value.code == "PENDING_DECISION"
+            assert candidate == before
+            menu = enumerate_legal_validated(candidate)["moves"]
+            assert {move["action"] for move in menu} == {resolution["action"]}
+            dispatch(candidate, resolution)
+        assert dispatch(candidate, check)["state_changes"]["game_ended"]
+    assert restored == state
+
+
+@pytest.mark.parametrize("scenario,turn,n", [("A", 2, 1), ("B", 5, 2)])
+def test_grow_skip_preserves_single_marker_and_reprisal_war(scenario, turn, n):
+    state = _to_end_campaign(scenario, turn_override=turn)
+    markers = ["Prato", "Empoli"][:n]
+    for loc in markers:
+        state["locales"][loc]["ravaged"] = "gold"
+    state["vp"] = _init_vp_from_markers(state)
+    before = dict(state["vp"])
+    menu = enumerate_legal_validated(state)
+    assert any(m["action"] == "end_grow_skip" for m in menu["moves"])
+    dispatch(state, {"action": "end_grow_skip", "side": "guelph"})
+    assert state["meta"]["active_player"] == "ghibelline"
+    assert state["vp"] == before
+    assert all(state["locales"][loc]["ravaged"] == "gold" for loc in markers)
 
 
 class TestRepair:
