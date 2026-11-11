@@ -1115,7 +1115,29 @@ def _resolve_relief_substep(state, step, relief_front, relief_reserve,
             and _enemy_horse_skips_round_1(state, defender_faction, round_n)):
         return
 
-    def _one_strike(sid, options, walls):
+    def _choose_target(sid, remaining_hits=None):
+        if striking_side == "attacker":
+            options = [lid for lid in reserve["defender"]
+                       if not _all_units_routed(state["lords"][lid])]
+            if not options:
+                options = [positions["defender"][slot] for slot in SLOTS
+                           if positions["defender"][slot] is not None]
+        else:
+            options = list(relief_front)
+        if not options:
+            return None
+        if len(options) > 1 and bdc is not None:
+            info = {"striker": sid, "step": step}
+            if remaining_hits is not None:
+                info["remaining_hits"] = remaining_hits
+            target = bdc.decide_optional(
+                "relief_target", striking_side, options=options,
+                default=options[0], info=info)
+            if target in options:
+                return target
+        return options[0]
+
+    def _one_strike(sid):
         if sid == exclude_lord or (only_lord is not None and sid != only_lord):
             return
         lord_units = _live_units(state["lords"][sid])
@@ -1128,29 +1150,28 @@ def _resolve_relief_substep(state, step, relief_front, relief_reserve,
         if conceded == striking_side:
             h /= 2; cb_s /= 2; cb_n /= 2
         n_hits = math.ceil(h)
-        if n_hits <= 0 or not options:
+        if n_hits <= 0:
             return
         cb_total = min(math.ceil(cb_s + cb_n), n_hits)
         cb_sel = min(math.ceil(cb_s), cb_total)
         cb_nos = cb_total - cb_sel
-        tgt = options[0]
-        if len(options) > 1:
-            tgt = bdc.decide_optional(
-                "relief_target", striking_side, options=list(options),
-                default=options[0], info={"striker": sid, "step": step})
-            if tgt not in options:
-                tgt = options[0]
-        if walls:
-            n_hits, cb_sel, cb_nos = _apply_walls_to_hit_groups(
-                int(n_hits), cb_sel, cb_nos, walls, rng_caller,
-                f"relief_siegeworks_{locale_name}_{sid}")
-        if n_hits <= 0:
+        tgt = _choose_target(sid)
+        if tgt is None:
             return
-        _absorb_hits(state, tgt, int(n_hits), rng_caller, hit_log, routed_per_lord,
-                     crossbow_hits=int(cb_sel), crossbow_noselect_hits=int(cb_nos),
-                     select_hits=n_hits if only_lord is not None else 0,
-                     bdc=bdc, allow_striker_select=True)
-        if _all_units_routed(state["lords"][tgt]):
+        if striking_side == "attacker" and siegeworks_die:
+            n_hits, cb_sel, cb_nos = _apply_walls_to_hit_groups(
+                n_hits, cb_sel, cb_nos, siegeworks_die, rng_caller,
+                f"relief_siegeworks_{locale_name}_{sid}")
+        remaining = {"n_hits": n_hits, "crossbow_hits": cb_sel,
+                     "crossbow_noselect_hits": cb_nos,
+                     "select_hits": n_hits if only_lord is not None else 0}
+        while tgt is not None and remaining["n_hits"]:
+            remaining = _absorb_hits(
+                state, tgt, rng_caller=rng_caller, hit_log=hit_log,
+                routed_per_lord=routed_per_lord, bdc=bdc,
+                allow_striker_select=True, **remaining)
+            if not _all_units_routed(state["lords"][tgt]):
+                break
             removed_lords.add(tgt)
             if tgt in reserve["defender"]:
                 reserve["defender"].remove(tgt)
@@ -1160,22 +1181,14 @@ def _resolve_relief_substep(state, step, relief_front, relief_reserve,
             if tgt in relief_front:
                 relief_front.remove(tgt)
             hit_log.append({"relief_routed": tgt})
+            # 4.4.2: after Rout the same Strike follows the new target
+            # row. Reuse its surviving Hits and their original properties.
+            if remaining["n_hits"]:
+                tgt = _choose_target(sid, remaining["n_hits"])
 
-    if striking_side == "attacker":
-        for sid in list(relief_front):
-            rear = [d for d in reserve["defender"]
-                    if not _all_units_routed(state["lords"][d])]
-            if rear:
-                _one_strike(sid, rear, siegeworks_die)
-            else:
-                fronts = [positions["defender"][sl] for sl in SLOTS
-                          if positions["defender"][sl] is not None]
-                _one_strike(sid, fronts, siegeworks_die)
-    else:
-        for did in list(reserve["defender"]):
-            if not relief_front:
-                return
-            _one_strike(did, list(relief_front), None)
+    strikers = relief_front if striking_side == "attacker" else reserve["defender"]
+    for sid in list(strikers):
+        _one_strike(sid)
 
 
 def _resolve_battle_strikes(
