@@ -203,7 +203,8 @@ def enumerate_legal(state: dict[str, Any]) -> list[dict[str, Any]]:
     fpd = _enum_pending_fpd(state)
     if fpd is not None:
         return fpd
-    arrival = state.get("pending_besiege")
+    from .actions import _pending_besiege
+    arrival = _pending_besiege(state)
     if arrival:
         side = arrival["side"]
         moves = [{"action": "besiege_or_bypass", "side": side,

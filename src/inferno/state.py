@@ -175,6 +175,7 @@ class State(TypedDict, total=False):
     decks: dict[str, DeckState]
     capabilities_in_play: list[CapabilityInPlay]
     pending: list[PendingDecision]
+    bypass_this_card: str
     history: list[ActionResult]
     vp: dict[str, float]
 

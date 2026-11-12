@@ -12,6 +12,7 @@ from inferno.invariants import check_all_invariants
 from inferno.legal_moves import enumerate_legal
 from inferno.llm.interface import DecisionView, play_with_interface
 from inferno.scenarios import load_scenario
+from tests._helpers import _finish_pending_choices
 
 
 def place(state, lid, locale, **assets):
@@ -218,6 +219,10 @@ def test_avoider_can_encamp_on_a_later_command():
     target = state["locales"][destination]
     target["current_allegiance"] = [{"side": "ghibelline", "value": 2}]
     avoid(state, destination)
+    besiege = next(m for m in enumerate_legal(state) if m["action"] == "besiege_or_bypass"
+                   and m["args"]["choice"] == "besiege")
+    A.dispatch(state, besiege)
+    _finish_pending_choices(state)
     state["meta"]["active_player"] = "guelph"
     state.update(current_card="command_arezzo", current_lord_id="arezzo", actions_remaining=3)
     move = next(m for m in enumerate_legal(state) if m["action"] == "cmd_encamp")
