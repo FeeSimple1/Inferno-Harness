@@ -165,7 +165,7 @@ def dispatch(state: dict[str, Any], action: dict[str, Any]) -> dict[str, Any]:
             raise IllegalAction("PENDING_DECISION", "Resolve Reset consequences first.", "4.9.6")
         if name not in ("end_reset", "play_event", "cmd_resolve_revolt", "cmd_resolve_exiles"):
             raise IllegalAction("PENDING_DECISION", "Finish both Reset elections first.", "4.9.6")
-    if state.get("pending_besiege") and name not in (
+    if _pending_besiege(state) and name not in (
             "besiege_or_bypass", "play_event", "cmd_resolve_revolt", "cmd_resolve_exiles"):
         raise IllegalAction("PENDING_DECISION", "Resolve Besiege/Bypass at the March destination first.", "4.3.5")
     handler = _HANDLERS.get(name)
@@ -1676,6 +1676,7 @@ def _finish_card(state, side, reason: str, citation: str) -> dict[str, Any]:
     state["current_card"] = None
     state["current_lord_id"] = None
     state["actions_remaining"] = None
+    state.pop("bypass_this_card", None)
     fpd_result = _run_fpd(state)
     _flip_active_side(state)
     return {
@@ -2550,7 +2551,7 @@ def _maybe_end_card(payload: dict, state, side, citation: str) -> dict[str, Any]
     """If actions_remaining <= 0 (or entire-card consumed), finish; else
     return the action result without ending the card."""
     state["card_actions_started"] = True
-    if state.get("pending_besiege"):
+    if _pending_besiege(state):
         return {"state_changes": payload, "rule_citation": citation}
     if state.get("card_action_consumed_by_entire_card") or (state.get("actions_remaining") or 0) <= 0:
         return _finish_card_with(payload, state, side, reason="actions_exhausted", citation=citation)
@@ -2561,6 +2562,7 @@ def _finish_card_with(payload: dict, state, side, reason: str, citation: str) ->
     state["current_card"] = None
     state["current_lord_id"] = None
     state["actions_remaining"] = None
+    state.pop("bypass_this_card", None)
     state["card_action_consumed_by_entire_card"] = False
     state["card_actions_started"] = False
     fpd = _run_fpd(state)
@@ -2857,6 +2859,64 @@ def _march_group(state, lid: str, requested: list[str]) -> list[str]:
     return group
 
 
+def _outside_lords(state, locale_name, side):
+    return [
+        lid for lid in state["locales"][locale_name].get("lords_present", [])
+        if state["lords"][lid]["side"] == side
+        and state["lords"][lid]["status"] == "mustered"
+        and state["lords"][lid]["location"] == locale_name
+        and not state["lords"][lid].get("flags", {}).get("in_stronghold")
+    ]
+
+
+def _stronghold_arrival(state, side, lid, locale_name, *, group=None, empty_on_arrival=False):
+    """4.3.5: resolve a fresh Enemy Stronghold once no Enemy is outside."""
+    loc = state["locales"].get(locale_name)
+    if (not loc or loc.get("type") == "outpost" or loc.get("ruins")
+            or _is_friendly_locale(state, loc, side) or loc.get("siege") or loc.get("bypass")):
+        return None
+    outside = _outside_lords(state, locale_name, side)
+    enemy = "ghibelline" if side == "guelph" else "guelph"
+    if lid not in outside or _outside_lords(state, locale_name, enemy):
+        return None
+    return {
+        "side": side, "lord_id": lid, "locale": locale_name,
+        "group": list(group) if group is not None else outside,
+        "empty_on_arrival": empty_on_arrival,
+    }
+
+
+def _current_card_history(state):
+    for entry in reversed(state.get("history") or []):
+        if entry.get("action") == "command_reveal" or entry.get("state_changes", {}).get("card_finished"):
+            break
+        yield entry
+
+
+def _pending_besiege(state):
+    arrival = state.get("pending_besiege")
+    if arrival:
+        return arrival
+    # Older saves can pause after a March whose Approach ended without Battle
+    # before recording the required arrival choice. The arrival was occupied.
+    if (state["meta"].get("phase") != "campaign" or current_campaign_step(state) != "command_phase"
+            or state.get("pending") or state.get("pending_fpd")):
+        return None
+    lid = state.get("current_lord_id")
+    lord = state["lords"].get(lid, {})
+    if not lord.get("flags", {}).get("first_march_used_this_card"):
+        return None
+    locale_name = lord.get("location")
+    arrival = _stronghold_arrival(state, current_side(state), lid, locale_name)
+    if arrival and any(
+            entry.get("action") == "approach_response"
+            and entry.get("state_changes", {}).get("approach_resolved") == "no_battle"
+            and entry["state_changes"].get("locale") == locale_name
+            for entry in _current_card_history(state)):
+        return arrival
+    return None
+
+
 def _march_preview(state, side, args) -> dict[str, Any]:
     """Validate and price a March without changing state, history, or RNG.
 
@@ -2889,7 +2949,17 @@ def _march_preview(state, side, args) -> dict[str, Any]:
     if cur_loc_name is None:
         raise IllegalAction("NO_LOCATION", f"{lid} has no map Locale.", "4.3")
 
-    if lord.get("flags", {}).get("in_stronghold") and state["locales"][cur_loc_name].get("siege"):
+    flags = lord.get("flags", {})
+    cur_loc = state["locales"][cur_loc_name]
+    # A saved card from before bypass_this_card still records the choice.
+    if (state.get("bypass_this_card") == cur_loc_name
+            or (flags.get("bypassing") == cur_loc_name and cur_loc.get("bypass") and any(
+                entry.get("action") == "besiege_or_bypass"
+                and entry.get("state_changes", {}).get("bypassed") == cur_loc_name
+                for entry in _current_card_history(state)))):
+        raise IllegalAction("BYPASS_THIS_CARD", "Remain at the newly Bypassed Locale this card.",
+                            "4.3.5 / 4.3.6")
+    if flags.get("in_stronghold") and cur_loc.get("siege"):
         raise IllegalAction("BESIEGED", "A Besieged Lord cannot leave by ordinary March.", "4.3 / 4.5.3")
 
     # SMOKE-Inferno-039: Scenario C 'Maremma War' — Ghibelline Lords
@@ -2943,7 +3013,6 @@ def _march_preview(state, side, args) -> dict[str, Any]:
         way_type = ways_to_dest[0]
 
     # 4.3.2/4.3.3 shared movement pricing.
-    flags = lord.get("flags", {})
     first_march = not flags.get("first_march_used_this_card", False)
     profile = _march_leg_profile(
         state, side, group, way_type,
@@ -2999,11 +3068,7 @@ def _h_cmd_march(state, side, args, rng) -> dict[str, Any]:
 
     # 4.3.4 Approach? Inactive Lords on the other side at this Locale.
     enemy_side = "ghibelline" if side == "guelph" else "guelph"
-    enemy_lords_here = [
-        eid for eid in dest.get("lords_present", [])
-        if state["lords"][eid]["side"] == enemy_side
-        and state["lords"][eid]["status"] == "mustered"
-    ]
+    enemy_lords_here = _outside_lords(state, dest_name, enemy_side)
     if enemy_lords_here:
         # Generate pending decisions for each Inactive Enemy Lord.
         pendings = []
@@ -3044,13 +3109,10 @@ def _h_cmd_march(state, side, args, rng) -> dict[str, Any]:
     # 4.3.5 is part of this March, not an additional Command action. Pause
     # before ending the card even when March spent the last action. Record
     # pre-arrival occupancy for F3/S3, rather than infer it from a siege elsewhere.
-    if (dest.get("type") != "outpost" and not dest.get("ruins")
-            and not _is_friendly_locale(state, dest, side)
-            and not dest.get("siege") and not dest.get("bypass")):
-        state["pending_besiege"] = {
-            "side": side, "lord_id": lid, "locale": dest_name,
-            "group": list(group), "empty_on_arrival": empty_on_arrival,
-        }
+    arrival = _stronghold_arrival(state, side, lid, dest_name, group=group,
+                                  empty_on_arrival=empty_on_arrival)
+    if arrival:
+        state["pending_besiege"] = arrival
     # No approach — return action result and continue card.
     return _maybe_end_card({
         "marched_from": cur_loc_name, "to": dest_name, "way_type": way_type,
@@ -3307,10 +3369,7 @@ def _finalize_approach(state, locale_name, approaching_lord, defender_side) -> d
         _l.get("flags", {}).pop("ambush_forced", None)
     attacker_side = "ghibelline" if defender_side == "guelph" else "guelph"
     # Standers: any Inactive Lord at this Locale not in_stronghold and not moved away
-    standers = [lid for lid in loc.get("lords_present", [])
-                if state["lords"][lid]["side"] == defender_side
-                and not state["lords"][lid].get("flags", {}).get("in_stronghold")
-                and state["lords"][lid]["status"] == "mustered"]
+    standers = _outside_lords(state, locale_name, defender_side)
     if not standers:
         # No battle; restore active player to the marching side.
         atk_side = state["meta"].pop("approach_attacker_side", attacker_side)
@@ -3320,10 +3379,11 @@ def _finalize_approach(state, locale_name, approaching_lord, defender_side) -> d
         # resolution must not leak a stale origin/route into the serialized
         # state (it feeds Retreat handling and could mislead external consumers).
         state["meta"].pop("approach_breadcrumb", None)
-        return {
-            "state_changes": {"approach_resolved": "no_battle", "locale": locale_name},
-            "rule_citation": "4.3.4",
-        }
+        arrival = _stronghold_arrival(state, atk_side, approaching_lord, locale_name)
+        if arrival:
+            state["pending_besiege"] = arrival
+        return _maybe_end_card({"approach_resolved": "no_battle", "locale": locale_name},
+                               state, atk_side, citation="4.3.4")
 
     # SMOKE-Inferno-033: Relief Sally per 4.4.1 — if attacking side has
     # Lord(s) Besieged inside at this Locale, those Besieged Lords join
@@ -3338,34 +3398,37 @@ def _finalize_approach(state, locale_name, approaching_lord, defender_side) -> d
     # Run Battle
     from .battle import resolve_battle
     # Group March may have brought multiple Attackers; include them all.
-    attackers = []
-    for oid in loc.get("lords_present", []):
-        olord = state["lords"][oid]
-        if (olord["side"] == attacker_side
-                and olord["status"] == "mustered"
-                and not olord.get("flags", {}).get("in_stronghold")
-                and olord["location"] == locale_name):
-            # Was the Lord part of the marching group? Phase v1.5 puts the
-            # whole group at locale_name on march completion, so they all
-            # count as attackers here.
-            attackers.append(oid)
+    attackers = _outside_lords(state, locale_name, attacker_side)
     if approaching_lord not in attackers:
         attackers.insert(0, approaching_lord)
     # CONF-037 (4.4.1 RELIEF SALLY): Besieged Lords MAY join the attack ("may
-    # join any Attack for no added Command actions") — surfaced as an optional
-    # per-Lord decision (default: join, preserving prior behaviour). Joined
-    # Lords fight in the rear theater (resolve_battle relief_ids), not the
-    # main Array.
+    # join any Attack for no added Command actions"). A Lieutenant pair
+    # chooses together, then its Lords array separately in the rear theater.
     from .battle import BattleDecisionContext as _BDC
     _join_bdc = _BDC(scripted=list(_battle_scripted or []),
                      callback=state.get("battle_callback"))
-    relief_joined = []
+    relief_choices = {}
     for rs in relief_sallying:
-        _c = _join_bdc.decide_optional(
-            "relief_sally_join", attacker_side, options=["yes", "no"],
-            default="yes", info={"lord_id": rs, "locale": locale_name})
-        if _c == "yes":
-            relief_joined.append(rs)
+        partner = _co_located_lieutenant_partner(state, rs)
+        if partner in relief_choices:
+            choice = relief_choices[partner]
+            # Trusted scripts may supply an election for each Lord in order.
+            script = _join_bdc.scripted
+            if (script and isinstance(script[0], dict)
+                    and script[0].get("type") == "relief_sally_join"
+                    and script[0].get("side", attacker_side) == attacker_side):
+                if script.pop(0).get("choice") != choice:
+                    raise IllegalAction("BAD_DECISION", "Linked Lords must Relief Sally together.",
+                                        "4.1.3 / 4.4.1")
+        else:
+            info = {"lord_id": rs, "locale": locale_name}
+            if partner in relief_sallying:
+                info["group"] = [rs, partner]
+            choice = _join_bdc.decide_optional(
+                "relief_sally_join", attacker_side, options=["yes", "no"],
+                default="yes", info=info)
+        relief_choices[rs] = choice
+    relief_joined = [lid for lid, choice in relief_choices.items() if choice == "yes"]
     _battle_scripted = (list(_join_bdc.scripted)
                         if _battle_scripted is not None else None)
     for rs in relief_joined:
@@ -4008,7 +4071,9 @@ def _h_besiege_or_bypass(state, side, args, rng) -> dict[str, Any]:
     else:  # bypass
         state.pop("pending_besiege", None)
         loc.setdefault("bypass", []).append({"side": side, "lord_id": lid})
-        lord.setdefault("flags", {})["bypassing"] = locale_name
+        for member in _outside_lords(state, locale_name, side):
+            state["lords"][member].setdefault("flags", {})["bypassing"] = locale_name
+        state["bypass_this_card"] = locale_name
         return _maybe_end_card({"bypassed": locale_name}, state, side, citation="4.3.5")
 
 
