@@ -723,15 +723,22 @@ def _disband_comune(state, lid: str) -> None:
         _sweep_freed_stronghold(state, name)
 
 
-def _disband_attached_comuni(state, commander_id: str) -> None:
-    commander = state["lords"][commander_id]
+def _attached_comuni(state, commander_id: str) -> list[str]:
+    commander = state["lords"].get(commander_id, {})
     if not commander.get("commander"):
-        return
-    for lid, lord in state["lords"].items():
-        if (lord.get("comune_of") in (commander_id, commander.get("name"))
-                and lord.get("side") == commander.get("side")
-                and lord.get("status") == "mustered"):
-            _disband_comune(state, lid)
+        return []
+    return sorted(
+        lid for lid, lord in state["lords"].items()
+        if lord.get("comune_of")
+        and lord["comune_of"] in (commander_id, commander.get("name"))
+        and lord.get("side") == commander.get("side")
+        and lord.get("status") == "mustered"
+    )
+
+
+def _disband_attached_comuni(state, commander_id: str) -> None:
+    for lid in _attached_comuni(state, commander_id):
+        _disband_comune(state, lid)
 
 
 def _release_lieutenant_partner(state, lid: str) -> None:
@@ -3624,16 +3631,10 @@ def _apply_post_battle(state, result, attackers: list[str], defenders: list[str]
     result["routed_out_lords"] = routed_out_lords
     combat_removed: list[str] = []
 
-    def _attached_comuni(commander_id: str) -> list[str]:
-        commander = state["lords"].get(commander_id, {})
-        if not commander.get("commander"):
-            return []
-        return sorted(
-            lid for lid, other in state["lords"].items()
-            if other.get("comune_of") in (commander_id, commander.get("name"))
-            and other.get("side") == commander.get("side")
-            and other.get("status") == "mustered"
-        )
+    def has_forces(lid: str) -> bool:
+        lord = state["lords"][lid]
+        return bool(sum(lord.get("forces", {}).values())
+                    or sum(lord.get("routed_units", {}).values()))
 
     def _remove_lord(lid: str, *, losing_battle_side: bool,
                      include_attached: bool = True) -> None:
@@ -3647,7 +3648,7 @@ def _apply_post_battle(state, result, attackers: list[str], defenders: list[str]
         if not lord or lord.get("status") != "mustered":
             return
         if include_attached:
-            for cid in _attached_comuni(lid):
+            for cid in _attached_comuni(state, lid):
                 _remove_lord(cid, losing_battle_side=losing_battle_side,
                              include_attached=False)
         if losing_battle_side:
@@ -3678,21 +3679,44 @@ def _apply_post_battle(state, result, attackers: list[str], defenders: list[str]
     retreat_spoils: dict[tuple[str, str], list[str]] = {}
     paired_movers: set[str] = set()
     is_marching_attacker = not is_sally and loser == "attacker"
+    # 1.5.1: an intact Commander/Comune fights on separate mats but makes
+    # one movement election. Use the Commander even if the Comune is first
+    # in the Battle roster. Both cylinders count for Stronghold capacity.
+    comune_commanders = {}
     for lid in losers_ids:
+        for cid in _attached_comuni(state, lid):
+            if cid in losers_ids and same_lieutenant_position(
+                    state["lords"][lid], state["lords"][cid]):
+                comune_commanders[cid] = lid
+    movement_groups: dict[str, list[str]] = {}
+    for lid in losers_ids:
+        commander = comune_commanders.get(lid, lid)
+        group = movement_groups.setdefault(commander, [commander])
+        if commander != lid:
+            group.append(lid)
+
+    for lid, members in movement_groups.items():
         if lid in paired_movers or lid not in state["lords"]:
             continue
         if state["lords"][lid].get("status") != "mustered":
             continue
         # Determine fate: removed (zero forces) / retreated / withdrew
         lord = state["lords"][lid]
-        if (sum(lord.get("forces", {}).values())
-                + sum(lord.get("routed_units", {}).values()) == 0):
+        if not has_forces(lid):
             # Removed per 4.4.5: Spoils, then Knights' Quarter for ALL his
             # Cavalieri/Ritter (CONF-022), then removal as Beyond Service.
             _remove_lord(lid, losing_battle_side=True)
-        elif lord.get("flags", {}).get("in_stronghold"):
+            continue
+        group = [lid]
+        for cid in members[1:]:
+            if has_forces(cid):
+                group.append(cid)
+            else:
+                _remove_lord(cid, losing_battle_side=True)
+        if lord.get("flags", {}).get("in_stronghold"):
             # Withdrew into Stronghold: keep Assets, no Service shift.
-            take_spoils(lid, retreated=False, conceded=False, withdrew=True)
+            for member in group:
+                take_spoils(member, retreated=False, conceded=False, withdrew=True)
         else:
             partner = _co_located_lieutenant_partner(state, lid)
             if partner not in losers_ids or partner in paired_movers:
@@ -3701,8 +3725,7 @@ def _apply_post_battle(state, result, attackers: list[str], defenders: list[str]
                 companion = state["lords"][partner]
                 if companion.get("flags", {}).get("in_stronghold"):
                     partner = None
-                elif not (sum(companion.get("forces", {}).values())
-                          or sum(companion.get("routed_units", {}).values())):
+                elif not has_forces(partner):
                     _remove_lord(partner, losing_battle_side=True)
                     partner = None
 
@@ -3723,7 +3746,7 @@ def _apply_post_battle(state, result, attackers: list[str], defenders: list[str]
                 if loser == "attacker":
                     candidates = shared_candidates
             eligible_withdraw = (
-                loser == "defender" and not is_sally and _wd_count < _wd_cap
+                loser == "defender" and not is_sally and _wd_count + len(group) <= _wd_cap
                 and _can_withdraw_into_stronghold(state, lid, battle_locale)
             )
             room_for_pair = _wd_count + 2 <= _wd_cap
@@ -3733,11 +3756,13 @@ def _apply_post_battle(state, result, attackers: list[str], defenders: list[str]
                 options = ["retreat"] if candidates else []
                 if eligible_withdraw:
                     options.append("withdraw")
-                    if ((partner is None and lid in withdraw_elected)
+                    if ((partner is None and withdraw_elected.intersection(group))
                             or (room_for_pair and withdraw_elected.intersection((lid, partner)))):
                         fate = "withdraw"
                 options.append("remove")
                 info = {"lord_id": lid, "locale": battle_locale}
+                if len(group) > 1:
+                    info["lord_ids"] = group
                 if partner is not None:
                     info["partner_id"] = partner
                     info["requires_partner_removal"] = [
@@ -3754,6 +3779,8 @@ def _apply_post_battle(state, result, attackers: list[str], defenders: list[str]
 
             if fate == "retreat":
                 route_info = {"lord_id": lid}
+                if len(group) > 1:
+                    route_info["lord_ids"] = group
                 if partner is not None:
                     route_info["lord_ids"] = [lid, partner]
                     solo_destinations = [dest for dest in candidates if dest not in shared_candidates]
@@ -3775,7 +3802,6 @@ def _apply_post_battle(state, result, attackers: list[str], defenders: list[str]
                         "retreat_way", lord["side"], options=ways, default=retreat_way,
                         info={**route_info, "destination": dest})
 
-            group = [lid]
             if partner is not None:
                 companion_fate = fate
                 if loser == "defender":
@@ -3833,7 +3859,7 @@ def _apply_post_battle(state, result, attackers: list[str], defenders: list[str]
             for v in state["lords"][r].get("vassals", []))
         for r in _retreated_for_shift if r in state["lords"])
     for _rid in _retreated_for_shift:
-        if _rid in state["lords"]:
+        if _rid in state["lords"] and not state["lords"][_rid].get("comune_of"):
             service_shift_for_retreated(
                 state, _rid,
                 conceded_with_carroccio=_side_carroccio,
@@ -3886,7 +3912,7 @@ def _apply_post_battle(state, result, attackers: list[str], defenders: list[str]
         lord = state["lords"].get(lid)
         if not lord or lord.get("status") != "mustered":
             continue
-        if sum(lord.get("forces", {}).values()) or sum(lord.get("routed_units", {}).values()):
+        if has_forces(lid):
             continue
         _remove_lord(lid, losing_battle_side=(lid in losers_ids))
 
