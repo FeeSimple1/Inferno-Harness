@@ -183,14 +183,16 @@ with these decision types:
   When a Lieutenant or Lower Lord chooses movement, the partner can follow
   that movement or be removed. `requires_partner_removal` identifies choices
   that only one Lord can take, such as Withdrawal into the last open space.
+  A Commander and his surviving Comune receive one fate choice with both IDs
+  in `lord_ids`. Withdrawing both requires two open Stronghold spaces (1.5.1).
 - `retreat_destination` — choose a legal Locale for each Retreating Lord or
-  intact Lieutenant pair. The default is the first legal Locale, ordered
+  group. The default is the first legal Locale, ordered
   Friendly first and then alphabetically. A Marching Attacker's only Retreat
   destination is the Approach origin.
 - `retreat_way` — when more than one legal Way connects the chosen
   destination, select `"road"` or `"track"`. Conceding Lords retain
   Provender according to the selected Way and their co-retreaters' Carts.
-  Script a shared destination and Way once for a Lieutenant pair.
+  Script a shared destination and Way once for each moving group.
 - `keep_provender` — during group Avoid or conceding group Retreat, the moving
   side chooses an integer amount to keep on the named Lord's mat when more
   than one amount is legal. The group keeps as much as it can carry Unladen,
