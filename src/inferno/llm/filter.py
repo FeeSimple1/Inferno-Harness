@@ -33,6 +33,29 @@ def conceal_shuffle_rolls(rolls: list[dict]) -> list[dict]:
             if roll.get("context") != "friars_plan_shuffle"]
 
 
+def _conceal_feed_details(fpd: dict, lords: dict, side: str) -> None:
+    """Screen force totals and unchosen food options in a detached Feed summary."""
+    for row in fpd.get("feed", []):
+        if lords.get(row.get("lord_id"), {}).get("side") != side:
+            row.pop("units", None)
+    owned = [choice for choice in fpd.pop("feed_decisions", []) if choice.get("side") == side]
+    if owned:
+        fpd["feed_decisions"] = owned
+
+
+def filter_action_result(result: dict, state: dict, side: str, *, hidden_mats: bool) -> dict:
+    """Project the action receipt without altering the authoritative history."""
+    if "rolls" in result:
+        result = {**result, "rolls": conceal_shuffle_rolls(result["rolls"])}
+    changes = result.get("state_changes")
+    fpd = changes.get("fpd") if isinstance(changes, dict) else None
+    if hidden_mats and isinstance(fpd, dict):
+        fpd = copy.deepcopy(fpd)
+        _conceal_feed_details(fpd, state["lords"], side)
+        result = {**result, "state_changes": {**changes, "fpd": fpd}}
+    return result
+
+
 def hide_for_side(state: dict[str, Any], visible_side: str,
                   hidden_mats: bool = False) -> dict[str, Any]:
     """Return a deep-copy of `state` with opposing-side secrets redacted.
@@ -49,8 +72,6 @@ def hide_for_side(state: dict[str, Any], visible_side: str,
         raise ValueError("Cannot change perspective using an already-filtered state.")
     hidden_mats = bool(hidden_mats or state.get("meta", {}).get("hidden_mats")
                        or state.get("_hidden_mats"))
-    if prior_side == visible_side and bool(state.get("_hidden_mats")) == hidden_mats:
-        return copy.deepcopy(state)
     opp = "ghibelline" if visible_side == "guelph" else "guelph"
     # Operator callbacks/scripts are not player-visible game state. In
     # particular, an opponent's prepared combat choices must not be exposed
@@ -58,6 +79,14 @@ def hide_for_side(state: dict[str, Any], visible_side: str,
     private_channels = {"battle_callback", "approach_battle_decisions",
                         "approach_post_battle_decisions"}
     s = copy.deepcopy({k: v for k, v in state.items() if k not in private_channels})
+    if hidden_mats:
+        for entry in s.get("history", []):
+            changes = entry.get("state_changes")
+            fpd = changes.get("fpd") if isinstance(changes, dict) else None
+            if isinstance(fpd, dict):
+                _conceal_feed_details(fpd, s.get("lords", {}), visible_side)
+    if prior_side == visible_side and bool(state.get("_hidden_mats")) == hidden_mats:
+        return s
 
     # Redact opposing deck secrets
     if opp in s.get("decks", {}):
@@ -110,6 +139,11 @@ def hide_for_side(state: dict[str, Any], visible_side: str,
         elif hidden_mats and entry.get("side") == opp:
             entry["args"] = {}
             entry["state_changes"] = {"hidden_mats": True}
+            fpd = changes.get("fpd") if isinstance(changes, dict) else None
+            if isinstance(fpd, dict):
+                public = ("feed", "pay_pending", "disband", "empty_lords_disbanded",
+                          "feed_decisions")
+                entry["state_changes"]["fpd"] = {k: fpd[k] for k in public if k in fpd}
     s.get("meta", {}).pop("rng_seed", None)
     s.get("meta", {}).pop("rng_advance", None)
     s.get("meta", {}).pop("post_battle_withdraw", None)
