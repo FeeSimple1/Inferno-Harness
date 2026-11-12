@@ -15,7 +15,7 @@ from ..actions import IllegalAction, dispatch
 from ..battle import ScriptedDecisionError
 from ..visibility import combat_visibility, strict_player_choices
 from .briefing import build_briefing_document, information_page, render_briefing
-from .filter import conceal_shuffle_rolls
+from .filter import filter_action_result
 from .menu import ActionCatalog, acting_side
 from .player import ActionResult
 from .protocol import (compact, page_records, query_position, require_version,
@@ -235,9 +235,9 @@ def play_with_interface(state: dict, callback: Callable, *, max_strikes: int = 3
             state.pop('battle_callback', None)
         else:
             state['battle_callback'] = original
-    if 'rolls' in result:
-        result = {**result, 'rolls': conceal_shuffle_rolls(result['rolls'])}
-    return ActionResult(applied=result, rejected=rejected)
+    public = filter_action_result(result, state, action['side'],
+                                  hidden_mats=chosen_view._catalog.hidden_mats)
+    return ActionResult(applied=public, rejected=rejected)
 
 
 def selection_session(state: dict, side: str, selection: dict, *,

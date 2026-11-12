@@ -13,6 +13,7 @@ from typing import Any
 
 from ..actions import IllegalAction, dispatch
 from ..legal_moves import enumerate_legal
+from .filter import filter_action_result
 from .protocol import (compact, page_records, query_position, require_version,
                        visible_state, view_version)
 
@@ -221,7 +222,4 @@ def submit_selection(state: dict, side: str, selection: dict,
     """Reject stale IDs BEFORE dispatch: no dice, resources or history change."""
     catalog = ActionCatalog(state, side, hidden_mats)
     result = dispatch(state, catalog.resolve(selection))
-    if "rolls" in result:
-        from .filter import conceal_shuffle_rolls
-        result = {**result, "rolls": conceal_shuffle_rolls(result["rolls"])}
-    return result
+    return filter_action_result(result, state, side, hidden_mats=catalog.hidden_mats)

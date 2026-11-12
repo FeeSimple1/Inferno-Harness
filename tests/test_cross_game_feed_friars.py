@@ -178,10 +178,71 @@ def test_live_feed_decisions_use_each_factions_perspective(hidden):
         )
         return {"action_id": entry["action_id"], "state_version": view.version}
 
-    play_with_interface(state, callback)
+    result = play_with_interface(state, callback)
     assert owners == ["guelph", "ghibelline"]
     for lid in ["arezzo", "pisa"]:
         assert state["lords"][lid]["assets"] == {"Provender": 1, "Loot": 0}
+    raw = state["history"][-1]["state_changes"]["fpd"]
+    assert [d["side"] for d in raw["feed_decisions"]] == owners
+    public = result.applied["state_changes"]["fpd"]
+    assert public == hide_for_side(state, "guelph")["history"][-1]["state_changes"]["fpd"]
+    assert [d["side"] for d in public["feed_decisions"]] == (["guelph"] if hidden else owners)
+    other = hide_for_side(state, "ghibelline")["history"][-1]["state_changes"]["fpd"]
+    assert [d["side"] for d in other["feed_decisions"]] == (["ghibelline"] if hidden else owners)
+
+
+@pytest.mark.parametrize("hidden", [False, True])
+def test_versioned_feed_receipts_and_saved_history_screen_opposing_totals(hidden):
+    before_views, after_views = [], []
+    for units in (4, 5):
+        state = feed_state(prov=1, loot=0)
+        state["meta"]["hidden_mats"] = hidden
+        enemy = place(state, "pisa", "Pisa", Provender=1)
+        enemy["forces"] = {"Armigieri": units}
+        enemy["flags"]["moved_fought"] = True
+        before_views.append(hide_for_side(state, "guelph"))
+        view = PlayerView(state, "guelph")
+        selection = select(view, "cmd_end_card")
+        replay = json.loads(json.dumps(state))
+        applied = submit_selection(replay, "guelph", selection)
+        response = selection_session(state, "guelph", selection)
+        assert response["status"] == "accepted"
+        assert replay == state
+        latest = response["latest_action"][0]
+        assert latest["state_changes"] == applied["state_changes"]
+        before_reads = copy.deepcopy(state)
+
+        view = PlayerView(state, "guelph")
+        page = view.query({"request": "inspect", "section": "history",
+                           "keys": [str(len(state["history"]))]})
+        assert page["records"][0]["value"] == latest
+        feed = {row["lord_id"]: row for row in latest["state_changes"]["fpd"]["feed"]}
+        assert feed["arezzo"]["units"] == 2
+        expected = {"lord_id": "pisa", "need": 1, "fed": True,
+                    "spent": [{"from_lord_id": "pisa", "asset": "Provender"}]}
+        assert feed["pisa"] == (expected if hidden else {**expected, "units": units})
+
+        restored = json.loads(json.dumps(state))
+        raw_feed = restored["history"][-1]["state_changes"]["fpd"]["feed"]
+        assert next(row for row in raw_feed if row["lord_id"] == "pisa")["units"] == units
+        owner = hide_for_side(restored, "ghibelline")["history"][-1]["state_changes"]["fpd"]
+        own_feed = {row["lord_id"]: row for row in owner["feed"]}
+        assert own_feed["pisa"] == {**expected, "units": units}
+        assert ("units" in own_feed["arezzo"]) is not hidden
+        filtered = hide_for_side(state, "guelph")
+        assert filtered == hide_for_side(restored, "guelph")
+        if hidden:
+            old_export = copy.deepcopy(filtered)
+            old_feed = old_export["history"][-1]["state_changes"]["fpd"]["feed"]
+            next(row for row in old_feed if row["lord_id"] == "pisa")["units"] = units
+            assert hide_for_side(old_export, "guelph") == filtered
+        assert state == before_reads
+        after_views.append(filtered)
+    if hidden:
+        assert before_views[0] == before_views[1]
+        assert after_views[0] == after_views[1]
+    else:
+        assert after_views[0] != after_views[1]
 
 
 def test_feed_session_pauses_and_resumes_without_partial_mutation():
