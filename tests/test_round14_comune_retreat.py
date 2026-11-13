@@ -115,6 +115,8 @@ def test_player_fate_choices_keep_comune_attached_through_save_and_march(
         saved.write_text(json.dumps(state))
         restored = load_saved_state(saved)
         _finish_pending_choices(restored)
+        _act(restored, "besiege_or_bypass", "ghibelline", choice="besiege")
+        _finish_pending_choices(restored)
         _act(restored, "command_reveal", "guelph")
         march = _act(restored, "cmd_march", "guelph", lord_id="firenze",
                      destination="Prato", way_type="track")

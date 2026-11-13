@@ -225,6 +225,7 @@ def assert_locale_marker_sanity(s):
     color_of = {"guelph": "purple", "ghibelline": "gold"}
     for name, loc in s["locales"].items():
         siege = loc.get("siege") or []
+        assert not (siege and loc.get("bypass")), f"{name} has both Siege and Bypass markers"
         if loc.get("ruins"):
             assert not siege, f"Ruins {name} has Siege markers"
             assert not (loc.get("bypass") or []), f"Ruins {name} has Bypass markers"

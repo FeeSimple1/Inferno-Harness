@@ -10,12 +10,13 @@ from inferno.legal_moves import enumerate_legal
 from inferno.llm.interface import DecisionView, play_with_interface
 from inferno.state import load_saved_state
 from tests._helpers import _finish_pending_choices, _place
+from tests.test_cross_game_sally import give_card
 from tests.test_round11_lieutenants import _act, _plan
 
 PAIR = ["arezzo", "orvieto"]
 
 
-def _before_march(*, independent=False):
+def _before_march(*, independent=False, guelph_command="colle"):
     state = _plan()
     for lid, locale in [("arezzo", "Firenze"), ("orvieto", "Firenze"),
                         ("colle", "Prato"), ("astimberg", "Figline")]:
@@ -25,7 +26,7 @@ def _before_march(*, independent=False):
     if independent:
         _place(state, "guido_guerra", "Firenze")
     _act(state, "plan_attach_lieutenant", "guelph", lieutenant=PAIR[0], lower_lord=PAIR[1])
-    for side, cards in [("guelph", ["PASS", "command_colle"]),
+    for side, cards in [("guelph", ["PASS", f"command_{guelph_command}"]),
                         ("ghibelline", ["command_astimberg"] * 2)]:
         for card in cards + ["PASS"] * (6 - len(cards)):
             _act(state, "plan_add_card", side, card_id=card)
@@ -136,6 +137,118 @@ def test_arrival_at_existing_marker_can_march_on(marker):
                 and m["args"]["destination"] == "Figline")
     dispatch(state, move)
     assert state["locales"]["Firenze"][marker]
+    check_all_invariants(state)
+
+
+@pytest.mark.parametrize("choice", ["besiege", "bypass"])
+def test_post_battle_withdrawal_requires_arrival_choice_before_feed(choice, tmp_path):
+    state = _before_march(guelph_command="arezzo")
+    _act(state, "cmd_march", "ghibelline", destination="Firenze", way_type="road")
+    assert state["actions_remaining"] > 0
+    _act(state, "approach_response", "guelph", lord_id=PAIR[0], choice="stand")
+
+    def choose(view):
+        rows = view.query({"request": "actions"})["records"]
+        if isinstance(view, DecisionView):
+            options = [row["move"]["args"]["choice"] for row in rows]
+            kind = view.overview()["decision"]
+            election = options[0]
+            if kind == "concede":
+                election = "yes" if view.side == "guelph" else "no"
+            elif kind == "post_battle_withdraw":
+                election = "withdraw"
+            row = next(row for row in rows if row["move"]["args"]["choice"] == election)
+        else:
+            row = next(row for row in rows if row["move"]["args"]["choice"] == "stand")
+        return {"action_id": row["action_id"], "state_version": view.version}
+
+    battle = play_with_interface(state, choose, max_strikes=1).applied["state_changes"]
+    assert battle["battle_result"]["loser"] == "defender"
+    assert all(state["lords"][lid]["flags"]["in_stronghold"] for lid in PAIR)
+    assert not battle.get("card_finished")
+    assert not state.get("pending_fpd")
+    assert state["actions_remaining"] == 0
+
+    restored = _reload(state, tmp_path)
+    offered = enumerate_legal(restored)
+    assert {move["args"]["choice"] for move in offered
+            if move["action"] == "besiege_or_bypass"} == {"besiege", "bypass"}
+    assert all(move["side"] == "ghibelline" for move in offered)
+    assert {move["action"] for move in offered} <= {"besiege_or_bypass", "play_event"}
+    before = json.dumps(restored, sort_keys=True)
+    for command in ("cmd_march", "cmd_end_card", "command_reveal"):
+        with pytest.raises(IllegalAction, match="PENDING_DECISION"):
+            _act(restored, command, "ghibelline", destination="Figline")
+        assert json.dumps(restored, sort_keys=True) == before
+    with pytest.raises(IllegalAction, match="WRONG_TURN"):
+        _act(restored, "besiege_or_bypass", "guelph", choice=choice)
+    assert json.dumps(restored, sort_keys=True) == before
+
+    finish = _choose_arrival(restored, choice)
+    assert finish == _choose_arrival(state, choice)
+    assert state == restored
+    assert finish["card_finished"]
+    assert {row["lord_id"] for row in finish["fpd"]["feed"]} == {*PAIR, "astimberg"}
+    assert state["current_lord_id"] is None
+    assert not state.get("pending_besiege")
+    assert not state.get("bypass_this_card")
+    _finish_pending_choices(state)
+    _act(state, "command_reveal", "guelph")
+    if choice == "besiege":
+        assert state["locales"]["Firenze"]["siege"]
+        assert not any(move["action"] == "cmd_march" for move in enumerate_legal(state))
+        with pytest.raises(IllegalAction, match="BESIEGED"):
+            _act(state, "cmd_march", "guelph", destination="Prato", way_type="track")
+    else:
+        assert state["locales"]["Firenze"]["bypass"]
+        _act(state, "cmd_march", "guelph", destination="Prato", way_type="track")
+        assert all(state["lords"][lid]["location"] == "Prato" for lid in PAIR)
+    check_all_invariants(state)
+
+
+def test_post_battle_revolt_can_make_arrival_friendly(tmp_path):
+    state = _before_march()
+    state["meta"].update(rng_seed=40, rng_advance=0)
+    # Keep Guelphs on the map, away from Firenze, after its defenders are removed.
+    _place(state, "colle", "Lucca")
+    _place(state, "guido_guerra", "Lucca")
+    state["locales"]["Cortona"]["current_allegiance"] = [{"side": "ghibelline", "value": 1}]
+    give_card(state, "S18", state["decks"]["ghibelline"]["aow_held"])
+    _act(state, "cmd_march", "ghibelline", destination="Firenze", way_type="road")
+    _act(state, "approach_response", "guelph", lord_id=PAIR[0], choice="stand")
+
+    def choose(decision):
+        if decision["type"] == "concede":
+            return "yes" if decision["side"] == "defender" else "no"
+        if decision["type"] == "post_battle_withdraw":
+            return "remove"
+        return decision["options"][0]
+
+    state["battle_callback"] = choose
+    battle = _act(state, "approach_response", "guelph", lord_id=PAIR[1], choice="stand")
+    del state["battle_callback"]
+    assert set(battle["state_changes"]["battle_result"]["removed_lords"]) == set(PAIR)
+    assert state.get("pending_exiles") or state.get("pending_revolts")
+    with pytest.raises(IllegalAction, match="Resolve Revolt and Exiles first"):
+        _act(state, "besiege_or_bypass", "ghibelline", choice="besiege")
+    _finish_pending_choices(state)
+    assert state["pending_besiege"]["locale"] == "Firenze"
+
+    # Cortona's seeded Revolt flips Firenze before the attacker must encircle it.
+    move = next(move for move in enumerate_legal(state) if move["action"] == "play_event"
+                and move["args"] == {"card_id": "S18", "effect_args": {"mode": "revolt_roll"}})
+    played = dispatch(state, move)["state_changes"]
+    assert any(roll.get("revolted") == "Firenze" for roll in played["effect"]["revolt_rolls"])
+    assert not played.get("card_finished")
+    state = _reload(state, tmp_path)
+    assert {move["action"] for move in enumerate_legal(state)} == {"cmd_resolve_exiles"}
+    finish = _act(state, "cmd_resolve_exiles", "guelph", slides=[])["state_changes"]
+    assert finish["card_finished"]
+    assert {row["lord_id"] for row in finish["fpd"]["feed"]} == {"astimberg"}
+    assert not state.get("pending_besiege")
+    assert not state["locales"]["Firenze"]["siege"] and not state["locales"]["Firenze"]["bypass"]
+    _finish_pending_choices(state)
+    assert state["meta"]["active_player"] == "guelph"
     check_all_invariants(state)
 
 

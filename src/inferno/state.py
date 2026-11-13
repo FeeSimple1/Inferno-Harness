@@ -90,6 +90,15 @@ class BypassMarker(TypedDict, total=False):
     side: Side
 
 
+class StrongholdArrival(TypedDict, total=False):
+    side: Side
+    lord_id: str
+    locale: str
+    group: list[str]
+    empty_on_arrival: bool
+    after_battle: bool
+
+
 class LocaleState(TypedDict, total=False):
     name: str
     type: StrongholdType
@@ -175,6 +184,7 @@ class State(TypedDict, total=False):
     decks: dict[str, DeckState]
     capabilities_in_play: list[CapabilityInPlay]
     pending: list[PendingDecision]
+    pending_besiege: StrongholdArrival
     bypass_this_card: str
     history: list[ActionResult]
     vp: dict[str, float]
@@ -220,8 +230,22 @@ def restore_lieutenant_links(state: State) -> None:
             flags.pop("lower_lord_of", None)
 
 
+def clear_bypass(state: State, locale_name: str) -> None:
+    """Remove a Bypass and the corresponding flags on Lords at the Locale."""
+    loc = state["locales"][locale_name]
+    loc["bypass"] = []
+    for lid in loc.get("lords_present", []):
+        flags = state["lords"][lid].get("flags", {})
+        if flags.get("bypassing") == locale_name:
+            flags.pop("bypassing")
+
+
 def load_saved_state(path: Path) -> State:
-    """Read a saved game and repair broken Lieutenant links from older versions."""
+    """Read a saved game and repair stale links and Bypass markers."""
     state = json.loads(path.read_text(encoding="utf-8"))
     restore_lieutenant_links(state)
+    for name, loc in state.get("locales", {}).items():
+        if loc.get("siege") and loc.get("bypass"):
+            # Older Sail arrivals left the Bypass behind after placing Siege.
+            clear_bypass(state, name)
     return state
