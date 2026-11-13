@@ -12,6 +12,7 @@ import hashlib
 from typing import Any
 
 from ..actions import IllegalAction, dispatch
+from ..card_effects import MANFREDI_ASSETS, hidden_manfredi_targets
 from ..legal_moves import enumerate_legal
 from .filter import filter_action_result
 from .protocol import (compact, page_records, query_position, require_version,
@@ -31,6 +32,30 @@ def _hidden_target_templates(state: dict, side: str, moves: list) -> list:
     """Do not turn hidden Asset/Force/Vassal contents into a legal-menu oracle."""
     from ..actions import _hold_event_window_ok
     from ..held_events import _candidate_in_context
+    if side == "guelph" and any(
+            p.get("card_id") == "F22" and p.get("type") == "event_resolution"
+            for p in state.get("pending", [])):
+        targets = hidden_manfredi_targets(state, hidden_mats=True)
+        if targets and any(m["action"] == "levy_resolve_event" for m in moves):
+            public = [m for m in moves if m["args"].get("effect_args", {}).get("target_lord_id")
+                      not in {*targets, None}]
+            public.extend([
+                {"action": "levy_resolve_event", "side": side,
+                 "args": {"card_id": "F22", "effect_args": {"target_lord_id": "<Ghibelline Lord>",
+                                                           "mode": "<shift or remove_assets>"}},
+                 "parameterized": True, "conditional": True,
+                 "parameters": {"public_mustered_targets": targets,
+                                "asset_types": MANFREDI_ASSETS,
+                                "assets_to_remove": "For remove_assets, supply counts totaling one to three Assets."},
+                 "description": "Select a Ghibelline mat for Manfredi. The engine verifies Ritter "
+                                "and any selected Assets on submission.",
+                 "rule_citation": "F22 / 1.5.2 / 3.1.3"},
+                {"action": "levy_resolve_event", "side": side,
+                 "args": {"card_id": "F22", "effect_args": {}}, "conditional": True,
+                 "description": "Confirm no eligible Manfredi effect. Applies only if none exists.",
+                 "rule_citation": "F22 / 3.1.3"},
+            ])
+            return public
     if (state.get("pending_fpd") or state.get("pending_revolts") or state.get("pending_exiles")
             or (state.get("meta", {}).get("phase") == "levy" and state.get("meta", {}).get("levy_step") == "3.1")):
         return moves
@@ -76,9 +101,8 @@ def _hidden_target_templates(state: dict, side: str, moves: list) -> list:
                       and lord.get("assets", {}).get("Coin", 0) >= 1)
     if bribes or possible_bribe:
         # Public roster, not a filtered list of secretly Mustered targets.
-        from .. import static_data as sd
-        roster = sorted({v['name'] for l in sd.LORDS.values() for v in l.get('vassals', [])
-                         if not v.get('special')})
+        from ..vassals import REGULAR_VASSALS
+        roster = sorted(REGULAR_VASSALS)
         out.append({"action": "cmd_treachery_bribe", "side": side,
                     "args": {"lord_id": lid, "target_lord_id": "<Vassal's Lord>",
                              "vassal": "<regular Vassal name>"},

@@ -322,11 +322,31 @@ in `pending` with `type: "event_resolution"`. Remaining drawn cards stay in
 }
 ```
 
-The enumerator provides valid targets/effects for the actual state. Resolution
-consumes the card once, then continues the draw queue. Event consequences such
-as Revolt/Exiles also finish before the next card. Incomplete `play_event`
-submissions are rejected without losing the Held card or partially applying
-its effect. Save/load preserves the pending draw queue.
+The action menu provides the available choices. Use `locale` for a Closed
+Gates site and `treachery_card` to specify which Treachery card to add or set
+aside. Betrayals lets the owner choose `mode: "revolt"` or `mode: "treachery"`
+once per Stronghold besieged at the time of the draw. Finish a Revolt and its
+Exiles before choosing again. Save/load preserves both the remaining choices
+and the draw queue. The next card is revealed after all choices and
+consequences finish.
+
+Manfredi's eligible targets are Ghibelline Lords with Ritter, using the
+printed mat for an Unmustered Lord and the current mat for a Mustered Lord.
+Choose `mode: "shift"` to move a Calendar marker or `mode: "remove_assets"`
+with an `assets_to_remove` map specifying one to three available Assets.
+With Hidden Mats, the action menu offers a template for choosing a Mustered
+target and the engine checks it on submission.
+
+Incomplete `play_event` submissions are rejected without losing the Held
+card or partially applying its effect.
+
+### Treachery Bribe
+
+`cmd_treachery_bribe` names a regular `vassal` and may specify
+`target_lord_id`. A successful Bribe transfers the marker and matching
+surviving Forces from a nearby Mustered holder, or musters the printed Forces
+from the pool for an eligible Unmustered Vassal at a nearby Seat. A holder who
+loses his last Force Disbands immediately. The Coin is spent on success.
 
 ### Levy Capability
 

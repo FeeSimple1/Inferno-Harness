@@ -17,6 +17,7 @@ from inferno import static_data as sd
 from inferno.actions import IllegalAction, dispatch
 from inferno.flow import current_campaign_step, current_side, current_step
 from inferno.scenarios import load_scenario
+from tests._helpers import _finish_pending_choices
 
 
 def _skip_levy(s):
@@ -35,6 +36,8 @@ def _skip_levy(s):
     ]
     for name, side in actions:
         dispatch(s, {"action": name, "side": side})
+        if name == "levy_aow_draw":
+            _finish_pending_choices(s)
 
 
 def _skip_capability_discard(s):

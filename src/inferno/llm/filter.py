@@ -10,8 +10,7 @@ practice in L&C):
   - Opposing side's aow_deck (face-down).
   - Opposing side's aow_discard (visible — discards are public).
   - Opposing side's plan_stacks (face-down until revealed).
-  - Opposing side's treachery_set_aside (visible — public knowledge).
-  - Opposing side's command_deck composition (visible — public).
+  - Opposing side's Treachery selection and holdings (1.4.3).
   - With Hidden Mats option: Lord mats' Forces, Vassals, Capabilities.
 
 This module produces a deep copy with opponent secrets redacted to
@@ -24,6 +23,7 @@ from __future__ import annotations
 import copy
 from typing import Any
 
+from ..card_data import TREACHERY_CARDS
 from ..visibility import friars_active
 
 
@@ -43,17 +43,36 @@ def _conceal_feed_details(fpd: dict, lords: dict, side: str) -> None:
         fpd["feed_decisions"] = owned
 
 
+def _conceal_queued_draw(record: dict, state: dict, side: str) -> dict:
+    queue = state.get("aow_resolution") or {}
+    remaining = queue.get("remaining", []) if queue.get("side") == side else []
+    changes = record.get("state_changes") or {}
+    drawn = changes.get("drew")
+    if not isinstance(drawn, list) or not remaining:
+        return record
+    return {**record,
+            "state_changes": {**changes, "drew": drawn[:-len(remaining)] + ["<unrevealed>"] * len(remaining)},
+            "rolls": [r for r in record.get("rolls", []) if r.get("context") != "aow_draw_index"]}
+
+
 def filter_action_result(result: dict, state: dict, side: str, *, hidden_mats: bool) -> dict:
     """Project the action receipt without altering the authoritative history."""
     if "rolls" in result:
         result = {**result, "rolls": conceal_shuffle_rolls(result["rolls"])}
+    result = _conceal_queued_draw(result, state, side)
     changes = result.get("state_changes")
-    fpd = changes.get("fpd") if isinstance(changes, dict) else None
+    if not isinstance(changes, dict):
+        return result
+    if "aow_side" in changes:
+        changes = {**changes}
+        if changes.pop("aow_side") != side:
+            changes.pop("aow_deployment", None)
+    fpd = changes.get("fpd")
     if hidden_mats and isinstance(fpd, dict):
         fpd = copy.deepcopy(fpd)
         _conceal_feed_details(fpd, state["lords"], side)
-        result = {**result, "state_changes": {**changes, "fpd": fpd}}
-    return result
+        changes = {**changes, "fpd": fpd}
+    return {**result, "state_changes": changes}
 
 
 def hide_for_side(state: dict[str, Any], visible_side: str,
@@ -93,6 +112,10 @@ def hide_for_side(state: dict[str, Any], visible_side: str,
         deck = s["decks"][opp]
         deck["aow_deck"] = [f"<hidden:{len(deck.get('aow_deck', []))}>"] if deck.get("aow_deck") else []
         deck["aow_held"] = [f"<hidden:{len(deck.get('aow_held', []))}>"] if deck.get("aow_held") else []
+        set_aside = deck.get("treachery_set_aside", [])
+        deck["treachery_set_aside"] = [f"<hidden:{len(set_aside)}>"] if set_aside else []
+        deck["command_deck"] = ["<hidden:treachery>" if card in TREACHERY_CARDS else card
+                                for card in deck.get("command_deck", [])]
         # Plan stack is face-down until revealed; redact card identities,
         # keep position count.
     plans_to_hide = {opp}
@@ -109,7 +132,9 @@ def hide_for_side(state: dict[str, Any], visible_side: str,
 
     # Plans remain secret in the transcript too. Draw history can identify
     # held Events, and RNG seeds would allow reconstructing future draws.
-    for entry in s.get("history", []):
+    latest_draw = None
+    history = s.get("history", [])
+    for i, entry in enumerate(history):
         # Shuffle indices reconstruct the concealed order from the submitted
         # cards. Keep them in the operator replay log only.
         entry["rolls"] = conceal_shuffle_rolls(entry.get("rolls", []))
@@ -118,8 +143,18 @@ def hide_for_side(state: dict[str, Any], visible_side: str,
         # even in an action owned by the OTHER side (Exiles). Public effects
         # remain visible; hands already show their owner's private draws.
         changes = entry.get("state_changes")
+        if entry.get("side") == visible_side and entry.get("action") == "levy_aow_draw":
+            latest_draw = i
         if hidden_mats and entry.get("action") == "end_ransom":
             entry.get("args", {}).pop("ransom_decisions", None)
+        if entry.get("side") == opp and entry.get("action") == "levy_resolve_event":
+            effect_args = entry.get("args", {}).get("effect_args", {})
+            if "treachery_card" in effect_args:
+                effect_args.pop("treachery_card")
+            effect = (changes or {}).get("effect", {})
+            for key in ("added", "treachery_set_aside"):
+                if isinstance(effect.get(key), str):
+                    effect[key] = "<hidden:treachery>"
         if entry.get("side") == opp and entry.get("action") == "end_reset":
             # Immediate victory can stop a submitted batch before later
             # Holds are discarded. Only completed elections become public.
@@ -131,6 +166,7 @@ def hide_for_side(state: dict[str, Any], visible_side: str,
         if isinstance(changes, dict) and entry.get("action") != "levy_aow_draw":
             changes.pop("deployment", None)
             changes.pop("aow_deployment", None)
+            changes.pop("aow_side", None)
         if entry.get("side") == opp and entry.get("action") in (
                 "plan_add_card", "levy_aow_draw"):
             entry["args"] = {}
@@ -144,6 +180,8 @@ def hide_for_side(state: dict[str, Any], visible_side: str,
                 public = ("feed", "pay_pending", "disband", "empty_lords_disbanded",
                           "feed_decisions")
                 entry["state_changes"]["fpd"] = {k: fpd[k] for k in public if k in fpd}
+    if latest_draw is not None:
+        history[latest_draw] = _conceal_queued_draw(history[latest_draw], state, visible_side)
     s.get("meta", {}).pop("rng_seed", None)
     s.get("meta", {}).pop("rng_advance", None)
     s.get("meta", {}).pop("post_battle_withdraw", None)
@@ -153,6 +191,12 @@ def hide_for_side(state: dict[str, Any], visible_side: str,
         if resolution.get("side") == opp:
             s.pop("aow_resolution", None)
         else:
+            if resolution.get("remaining"):
+                # The actual deck membership would identify the queued card
+                # by elimination before it is revealed.
+                own = s["decks"][visible_side]
+                count = len(own.get("aow_deck", []))
+                own["aow_deck"] = [f"<hidden:{count}>"] if count else []
             for key in ("remaining", "queue"):
                 if isinstance(resolution.get(key), list):
                     resolution[key] = ["<unrevealed>" for _ in resolution[key]]

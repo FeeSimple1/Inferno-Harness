@@ -189,9 +189,8 @@ class TestWarEventShifts:
 # =====================================================================
 class TestExistingNumericAnchors:
     def test_F22_remove_three_assets_cap(self):
-        s = load_scenario("A", 1)
-        lid = "firenze"
-        s["lords"][lid].setdefault("forces", {})["Ritter"] = 1
+        s = load_scenario("D", 1)
+        lid = "astimberg"
         s["lords"][lid]["assets"] = {"Coin": 5}
         r = ce.apply_event_effect(s, "F22", "guelph",
                                   {"target_lord_id": lid, "mode": "remove_assets",
@@ -200,9 +199,8 @@ class TestExistingNumericAnchors:
         assert s["lords"][lid]["assets"]["Coin"] == 2  # 5 - 3
 
     def test_F22_remove_more_than_three_rejected(self):
-        s = load_scenario("A", 1)
-        lid = "firenze"
-        s["lords"][lid].setdefault("forces", {})["Ritter"] = 1
+        s = load_scenario("D", 1)
+        lid = "astimberg"
         s["lords"][lid]["assets"] = {"Coin": 5}
         r = ce.apply_event_effect(s, "F22", "guelph",
                                   {"target_lord_id": lid, "mode": "remove_assets",

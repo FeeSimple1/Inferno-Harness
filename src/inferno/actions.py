@@ -416,13 +416,21 @@ def _continue_aow_draw(state, rng) -> list:
             notes.append(f"{cid} -> {kind} ({card['event_name']})")
         else:
             options = ce.immediate_event_options(state, cid, side)
-            if options:
-                state.setdefault("pending", []).append({"type": "event_resolution", "side": side,
-                                                         "card_id": cid, "name": card["event_name"]})
+            needs_manfredi_check = cid == "F22" and ce.hidden_manfredi_targets(state)
+            # Keep a private card choice out of automatic deployment receipts.
+            private_treachery = options and "treachery_card" in options[0]
+            if needs_manfredi_check or (
+                    options and (len(options) > 1 or private_treachery
+                                 or cid in ("F2", "S2", "F17", "F22"))):
+                pending = {"type": "event_resolution", "side": side,
+                           "card_id": cid, "name": card["event_name"]}
+                if cid in ("F2", "S2"):
+                    pending["remaining_choices"] = ce._betrayals_sieges(state, side)
+                state.setdefault("pending", []).append(pending)
                 notes.append({"card_id": cid, "decision_required": True})
                 break
             effect = ({"applied": False, "reason": "No eligible effect or target."} if options == []
-                      else ce.apply_event_effect(state, cid, side, {}, rng))
+                      else ce.apply_event_effect(state, cid, side, options[0] if options else {}, rng))
             if effect.get("manual"):
                 state.setdefault("pending", []).append({"type": "event_resolution", "side": side,
                                                          "card_id": cid, "name": card["event_name"],
@@ -437,7 +445,12 @@ def _continue_aow_draw(state, rng) -> list:
 
 
 def _h_levy_resolve_event(state, side, args, rng) -> dict[str, Any]:
-    """Resolve the current immediate Event before consuming it or drawing on."""
+    """Resolve the current immediate Event before consuming it or drawing on.
+
+    Select the card's effect_args from the action menu. Betrayals uses
+    mode="revolt" or mode="treachery" with a selected treachery_card, one
+    election per besieged Stronghold.
+    """
     from . import card_effects as ce
     _require_step(state, "3.1")
     pending = next((p for p in state.get("pending", [])
@@ -448,12 +461,43 @@ def _h_levy_resolve_event(state, side, args, rng) -> dict[str, Any]:
     effect_args = args.get("effect_args", {})
     if not isinstance(effect_args, dict):
         raise IllegalAction("MALFORMED", "effect_args must be an object.", "3.1.3")
-    if ce.immediate_event_options(state, cid, side) == []:
+    if "targets" in effect_args:
+        targets = effect_args["targets"]
+        if (not isinstance(targets, list) or any(not isinstance(lid, str) for lid in targets)
+                or len(set(targets)) != len(targets)):
+            raise IllegalAction("MALFORMED", "targets must be a list of distinct Lord IDs.", "3.1.3")
+    if "assets_to_remove" in effect_args:
+        assets = effect_args["assets_to_remove"]
+        if not isinstance(assets, dict) or any(type(count) is not int for count in assets.values()):
+            raise IllegalAction("MALFORMED", "assets_to_remove must map Assets to integer counts.", "3.1.3")
+        if cid == "F22" and assets and all(key in ce.MANFREDI_ASSETS for key in assets):
+            effect_args = {**effect_args, "assets_to_remove": {
+                key: count for key, count in assets.items() if count}}
+    options = ce.pending_event_options(state, pending)
+    remaining = pending.get("remaining_choices")
+    if options == [] and not effect_args:
         result = {"applied": False, "reason": "No eligible effect or target."}
     else:
-        result = ce.apply_event_effect(state, cid, side, effect_args, rng)
+        if options is not None and effect_args not in options:
+            # Older callers sometimes omit the mode or an unambiguous
+            # companion argument. Accept an explicitly selected subset only
+            # when it identifies exactly one complete effect.
+            matches = [option for option in options if effect_args and all(
+                key in option and (
+                    set(option[key]) == set(value) if key == "targets" else option[key] == value)
+                for key, value in effect_args.items())]
+            if len(matches) != 1:
+                raise IllegalAction("EVENT_UNRESOLVED", "Choose a listed effect for this Event.", "3.1.3")
+            effect_args = matches[0]
+        result = (ce._apply_betrayals_choice(state, side, effect_args, rng) if remaining is not None
+                  else ce.apply_event_effect(state, cid, side, effect_args, rng))
         if result.get("manual") or not result.get("applied"):
             raise IllegalAction("EVENT_UNRESOLVED", result.get("note") or result.get("reason") or "Event needs a valid choice.", "3.1.3")
+    if remaining is not None and remaining > 1:
+        pending["remaining_choices"] = remaining - 1
+        return {"state_changes": {"event": cid, "effect": result,
+                                  "remaining_choices": remaining - 1},
+                "rule_citation": "3.1.3 / 1.4"}
     state["pending"].remove(pending)
     state["decks"][side]["aow_discard"].append(cid)
     notes = _continue_aow_draw(state, rng)
@@ -723,6 +767,7 @@ def _disband_comune(state, lid: str) -> None:
     _place_service(state, lid, None)
     _place_cylinder(state, lid, None)
     state["decks"][lord["side"]]["aow_deck"].extend(lord.get("capabilities", []))
+    vs.return_turncoats(state, lid)
     lord.update(status="in_levy_pool", location=None, capabilities=[],
                 forces={}, routed_units={}, assets={}, vassals=[], flags={})
     for name in former_locales:
@@ -805,6 +850,7 @@ def _disband_beyond_service_limit(state, lid: str, *, disband_attached: bool = T
     lord["forces"] = {}
     lord["routed_units"] = {}
     lord["assets"] = {}
+    vs.return_turncoats(state, lid)
     lord["vassals"] = []
     lord["location"] = None
     # Clear transient flags (in_stronghold, moved_fought, ...) so a Podesta that
@@ -893,6 +939,7 @@ def _disband_at_service_limit(state, lid: str, levy_box: int) -> None:
     lord["forces"] = {}
     lord["routed_units"] = {}
     lord["assets"] = {}
+    vs.return_turncoats(state, lid)
     lord["vassals"] = []
     lord["location"] = None
     # Clear transient flags (bypassing/in_stronghold/moved_fought ...) — an
@@ -932,6 +979,7 @@ def _h_cmd_resolve_revolt(state, side, args, rng) -> dict[str, Any]:
         state.setdefault("pending_exiles", []).append(res["exiles_required"])
     drained = _revolt.drain_revolts(state)
     if state.get("aow_resolution"):
+        drained["aow_side"] = state["aow_resolution"]["side"]
         drained["aow_deployment"] = _continue_aow_draw(state, rng)
     return _resume_post_battle_arrival(state, {
         "state_changes": {"resolved_revolt": res.get("switch") or res.get("status"), **drained},
@@ -962,6 +1010,7 @@ def _h_cmd_resolve_exiles(state, side, args, rng) -> dict[str, Any]:
         remaining = 0
     changes = {"exiles": result, "remaining_shifts": remaining}
     if state.get("aow_resolution"):
+        changes["aow_side"] = state["aow_resolution"]["side"]
         changes["aow_deployment"] = _continue_aow_draw(state, rng)
     return _resume_post_battle_arrival(state, {"state_changes": changes, "rule_citation": "1.4.4"})
 
@@ -1098,18 +1147,7 @@ def _h_levy_muster_lord(state, side, args, rng) -> dict[str, Any]:
             base = sd.LORDS[canonical]
             target_lord["forces"] = copy.deepcopy(base.get("forces", {}))
             target_lord["assets"] = copy.deepcopy(base.get("assets", {}))
-            target_lord["vassals"] = []
-            for v in base.get("vassals", []):
-                target_lord["vassals"].append({
-                    "name": v["name"], "seat": v.get("seat"), "seats": v.get("seats", []),
-                    "service_rating": v.get("service_rating", 0),
-                    "forces": copy.deepcopy(v.get("forces", {})),
-                    "special": v.get("special", False),
-                    "muster_die": v.get("muster_die"),
-                    "on_mat": not v.get("special", False),
-                    "ready": not v.get("special", False),
-                    "service_box": None,
-                })
+            target_lord["vassals"] = vs.muster_roster(state, tlid)
         # Wire into locale
         loc = state["locales"].get(target_seat)
         if loc and tlid not in loc["lords_present"]:
@@ -4605,122 +4643,27 @@ def _h_cmd_treachery_revolt(state, side, args, rng) -> dict[str, Any]:
 
 
 def _h_cmd_treachery_bribe(state, side, args, rng) -> dict[str, Any]:
-    """4.7.6 Treachery-Bribe. Roll 1d6 > Vassal's Service Rating = success.
-
-    v1.6 full implementation:
-      Path-A (Mustered): target an Enemy Vassal at the same/adjacent
-        Locale, parent Lord Mustered. (Existing.)
-      Path-B (Unmustered, SMOKE-Inferno-031): target an Unmustered Vassal
-        whose Vassal Seat is at the same/adjacent Locale. Parent Lord may
-        be removed (4.4.5) or not yet on the map. Vassals of REMOVED
-        Lords count as Unmustered per Tip.
-
-    Hidden Mats interaction (SMOKE-Inferno-032): if state.meta.hidden_mats
-    is set, an invalid Path-A target falls through to Path-B silently
-    rather than raising.
-
-    Special Vassals (Carroccio/Sestiere/Terzo/Altopascio) cannot be Bribed.
-    """
+    """4.7.6 Treachery-Bribe. Roll above a regular Vassal's Service Rating."""
     lid = _require_active_lord(state, side, args.get("lord_id"))
     lord = state["lords"][lid]
     target_lord_id = args.get("target_lord_id")
     vassal_name = args.get("vassal")
-    if not vassal_name:
+    if not isinstance(vassal_name, str) or not vassal_name:
         raise IllegalAction("MISSING_VASSAL", "Bribe requires vassal name.", "4.7.6")
     if lord["assets"].get("Coin", 0) < 1:
         raise IllegalAction("NO_COIN", "Bribe requires at least 1 Coin.", "4.7.6")
-    enemy = "ghibelline" if side == "guelph" else "guelph"
-    cur = lord.get("location")
-
-    # PATH-A: Mustered target
-    target_lord = state["lords"].get(target_lord_id) if target_lord_id else None
-    target_vassal = None
-    path = None
-    if target_lord and target_lord["status"] == "mustered":
-        if target_lord.get("side") == enemy:
-            target_vassal = next((v for v in target_lord.get("vassals", [])
-                                  if v["name"] == vassal_name and v.get("on_mat")), None)
-            if target_vassal:
-                # Adjacency check based on Mustered Vassal's parent Lord's Locale
-                target_loc = target_lord.get("location")
-                adj_names = [n for n, _ in sd.adjacent_to(cur)] if cur else []
-                if target_loc == cur or target_loc in adj_names:
-                    path = "A"
-
-    # PATH-B: Unmustered Vassal via Seat (if Path-A didn't match)
-    if path is None:
-        # Find the Vassal in the static Lords data
-        found_parent_canonical = None
-        found_v = None
-        for canonical, lord_data in sd.LORDS.items():
-            for v in lord_data.get("vassals", []):
-                if v.get("name") == vassal_name and not v.get("special"):
-                    found_parent_canonical = canonical
-                    found_v = v
-                    break
-            if found_v:
-                break
-        if found_v is None:
-            raise IllegalAction("UNKNOWN_VASSAL",
-                                f"No non-Special Vassal named {vassal_name!r} in any Lord roster.",
-                                "4.7.6")
-        # Check parent's current state — Vassal Unmustered iff parent's vassals
-        # entry has on_mat=False OR parent is removed/in_levy_pool.
-        parent_lid = sd.LORD_IDS.get(found_parent_canonical)
-        if parent_lid is None:
-            raise IllegalAction("UNKNOWN_LORD",
-                                f"Parent of {vassal_name} not found.", "4.7.6")
-        parent = state["lords"][parent_lid]
-        if parent["side"] != enemy:
-            raise IllegalAction("FRIENDLY_VASSAL",
-                                f"{vassal_name} belongs to friendly side.", "4.7.6")
-        # Vassal Seat at/adjacent to Active Lord
-        seats = found_v.get("seats") or ([found_v.get("seat")] if found_v.get("seat") else [])
-        seats = [s for s in seats if s]
-        if not seats:
-            raise IllegalAction("NO_VASSAL_SEAT",
-                                f"{vassal_name} has no Vassal Seat (Special Vassals can't be Bribed).",
-                                "4.7.6")
-        adj_names = [n for n, _ in sd.adjacent_to(cur)] if cur else []
-        eligible_seat = any((s == cur or s in adj_names) for s in seats)
-        if not eligible_seat:
-            raise IllegalAction(
-                "NO_ELIGIBLE_SEAT",
-                f"{vassal_name}'s Seats {seats} not at/adjacent to {cur}.",
-                "4.7.6",
-            )
-        # If parent is Mustered, check that this Vassal is NOT already on mat
-        if parent["status"] == "mustered":
-            on_mat = next((v for v in parent.get("vassals", [])
-                           if v.get("name") == vassal_name and v.get("on_mat")), None)
-            if on_mat:
-                # Mustered — Path-A applies instead; fall back to Path-A
-                target_vassal = on_mat
-                target_lord = parent
-                target_lord_id = parent_lid
-                path = "A"
-            else:
-                target_vassal = next((v for v in parent.get("vassals", [])
-                                      if v["name"] == vassal_name), None)
-                if target_vassal:
-                    path = "B_mustered_parent"
-        else:
-            target_vassal = found_v
-            path = "B_unmustered_parent"
-        if target_vassal is None:
-            raise IllegalAction("UNKNOWN_VASSAL",
-                                f"Vassal {vassal_name} not found on parent {parent_lid}.",
-                                "4.7.6")
-
-    if target_vassal.get("special"):
-        raise IllegalAction("SPECIAL_VASSAL",
-                            "Special Vassals (Carroccio/Sestiere/Terzo/Altopascio) cannot be Bribed.",
+    target = vs.bribe_targets(state, lid).get(vassal_name)
+    if target is None or target_lord_id not in (None, target[0]):
+        raise IllegalAction("BAD_BRIBE_TARGET",
+                            "Choose a regular Enemy Vassal with a nearby Mustered holder or eligible Seat.",
                             "4.7.6")
+    target_lord_id, target_vassal, path = target
+    target_lord = state["lords"][target_lord_id]
 
     # Roll (S18 Cortona: auto-success for 0 Coin if target is/at Cortona)
     sr = target_vassal.get("service_rating", 0)
-    target_loc = (target_lord.get("location") if path == "A" and target_lord else None)
-    cortona_free = ((cur == "Cortona" or target_loc == "Cortona")
+    target_loc = target_lord.get("location") if path == "A" else None
+    cortona_free = ((lord.get("location") == "Cortona" or target_loc == "Cortona")
                     and _peek_cortona_free(state, side) is not None)
     if cortona_free:
         _consume_cortona_free(state, side)
@@ -4731,35 +4674,48 @@ def _h_cmd_treachery_bribe(state, side, args, rng) -> dict[str, Any]:
         r = rng.roll(f"bribe_{target_vassal['name']}")
         success = r.value > sr
         coin_paid = 1
+    transferred = {}
+    disbanded = None
     if success:
         lord["assets"]["Coin"] -= coin_paid
-        # Move Vassal forces (only if on_mat with surviving forces)
+        # Move the single marker, dropping any Ready shadow left by an
+        # older Seat Bribe. Its printed Forces remain on the marker.
+        for other in state["lords"].values():
+            roster = other.get("vassals", [])
+            roster[:] = [v for v in roster if v["name"] != vassal_name]
+        turncoat = copy.deepcopy(target_vassal)
+        turncoat.update(turncoat=True, on_mat=True, ready=False, service_box=None)
+        turncoat.pop("unready", None)
+        lord.setdefault("vassals", []).append(turncoat)
         if path == "A":
-            target_lord["vassals"] = [v for v in target_lord["vassals"] if v["name"] != vassal_name]
-            for unit, count in target_vassal.get("forces", {}).items():
-                lord["forces"][unit] = lord["forces"].get(unit, 0) + count
-            target_vassal["turncoat"] = True
-            target_vassal["ready"] = False
-            target_vassal["service_box"] = None  # 4.7.6: Turncoats ignore Service.
-            lord.setdefault("vassals", []).append(target_vassal)
-            if sum(target_lord.get("forces", {}).values()) == 0:
-                _disband_beyond_service_limit(state, target_lord_id)
+            for unit, count in turncoat.get("forces", {}).items():
+                # Move surviving pieces from the donor, preserving any
+                # Routed status. The marker's printed counts are ceilings.
+                for pool in ("forces", "routed_units"):
+                    source = target_lord.get(pool, {})
+                    moved = min(count, source.get(unit, 0))
+                    if not moved:
+                        continue
+                    source[unit] -= moved
+                    if not source[unit]:
+                        del source[unit]
+                    dest = lord.setdefault(pool, {})
+                    dest[unit] = dest.get(unit, 0) + moved
+                    transferred[unit] = transferred.get(unit, 0) + moved
+                    count -= moved
+            if transferred and _check_disband_on_zero_forces(state, target_lord_id):
+                disbanded = target_lord_id
         else:
-            # Path-B: Move Vassal to active Lord's mat. Force values from static.
-            v_copy = copy.deepcopy(target_vassal)
-            v_copy["turncoat"] = True
-            v_copy["on_mat"] = True
-            v_copy["ready"] = False
-            v_copy["service_box"] = None
-            lord.setdefault("vassals", []).append(v_copy)
-            for unit, count in v_copy.get("forces", {}).items():
+            # An Unmustered Vassal draws his printed Forces from the pool.
+            for unit, count in turncoat.get("forces", {}).items():
                 lord["forces"][unit] = lord["forces"].get(unit, 0) + count
     return _finish_card_with({
         "treachery_bribe": {
             "target_lord": target_lord_id, "vassal": vassal_name,
             "path": path, "service_rating": sr,
             "die": (r.value if r is not None else None), "success": success,
-            "cortona_free": cortona_free,
+            "cortona_free": cortona_free, "forces_transferred": transferred,
+            "disbanded": disbanded,
         },
     }, state, side, reason="treachery_card_ends", citation="4.7.6")
 
@@ -6155,9 +6111,7 @@ def _h_cta_commander_arms(state, side, args, rng) -> dict[str, Any]:
                 base = sd.LORDS[canonical]
                 commander["forces"] = copy.deepcopy(base.get("forces", {}))
                 commander["assets"] = copy.deepcopy(base.get("assets", {}))
-                # Vassals re-initialized
-                from .scenarios import _init_vassals_for
-                commander["vassals"] = _init_vassals_for(base)
+                commander["vassals"] = vs.muster_roster(state, commander_id)
             # Wire into Locale
             loc = state["locales"][LEADING_CITY[side]]
             if commander_id not in loc["lords_present"]:
@@ -6339,8 +6293,7 @@ def _h_cta_allies(state, side, args, rng) -> dict[str, Any]:
         base = sd.LORDS.get(canonical, {})
         tlord["forces"] = copy.deepcopy(base.get("forces", {}))
         tlord["assets"] = copy.deepcopy(base.get("assets", {}))
-        from .scenarios import _init_vassals_for
-        tlord["vassals"] = _init_vassals_for(base)
+        tlord["vassals"] = vs.muster_roster(state, target)
         loc = state["locales"][seat]
         if target not in loc["lords_present"]:
             loc["lords_present"].append(target)
