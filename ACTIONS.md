@@ -172,13 +172,13 @@ automatically in the post-Battle step, with player choices available.
 `post_battle_decisions` arg (a FIFO list, same shape as `scripted_decisions`)
 with these decision types:
 
-- `post_battle_withdraw` — a losing field defender eligible to Withdraw may
-  choose `"withdraw"` into the Friendly Stronghold, `"remove"` per 4.4.5, or
+- `post_battle_withdraw` — an eligible losing field defender or Sortieing Lord
+  may choose `"withdraw"` into the Friendly Stronghold, `"remove"` per 4.4.5, or
   `"retreat"` when a destination is available (4.4.3 / 11.2). The default is
   `"withdraw"` for Lords in `meta.post_battle_withdraw`, otherwise
   `"retreat"` when possible or `"remove"`.
-- `post_battle_fate` — a losing defender ineligible to Withdraw may choose
-  `"retreat"` (default) or `"remove"`. If Retreat is blocked, Removal is
+- `post_battle_fate` — a losing defender or Sortieing Lord ineligible to Withdraw
+  may choose `"retreat"` (default) or `"remove"`. If Retreat is blocked, Removal is
   automatic. This includes losing besiegers in a Sally.
   When a Lieutenant or Lower Lord chooses movement, the partner can follow
   that movement or be removed. `requires_partner_removal` identifies choices

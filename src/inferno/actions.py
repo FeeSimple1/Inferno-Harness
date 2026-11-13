@@ -3354,12 +3354,16 @@ def _h_approach_response(state, side, args, rng) -> dict[str, Any]:
         }
 
     # All responses gathered. Determine whether Battle resolves.
-    result = _finalize_approach(state, locale_name, info["approaching_lord"], side)
+    result = _finalize_approach(
+        state, locale_name, info["approaching_lord"], side,
+        is_sortie=info.get("approached_via") == "sortie",
+    )
     result["state_changes"].update(response_changes)
     return result
 
 
-def _finalize_approach(state, locale_name, approaching_lord, defender_side) -> dict[str, Any]:
+def _finalize_approach(state, locale_name, approaching_lord, defender_side,
+                       *, is_sortie: bool) -> dict[str, Any]:
     """All Inactive Lords have responded. If any Stood, run Battle."""
     loc = state["locales"][locale_name]
     # Drain any operator-supplied Battle decisions for this Locale (popped on
@@ -3391,10 +3395,9 @@ def _finalize_approach(state, locale_name, approaching_lord, defender_side) -> d
         return _maybe_end_card({"approach_resolved": "no_battle", "locale": locale_name},
                                state, atk_side, citation="4.3.4")
 
-    # SMOKE-Inferno-033: Relief Sally per 4.4.1 — if attacking side has
-    # Lord(s) Besieged inside at this Locale, those Besieged Lords join
-    # the attack for NO added Command actions.
-    relief_sallying = [
+    # SMOKE-Inferno-033: Besieged Lords can join an Approach as a Relief Sally
+    # (4.4.1). Lords left inside during a Sortie are Bypassed and stay inside.
+    relief_sallying = [] if is_sortie else [
         oid for oid in loc.get("lords_present", [])
         if oid != approaching_lord
         and state["lords"][oid]["side"] == attacker_side
@@ -3454,7 +3457,7 @@ def _finalize_approach(state, locale_name, approaching_lord, defender_side) -> d
     # Process post-Battle outcomes per 4.4.3 - 4.4.5.
     _apply_post_battle(state, result, attackers, defenders, battle_locale=locale_name,
                        decisions=_post_battle_scripted,
-                       callback=state.get("battle_callback"))
+                       callback=state.get("battle_callback"), is_sortie=is_sortie)
     state["meta"].pop("approach_breadcrumb", None)
     atk_side = state["meta"].pop("approach_attacker_side", attacker_side)
     # 4.4.6 ends Command actions. The arrival decision under 4.3.5 still
@@ -3601,7 +3604,7 @@ def _retreat_candidates(state, lid, battle_locale, loser_side,
 
     def dest_ok(name):
         loc = state["locales"].get(name)
-        if loc is None or loc.get("ruins"):
+        if loc is None:
             return False
         if loc.get("type") == "outpost" and name not in state["lords"][lid].get("seats", []):
             return False
@@ -3610,9 +3613,10 @@ def _retreat_candidates(state, lid, battle_locale, loser_side,
             if (ol and ol["side"] == enemy and ol.get("status") == "mustered"
                     and not ol.get("flags", {}).get("in_stronghold")):
                 return False
-        if loc.get("type") in _STRONGHOLD_TYPES and not _is_friendly_stronghold(state, loc, loser_side):
-            if not loc.get("siege") and not loc.get("bypass"):
-                return False
+        if (loc.get("type") in _STRONGHOLD_TYPES and not loc.get("ruins")
+                and not _is_friendly_stronghold(state, loc, loser_side)
+                and not loc.get("siege") and not loc.get("bypass")):
+            return False
         return True
 
     if is_marching_attacker:
@@ -3669,21 +3673,21 @@ def _withdraw_capacity(state, battle_locale) -> int:
 def _apply_post_battle(state, result, attackers: list[str], defenders: list[str],
                       battle_locale: str | None = None,
                       decisions: list[dict] | None = None,
-                      callback=None) -> None:
+                      callback=None, *, is_sortie: bool = False) -> None:
     """4.4.3 - 4.4.5 post-Battle bookkeeping: Spoils + Service shifts +
     Loss rolls (with Knights' Quarter) + Lord removal + Retreat relocation.
 
     Conceded side gets the favourable Spoils + Service treatment.
 
-    Losing defenders choose among Removal, Retreat and eligible Withdrawal
-    (4.4.3 / 11.2). These elections and Retreat destinations flow through a
-    BattleDecisionContext built from `decisions` (FIFO scripted list) and
-    `callback`. By default Lords Retreat to the first legal Locale or are
-    Removed if blocked, with eligible Withdrawal opt-in via meta.post_battle_withdraw.
+    Losing defenders and Sortieing attackers choose among Removal, Retreat and
+    eligible Withdrawal (4.3.6 / 4.4.3). A BattleDecisionContext uses the
+    scripted `decisions` or `callback` for these choices and Retreat routes.
+    By default Lords Retreat to the first legal Locale or are Removed if
+    blocked. Eligible Lords in meta.post_battle_withdraw default to Withdrawal.
     """
-    # Sally has no Approach Way. Losing besiegers can Retreat or be Removed.
+    # Sally and Sortie have no Approach Way.
     is_sally = result.get("mode") == "sally"
-    _bc = {} if is_sally else state["meta"].get("approach_breadcrumb") or {}
+    _bc = {} if is_sally or is_sortie else state["meta"].get("approach_breadcrumb") or {}
     _approached_from = _bc.get("approached_from")
     _approached_via = _bc.get("approached_via")
     from .battle import (
@@ -3705,6 +3709,8 @@ def _apply_post_battle(state, result, attackers: list[str], defenders: list[str]
     rolls_before = rng.advance_count
 
     loser = result["loser"]
+    can_choose_fate = loser == "defender" or is_sortie
+    is_marching_attacker = not is_sally and not can_choose_fate
     conceded = result.get("conceded") == loser
     losers_ids = attackers if loser == "attacker" else defenders
     winners_ids = defenders if loser == "attacker" else attackers
@@ -3747,10 +3753,9 @@ def _apply_post_battle(state, result, attackers: list[str], defenders: list[str]
         _disband_beyond_service_limit(state, lid, disband_attached=False)
         if lid not in combat_removed:
             combat_removed.append(lid)
-    # 4.4.3 / Battle&Storm 11.2: a losing Lord Defending at a Friendly Stronghold
-    # at the Battle Locale MAY Withdraw into it (<= Stronghold Size) instead of
-    # Retreating ("owner chooses for each"). Opt-in: the consumer lists lord_ids
-    # in meta.post_battle_withdraw; default (absent) = Retreat, unchanged.
+    # 4.3.6 / 4.4.3: a losing defender or Sortieing Lord at a Friendly
+    # Stronghold may Withdraw into it up to its Size. The saved preference
+    # meta.post_battle_withdraw can opt into Withdrawal.
     _any_retreat_off = False  # set when a loser actually relocates off battle_locale
     withdraw_elected = (set() if is_sally else
                         set(state["meta"].pop("post_battle_withdraw", []) or []))
@@ -3768,7 +3773,6 @@ def _apply_post_battle(state, result, attackers: list[str], defenders: list[str]
     _retreated_for_shift: list[str] = []
     retreat_spoils: dict[tuple[str, str], list[str]] = {}
     paired_movers: set[str] = set()
-    is_marching_attacker = not is_sally and loser == "attacker"
     # 1.5.1: an intact Commander/Comune fights on separate mats but makes
     # one movement election. Use the Commander even if the Comune is first
     # in the Battle roster. Both cylinders count for Stronghold capacity.
@@ -3833,16 +3837,16 @@ def _apply_post_battle(state, result, attackers: list[str], defenders: list[str]
                     state, partner, battle_locale, lord["side"],
                     is_marching_attacker, _approached_from, _approached_via)
                 shared_candidates = [dest for dest in candidates if dest in companion_candidates]
-                if loser == "attacker":
+                if not can_choose_fate:
                     candidates = shared_candidates
             eligible_withdraw = (
-                loser == "defender" and not is_sally and _wd_count + len(group) <= _wd_cap
+                can_choose_fate and not is_sally and _wd_count + len(group) <= _wd_cap
                 and _can_withdraw_into_stronghold(state, lid, battle_locale)
             )
             room_for_pair = _wd_count + 2 <= _wd_cap
             fate = "retreat" if candidates else "remove"
             decision_type = "post_battle_withdraw" if eligible_withdraw else "post_battle_fate"
-            if loser == "defender" and (candidates or eligible_withdraw):
+            if can_choose_fate and (candidates or eligible_withdraw):
                 options = ["retreat"] if candidates else []
                 if eligible_withdraw:
                     options.append("withdraw")
@@ -3894,7 +3898,7 @@ def _apply_post_battle(state, result, attackers: list[str], defenders: list[str]
 
             if partner is not None:
                 companion_fate = fate
-                if loser == "defender":
+                if can_choose_fate:
                     can_follow = room_for_pair if fate == "withdraw" else dest in shared_candidates
                     choices = [fate, "remove"] if can_follow else ["remove"]
                     companion_fate = bdc.decide_optional(
@@ -4432,20 +4436,27 @@ def _apply_sack(state, locale_name, side, storm_result, rng, *, defer_award=Fals
     return spoils_log
 
 
+def _sally_besiegers(state, side, lid) -> list[str]:
+    """Validate a Sally and return the Mustered Besiegers outside."""
+    lord = state["lords"][lid]
+    locale_name = lord.get("location")
+    loc = state["locales"].get(locale_name)
+    enemy_side = "ghibelline" if side == "guelph" else "guelph"
+    if (not lord.get("flags", {}).get("in_stronghold") or not loc
+            or not any(marker.get("side") == enemy_side for marker in loc.get("siege") or [])):
+        raise IllegalAction("NOT_BESIEGED", f"{lid} not Besieged.", "4.5.3")
+    besiegers = _outside_lords(state, locale_name, enemy_side)
+    if not besiegers:
+        raise IllegalAction("NO_BESIEGERS", f"No Besieging Lords at {locale_name}.", "4.5.3")
+    return besiegers
+
+
 def _h_cmd_sally(state, side, args, rng) -> dict[str, Any]:
     """4.5.3 SALLY (1 action; ends card). Besieged Lord Sallies."""
     lid = _require_active_lord(state, side, args.get("lord_id"))
-    lord = state["lords"][lid]
-    if not lord.get("flags", {}).get("in_stronghold"):
-        raise IllegalAction("NOT_BESIEGED", f"{lid} not Besieged.", "4.5.3")
-    locale_name = lord.get("location")
+    besiegers = _sally_besiegers(state, side, lid)
+    locale_name = state["lords"][lid]["location"]
     loc = state["locales"][locale_name]
-    enemy_side = "ghibelline" if side == "guelph" else "guelph"
-    besiegers = [oid for oid in loc.get("lords_present", [])
-                 if state["lords"][oid]["side"] == enemy_side
-                 and not state["lords"][oid].get("flags", {}).get("in_stronghold")]
-    if not besiegers:
-        raise IllegalAction("NO_BESIEGERS", f"No Besieging Lords at {locale_name}.", "4.5.3")
     # SMOKE-Inferno-056: Sally uses the Storm-style Array with Battle initiative
     # (Battle&Storm 2.3) — the Besiegers defend behind Siegeworks-as-Walls and
     # the Sallying side gets no Walls/Garrison (was a plain resolve_battle).

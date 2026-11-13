@@ -1086,15 +1086,13 @@ def _enum_command_phase(state, side) -> list[dict[str, Any]]:
     except (KeyError, AttributeError, TypeError):
         pass
     # SMOKE-Inferno-015: cmd_sally when Besieged inside (4.5.3).
-    try:
-        _es = "ghibelline" if side == "guelph" else "guelph"
-        _besiegers = bool(loc) and any(
-            state["lords"][o]["side"] == _es
-            and not state["lords"][o].get("flags", {}).get("in_stronghold")
-            for o in (loc.get("lords_present", []) if loc else []))
+    if lord.get("flags", {}).get("in_stronghold") and loc and loc.get("siege"):
         # SMOKE-Inferno-067: Sally needs a Besieging Enemy Lord present.
-        if (lord.get("flags", {}).get("in_stronghold") and loc and loc.get("siege")
-                and _besiegers):
+        try:
+            _a._sally_besiegers(state, side, lid)
+        except (_a.IllegalAction, KeyError, AttributeError, TypeError):
+            pass
+        else:
             moves.append({
                 "action": "cmd_sally", "side": side, "args": {"lord_id": lid},
                 "accepts_decisions": {
@@ -1104,9 +1102,6 @@ def _enum_command_phase(state, side) -> list[dict[str, Any]]:
                 "description": f"{lid} Sallies from {lord['location']}.",
                 "rule_citation": "4.5.3",
             })
-    except (KeyError, AttributeError, TypeError):
-        pass
-
     # SMOKE-Inferno-016: Bypass-state moves (4.3.6) — Depart/Encamp; Sortie if inside.
     try:
         if (lord.get("flags", {}).get("bypassing")
