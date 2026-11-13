@@ -9,7 +9,8 @@ from inferno import actions, static_data
 from inferno.invariants import check_all_invariants
 from inferno.legal_moves import enumerate_legal
 from inferno.scenarios import load_scenario
-from tests._helpers import _finish_pending_choices
+from inferno.state import load_saved_state
+from tests._helpers import _finish_pending_choices, _place
 from tests.test_cross_game_escape import place
 from tests.test_phase3a import _skip_capability_discard, _skip_levy
 
@@ -76,6 +77,62 @@ def test_generated_sail_moves_both_lords_and_charges_their_horses_and_cargo():
         assert lord_id not in state["locales"]["Pisa"]["lords_present"]
     assert state["lords"]["giordano"]["flags"]["lower_lord_of"] == "pisa"
     check_all_invariants(state)
+
+
+@pytest.mark.parametrize("already_besieged", [False, True])
+def test_sail_to_enemy_port_leaves_only_sally(already_besieged, tmp_path):
+    state = _at_pisa(ships=4, prov=1, lower_prov=1)
+    _place(state, "arezzo", "Firenze", inside=True)
+    bystanders = ("astimberg", "provenzano")
+    for lid in bystanders:
+        _place(state, lid, "Firenze")
+    loc = state["locales"]["Firenze"]
+    bypass = [{"side": "ghibelline", "lord_id": "astimberg"}]
+    if already_besieged:
+        loc["siege"] = [{"side": "ghibelline", "color": "gold", "count": 2}]
+    else:
+        loc["bypass"] = bypass
+        for lid in bystanders:
+            state["lords"][lid]["flags"]["bypassing"] = "Firenze"
+
+    for card in ["PASS", "command_arezzo"] + ["PASS"] * 4:
+        _act(state, "plan_add_card", "guelph", card_id=card)
+    _act(state, "plan_done", "guelph")
+    _act(state, "plan_attach_lieutenant", "ghibelline", lieutenant="pisa", lower_lord="giordano")
+    _activate_ghibelline(state, "pisa")
+    move = next(move for move in enumerate_legal(state) if move["action"] == "cmd_sail"
+                and move["args"]["dest_locale"] == "Firenze")
+    result = actions.dispatch(state, move)["state_changes"]
+    assert result["card_finished"]
+    assert result["besieged_via_sail"] is not already_besieged
+    assert {row["lord_id"] for row in result["fpd"]["feed"]} == {"pisa", "giordano"}
+    assert all(state["lords"][lid]["location"] == "Firenze" for lid in result["group"])
+    assert loc["siege"] == [{"side": "ghibelline", "color": "gold",
+                             "count": 2 if already_besieged else 1}]
+    assert not loc["bypass"]
+    assert all("bypassing" not in state["lords"][lid]["flags"] for lid in bystanders)
+
+    path = tmp_path / "sail.json"
+    saved = copy.deepcopy(state)
+    if not already_besieged:
+        # Before this fix, Sail saved the new Siege alongside the old Bypass.
+        saved["locales"]["Firenze"]["bypass"] = bypass
+        for lid in bystanders:
+            saved["lords"][lid]["flags"]["bypassing"] = "Firenze"
+    path.write_text(json.dumps(saved))
+    restored = load_saved_state(path)
+    assert restored == state
+
+    _finish_pending_choices(restored)
+    _act(restored, "command_reveal", "guelph")
+    combat = {move["action"] for move in enumerate_legal(restored)
+              if move["action"] in {"cmd_sally", "cmd_sortie"}}
+    assert combat == {"cmd_sally"}
+    before = copy.deepcopy(restored)
+    with pytest.raises(actions.IllegalAction, match="NOT_BYPASSED"):
+        _act(restored, "cmd_sortie", "guelph")
+    assert restored == before
+    check_all_invariants(restored)
 
 
 def test_paired_sail_cannot_leave_a_horse_or_lower_lord_behind():

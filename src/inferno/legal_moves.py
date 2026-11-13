@@ -66,7 +66,7 @@ _FIELD_POST_BATTLE_DECISIONS = ["post_battle_withdraw", *_SALLY_POST_BATTLE_DECI
 
 
 def _with_feed_decisions(moves):
-    """Commands and their reactions can finish a card and enter Feed."""
+    """An action that finishes a Command card can require Feed elections."""
     for move in moves:
         move.setdefault("accepts_decisions", {})["feed_decisions"] = ["feed_asset"]
     return moves
@@ -198,7 +198,8 @@ def enumerate_legal(state: dict[str, Any]) -> list[dict[str, Any]]:
     # anything else — they pause the triggering action. Surface only those.
     rev = _enum_pending_revolts(state)
     if rev is not None:
-        return rev
+        after_battle = (state.get("pending_besiege") or {}).get("after_battle")
+        return _with_feed_decisions(rev) if after_battle else rev
     # FPD Pay sub-step (4.8.2) pauses everything else until both sides finish.
     fpd = _enum_pending_fpd(state)
     if fpd is not None:
@@ -207,9 +208,11 @@ def enumerate_legal(state: dict[str, Any]) -> list[dict[str, Any]]:
     arrival = _pending_besiege(state)
     if arrival:
         side = arrival["side"]
+        timing = ("after Battle; ends the card" if arrival.get("after_battle")
+                  else "part of March; no extra action")
         moves = [{"action": "besiege_or_bypass", "side": side,
                   "args": {"lord_id": arrival["lord_id"], "choice": choice},
-                  "description": f"{choice.title()} at {arrival['locale']} (part of March; no extra action).",
+                  "description": f"{choice.title()} at {arrival['locale']} ({timing}).",
                   "rule_citation": "4.3.5",
                   "accepts_decisions": {"post_battle_decisions": list(_SPOILS_DECISIONS)}}
                  for choice in ("besiege", "bypass")]

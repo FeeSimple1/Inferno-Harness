@@ -37,7 +37,7 @@ from .flow import (
     mark_first_levy_aow_drawn,
 )
 from .rng import HarnessRNG
-from .state import same_lieutenant_position
+from .state import clear_bypass, same_lieutenant_position
 from .visibility import combat_view_scope, friars_active
 
 
@@ -165,9 +165,12 @@ def dispatch(state: dict[str, Any], action: dict[str, Any]) -> dict[str, Any]:
             raise IllegalAction("PENDING_DECISION", "Resolve Reset consequences first.", "4.9.6")
         if name not in ("end_reset", "play_event", "cmd_resolve_revolt", "cmd_resolve_exiles"):
             raise IllegalAction("PENDING_DECISION", "Finish both Reset elections first.", "4.9.6")
-    if _pending_besiege(state) and name not in (
-            "besiege_or_bypass", "play_event", "cmd_resolve_revolt", "cmd_resolve_exiles"):
-        raise IllegalAction("PENDING_DECISION", "Resolve Besiege/Bypass at the March destination first.", "4.3.5")
+    if _pending_besiege(state):
+        if (state.get("pending_revolts") or state.get("pending_exiles")) and name not in (
+                "cmd_resolve_revolt", "cmd_resolve_exiles"):
+            raise IllegalAction("PENDING_DECISION", "Resolve Revolt and Exiles first.", "4.4.6")
+        if name not in ("besiege_or_bypass", "play_event", "cmd_resolve_revolt", "cmd_resolve_exiles"):
+            raise IllegalAction("PENDING_DECISION", "Resolve Besiege/Bypass at the March destination first.", "4.3.5")
     handler = _HANDLERS.get(name)
     if handler is None:
         raise IllegalAction(
@@ -927,8 +930,10 @@ def _h_cmd_resolve_revolt(state, side, args, rng) -> dict[str, Any]:
     drained = _revolt.drain_revolts(state)
     if state.get("aow_resolution"):
         drained["aow_deployment"] = _continue_aow_draw(state, rng)
-    return {"state_changes": {"resolved_revolt": res.get("switch") or res.get("status"),
-                              **drained}, "rule_citation": "1.4.2"}
+    return _resume_post_battle_arrival(state, {
+        "state_changes": {"resolved_revolt": res.get("switch") or res.get("status"), **drained},
+        "rule_citation": "1.4.2",
+    })
 
 
 def _h_cmd_resolve_exiles(state, side, args, rng) -> dict[str, Any]:
@@ -955,7 +960,7 @@ def _h_cmd_resolve_exiles(state, side, args, rng) -> dict[str, Any]:
     changes = {"exiles": result, "remaining_shifts": remaining}
     if state.get("aow_resolution"):
         changes["aow_deployment"] = _continue_aow_draw(state, rng)
-    return {"state_changes": changes, "rule_citation": "1.4.4"}
+    return _resume_post_battle_arrival(state, {"state_changes": changes, "rule_citation": "1.4.4"})
 
 
 def _add_treachery_to_enemy(state, for_lord_id: str, enemy_side: str) -> str | None:
@@ -2262,6 +2267,7 @@ def _h_cmd_sail(state, side, args, rng) -> dict[str, Any]:
             and dest["type"] != "outpost"
             and not dest.get("ruins")
             and not dest.get("siege")):
+        clear_bypass(state, dest_name)
         dest.setdefault("siege", []).append({
             "side": side, "color": "purple" if side == "guelph" else "gold", "count": 1,
         })
@@ -3451,20 +3457,41 @@ def _finalize_approach(state, locale_name, approaching_lord, defender_side) -> d
                        callback=state.get("battle_callback"))
     state["meta"].pop("approach_breadcrumb", None)
     atk_side = state["meta"].pop("approach_attacker_side", attacker_side)
-    # 4.4.6 Recovery: a Battle ENDS the active side's Command card outright —
-    # "Skip any Command actions remaining this card. Go to Feed/Pay/Disband
-    # (4.8). A Battle or Storm blocks any further Command actions on the current
-    # Command card." (cross-ref 4.2.1). Storm and Sally route the same way, so
-    # use the canonical _finish_card_with helper (runs FPD for BOTH sides' Fought
-    # Lords, then flips to the OTHER side per 4.2) instead of nulling by hand.
-    # Restore active_player to the attacker FIRST so the flip in
-    # _finish_card_with hands the turn to the defender, not back to us.
+    # 4.4.6 ends Command actions. The arrival decision under 4.3.5 still
+    # belongs to the attacker and precedes Feed/Pay/Disband.
     state["meta"]["active_player"] = atk_side
-    out = _finish_card_with(
-        {"approach_resolved": "battle", "battle_result": result},
-        state, atk_side, reason="approach_battle", citation="4.4 / 4.4.6")
+    payload = {"approach_resolved": "battle", "battle_result": result}
+    outside = _outside_lords(state, locale_name, atk_side)
+    # With no defender left on the map, the game ends under 5.2.
+    if outside and any(lord["side"] == defender_side and lord["status"] == "mustered"
+                       for lord in state["lords"].values()):
+        # The Active Lord may have been removed by Losses even if his side won.
+        leader = approaching_lord if approaching_lord in outside else outside[0]
+        arrival = _stronghold_arrival(state, atk_side, leader, locale_name)
+        if arrival:
+            state["actions_remaining"] = 0
+            state["card_actions_started"] = True
+            arrival["after_battle"] = True
+            state["pending_besiege"] = arrival
+            return {"state_changes": payload, "rule_citation": "4.4.6 / 4.3.5",
+                    "rolls": result.get("rolls", [])}
+    out = _finish_card_with(payload, state, atk_side, reason="approach_battle", citation="4.4 / 4.4.6")
     out["rolls"] = result.get("rolls", [])
     return out
+
+
+def _resume_post_battle_arrival(state, result):
+    """Recheck the destination after a pending Revolt or Exiles choice."""
+    arrival = state.get("pending_besiege")
+    if (arrival and arrival.get("after_battle")
+            and not (state.get("pending_revolts") or state.get("pending_exiles"))
+            and not _stronghold_arrival(state, arrival["side"], arrival["lord_id"], arrival["locale"])):
+        state.pop("pending_besiege")
+        finished = _finish_card_with(result["state_changes"], state, arrival["side"],
+                                     reason="approach_battle", citation="4.4.6")
+        result["state_changes"] = finished["state_changes"]
+        result["rule_citation"] += " / 4.4.6"
+    return result
 
 
 def _knights_quarter_all(state, lid: str) -> dict[str, int]:
@@ -4019,7 +4046,13 @@ def _h_besiege_or_bypass(state, side, args, rng) -> dict[str, Any]:
       lord_id:  the Lord at the Locale outside the Stronghold
       choice:   'besiege' or 'bypass'
     """
-    lid = _require_active_lord(state, side, args.get("lord_id"), allow_exhausted=True)
+    arrival = _pending_besiege(state)
+    if arrival:
+        lid = arrival["lord_id"]
+        if args.get("lord_id") and args["lord_id"] != lid:
+            raise IllegalAction("WRONG_LORD", f"The arrival decision belongs to {lid}.", "4.3.5")
+    else:
+        lid = _require_active_lord(state, side, args.get("lord_id"), allow_exhausted=True)
     lord = state["lords"][lid]
     locale_name = lord.get("location")
     loc = state["locales"].get(locale_name)
@@ -4857,16 +4890,8 @@ def _h_cmd_encamp(state, side, args, rng) -> dict[str, Any]:
     if (state.get("actions_remaining") or 0) < 1:
         raise IllegalAction("INSUFFICIENT_ACTIONS", "Encamp costs 1 action.", "4.3.6")
     loc = state["locales"][bypassing_loc]
-    loc["bypass"] = []
+    clear_bypass(state, bypassing_loc)
     loc.setdefault("siege", []).append({"side": side, "color": "purple" if side == "guelph" else "gold", "count": 1})
-    # CONF-012: replacing the Bypass with a Siege converts EVERY Bypassing Lord
-    # at the Locale into a Besieger (4.3.5/4.3.6: all outside Lords are either
-    # all Besieging OR all Bypassing). Clear the `bypassing` flag on all of them,
-    # not just the active Lord, so none is left flagged Bypassing a Locale that
-    # is now Besieged (a stale flag that would mislead a later Depart/Sortie).
-    for oid in loc.get("lords_present", []):
-        if state["lords"][oid].get("flags", {}).get("bypassing") == bypassing_loc:
-            state["lords"][oid]["flags"].pop("bypassing", None)
     lord.setdefault("flags", {})["moved_fought"] = True
     state["actions_remaining"] = 0
     state["card_action_consumed_by_entire_card"] = True
@@ -4884,7 +4909,7 @@ def _sortie_group(state, side, args) -> tuple[str, list[str], list[str]]:
     loc = state["locales"][locale_name]
     if not _is_friendly_stronghold(state, loc, side):
         raise IllegalAction("NOT_FRIENDLY", "Sortie requires a Friendly Stronghold.", "4.3.6")
-    if not loc.get("bypass"):
+    if not loc.get("bypass") or loc.get("siege"):
         raise IllegalAction("NOT_BYPASSED", f"{locale_name} not Bypassed.", "4.3.6")
     enemy_side = "ghibelline" if side == "guelph" else "guelph"
     enemy_bypassers = [
@@ -5662,10 +5687,10 @@ def _h_play_event(state, side, args, rng) -> dict[str, Any]:
         }, rng)
         result["state_changes"].update(played=cid, effect=effect_result)
         return result
-    return {
+    return _resume_post_battle_arrival(state, {
         "state_changes": {"played": cid, "effect": effect_result},
         "rule_citation": "3.1.3 / per-card",
-    }
+    })
 
 
 _HANDLERS["play_event"] = _h_play_event

@@ -171,6 +171,11 @@ def test_conceding_retreat_chooses_shared_provender_before_feed():
     assert {row["loser_id"]: row["transferred"]["Provender"] for row in result["spoils"]} == {
         "firenze": 2, "arezzo": 2,
     }
+    for lid in ("firenze", "arezzo"):
+        assert state["lords"][lid]["assets"]["Provender"] == 2
+    besiege = next(m for m in enumerate_legal(state) if m["action"] == "besiege_or_bypass"
+                   and m["args"]["choice"] == "besiege")
+    A.dispatch(state, besiege)
     for lid in ["firenze", "arezzo"]:
         assert state["lords"][lid]["location"] == "San Giovanni"
         assert state["lords"][lid]["assets"]["Provender"] == 1
