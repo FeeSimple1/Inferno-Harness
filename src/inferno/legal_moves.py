@@ -27,7 +27,7 @@ from typing import Any
 
 from . import static_data as sd
 from . import card_data as cd
-from .vassals import payable_service_steps
+from .vassals import bribe_targets, is_mustered, payable_service_steps
 from .flow import current_campaign_step, current_end_campaign_substep, current_side, current_step
 
 
@@ -258,11 +258,11 @@ def _enum_levy(state) -> list[dict[str, Any]]:
 
 
 def _enum_aow(state, side) -> list[dict[str, Any]]:
-    from .card_effects import immediate_event_options
+    from . import card_effects as ce
     event = next((p for p in state.get("pending", []) if p.get("type") == "event_resolution"
                   and p.get("side") == side), None)
     if event:
-        options = immediate_event_options(state, event["card_id"], side)
+        options = ce.pending_event_options(state, event)
         return [{"action": "levy_resolve_event", "side": side,
                  "args": {"card_id": event["card_id"], "effect_args": choice},
                  "description": f"Resolve {event['card_id']} ({event.get('name')}).",
@@ -366,7 +366,6 @@ def _enum_disband(state, side) -> list[dict[str, Any]]:
     moves: list[dict[str, Any]] = []
     expired_vassals = False
     if state["meta"].get("advanced_vassal_service"):
-        from .vassals import is_mustered
         for lid, lord in state["lords"].items():
             if lord.get("side") == side and lord.get("status") == "mustered":
                 if any(is_mustered(v) and not v.get("turncoat") and v.get("name") != "Carroccio"
@@ -827,22 +826,15 @@ def _enum_command_phase(state, side) -> list[dict[str, Any]]:
                     "description": f"{lid} Treachery-Revolt at {tname} (commit 1 Coin).",
                     "rule_citation": "4.7.5",
                 })
-        # Bribe Path-A: an Enemy Mustered Lord at/adjacent with a non-Special
-        # on-mat Vassal; the acting Lord needs >= 1 Coin.
         if lord.get("assets", {}).get("Coin", 0) >= 1:
-            for tname in candidates:
-                for oid in state["locales"].get(tname, {}).get("lords_present", []):
-                    ol = state["lords"][oid]
-                    if ol.get("side") != enemy or ol.get("status") != "mustered":
-                        continue
-                    for v in ol.get("vassals", []) or []:
-                        if v.get("on_mat") and not v.get("special"):
-                            tmoves.append({
-                                "action": "cmd_treachery_bribe", "side": side,
-                                "args": {"lord_id": lid, "target_lord_id": oid, "vassal": v["name"]},
-                                "description": f"{lid} Treachery-Bribe {v['name']} of {oid}.",
-                                "rule_citation": "4.7.6",
-                            })
+            for name, (oid, _, path) in bribe_targets(state, lid).items():
+                target = f"with {oid}" if path == "A" else "at a Vassal Seat"
+                tmoves.append({
+                    "action": "cmd_treachery_bribe", "side": side,
+                    "args": {"lord_id": lid, "target_lord_id": oid, "vassal": name},
+                    "description": f"{lid} Treachery-Bribe {name} {target}.",
+                    "rule_citation": "4.7.6",
+                })
         # Always allow the Treachery card to lapse (end the card).
         tmoves.append({
             "action": "cmd_end_card", "side": side, "args": {"lord_id": lid},

@@ -226,12 +226,19 @@ def test_off_calendar_service_pay_and_event_are_discoverable():
     assert v["service_box"] == 4
     CE.F9_event(s, "guelph", {"mode": "shift"}, HarnessRNG(1))
     assert v["service_box"] == 5
-    s["lords"]["firenze"]["forces"]["Ritter"] = 1
-    choice = {"target_lord_id": "firenze", "mode": "shift"}
+    s["meta"]["active_player"] = "ghibelline"
+    s["meta"]["levy_step"] = "3.4"
+    do(s, "siena", "Buonincontro Guastelloni")
+    ghib_vassal = next(v for v in s["lords"]["siena"]["vassals"]
+                       if v["name"] == "Buonincontro Guastelloni")
+    service_before = ghib_vassal["service_box"]
+    A._place_service(s, "siena", 17)
+    s["lords"]["siena"]["forces"]["Ritter"] = 1
+    choice = {"target_lord_id": "siena", "mode": "shift"}
     assert choice in CE.immediate_event_options(s, "F22", "guelph")
     CE.F22_event(s, "guelph", choice, HarnessRNG(1))
-    assert s["lords"]["firenze"]["service_box"] == 16
-    assert v["service_box"] == 4
+    assert s["lords"]["siena"]["service_box"] == 16
+    assert ghib_vassal["service_box"] == service_before - 1
 
 
 def test_service_markers_return_from_off_left():

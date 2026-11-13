@@ -17,6 +17,7 @@ from inferno.actions import IllegalAction, dispatch
 from inferno.flow import current_side, current_step
 from inferno.legal_moves import enumerate_legal
 from inferno.scenarios import load_scenario
+from tests._helpers import _finish_pending_choices
 
 
 # =====================================================================
@@ -121,8 +122,9 @@ class TestAoWDraw:
 class TestPay:
     def _advance_to_pay(self, scenario="A", seed=1):
         s = load_scenario(scenario, seed=seed)
-        dispatch(s, {"action": "levy_aow_draw", "side": "guelph"})
-        dispatch(s, {"action": "levy_aow_draw", "side": "ghibelline"})
+        for side in ("guelph", "ghibelline"):
+            dispatch(s, {"action": "levy_aow_draw", "side": side})
+            _finish_pending_choices(s)
         return s
 
     def test_coin_shifts_service_marker_right(self):
@@ -244,8 +246,9 @@ class TestDisband:
 class TestMuster:
     def _advance_to_muster(self, scenario="A", seed=1):
         s = load_scenario(scenario, seed=seed)
-        dispatch(s, {"action": "levy_aow_draw", "side": "guelph"})
-        dispatch(s, {"action": "levy_aow_draw", "side": "ghibelline"})
+        for side in ("guelph", "ghibelline"):
+            dispatch(s, {"action": "levy_aow_draw", "side": side})
+            _finish_pending_choices(s)
         dispatch(s, {"action": "levy_pay_done", "side": "guelph"})
         dispatch(s, {"action": "levy_pay_done", "side": "ghibelline"})
         dispatch(s, {"action": "levy_disband_done", "side": "guelph"})
@@ -254,7 +257,7 @@ class TestMuster:
 
     def test_muster_lord_succeeds_on_low_roll(self):
         """3.4.1: Fealty roll <= Fealty rating = success."""
-        s = self._advance_to_muster("A", seed=42)
+        s = self._advance_to_muster("A", seed=2)
         # Siena tries to Muster Provenzano (F:5; almost any roll succeeds).
         # First go through Guelph muster_done.
         dispatch(s, {"action": "levy_muster_done", "side": "guelph"})
@@ -367,8 +370,9 @@ class TestFullLevyWalkthrough:
         """End-to-end: every scenario completes one full Levy via skip-everything."""
         s = load_scenario(sid, seed=42)
         # 3.1
-        dispatch(s, {"action": "levy_aow_draw", "side": "guelph"})
-        dispatch(s, {"action": "levy_aow_draw", "side": "ghibelline"})
+        for side in ("guelph", "ghibelline"):
+            dispatch(s, {"action": "levy_aow_draw", "side": side})
+            _finish_pending_choices(s)
         # 3.2
         dispatch(s, {"action": "levy_pay_done", "side": "guelph"})
         dispatch(s, {"action": "levy_pay_done", "side": "ghibelline"})

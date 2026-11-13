@@ -148,6 +148,8 @@ def test_stale_id_cursor_and_live_view_rejected_atomically(side):
 
 @pytest.mark.parametrize('scenario', list('ABCDEF'))
 def test_mechanical_results_equal_for_concrete_catalog_choices(scenario):
+    from inferno.llm.filter import filter_action_result
+
     s=load_scenario(scenario,seed=19)
     # Fixed deterministic path, not a presentation restriction. At every state
     # compare all offered concrete actions on independent copies.
@@ -168,7 +170,8 @@ def test_mechanical_results_equal_for_concrete_catalog_choices(scenario):
                 assert other.value.code==e.code and b==s
             else:
                 via=submit_selection(b,v.side,selection(v,entry))
-                assert via==result and b==a
+                assert via == filter_action_result(result, a, v.side, hidden_mats=False)
+                assert b == a
                 valid.append(entry)
         if not valid or s['meta'].get('game_over'):
             break

@@ -122,14 +122,16 @@ def _has_enemy_lord_at_or_adjacent(state: dict, name: str, enemy_side: str) -> b
     return False
 
 
-def is_eligible_for_revolt(state: dict, name: str, rolling_side: str) -> bool:
+def is_eligible_for_revolt(state: dict, name: str, rolling_side: str,
+                           *, ignore_ruins: bool = False) -> bool:
     """1.4.1: an Enemy (to rolling_side) Stronghold with no Enemy
     (= losing_side) Lords there or adjacent. Ruins and Outposts never
-    Revolt. 'Enemy' is judged by effective Allegiance."""
+    Revolt. Closed Gates checks eligibility after its chosen Ruins is lifted.
+    'Enemy' is judged by effective Allegiance."""
     loc = state["locales"].get(name)
     if not loc:
         return False
-    if loc.get("ruins") or loc.get("type") == "outpost":
+    if (loc.get("ruins") and not ignore_ruins) or loc.get("type") == "outpost":
         return False
     losing_side = _other(rolling_side)
     if _effective_allegiance(loc) != losing_side:

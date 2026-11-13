@@ -282,9 +282,8 @@ class TestTier3Fixes:
         does NOT block Muster."""
         from inferno.scenarios import load_scenario
         s = load_scenario("F", seed=1)
-        # Find a Lord with Ritter on Calendar — astimberg has 2 Ritter and is on box 7.
+        # Astimberg is Unmustered and has Ritter printed on his mat.
         astimberg = s["lords"]["astimberg"]
-        astimberg["forces"] = {"Ritter": 2}
         before_box = astimberg["calendar_box"]
         rng = HarnessRNG(seed=1)
         r = ce.apply_event_effect(s, "F22", "guelph",
@@ -295,9 +294,8 @@ class TestTier3Fixes:
     def test_smoke_inferno_020_f22_manfredi_remove_assets(self):
         """F22 mode=remove_assets takes up to 3 from target."""
         from inferno.scenarios import load_scenario
-        s = load_scenario("F", seed=1)
+        s = load_scenario("D", seed=1)
         astimberg = s["lords"]["astimberg"]
-        astimberg["forces"] = {"Ritter": 1}
         astimberg["assets"] = {"Coin": 2, "Cart": 2}
         rng = HarnessRNG(seed=1)
         r = ce.apply_event_effect(s, "F22", "guelph",
@@ -312,12 +310,12 @@ class TestTier3Fixes:
         """F22 target must have at least one Ritter on mat."""
         from inferno.scenarios import load_scenario
         s = load_scenario("A", seed=1)
-        # firenze has no Ritter
+        # Siena is Ghibelline and Mustered without Ritter.
         rng = HarnessRNG(seed=1)
-        r = ce.apply_event_effect(s, "F22", "ghibelline",
-                                   {"target_lord_id": "firenze", "mode": "shift"}, rng)
+        r = ce.apply_event_effect(s, "F22", "guelph",
+                                   {"target_lord_id": "siena", "mode": "shift"}, rng)
         assert r["applied"] is False
-        assert "no Ritter" in r["reason"]
+        assert "with Ritter" in r["reason"]
 
     def test_smoke_inferno_021_f21_primo_popolo_shifts_firenze(self):
         """SMOKE-Inferno-021: F21 shifts Firenze/Arezzo cylinder/Service,

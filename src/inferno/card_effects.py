@@ -28,6 +28,7 @@ apply the printed effect per the AoW Reference.
 
 from __future__ import annotations
 
+from itertools import combinations, combinations_with_replacement
 from typing import Any, Callable
 
 from . import card_data as cd
@@ -93,28 +94,33 @@ def active_capabilities_for(state, hook_key: str) -> list[dict[str, Any]]:
 # =====================================================================
 # Helper utilities used by many event implementations
 # =====================================================================
+def _cylinder_position(state, lid):
+    box = state["lords"].get(lid, {}).get("calendar_box")
+    if box is not None:
+        return box
+    if lid in state["calendar"].get("off_left", []):
+        return 0
+    if lid in state["calendar"].get("off_right", []):
+        return 17
+    return None
+
+
+def _shift_cylinder(state, lid, delta):
+    """2.2.3: a shift back toward the Calendar enters the nearest box."""
+    from .actions import _place_cylinder
+
+    box = _cylinder_position(state, lid)
+    if box is None:
+        return None
+    new = max(0, min(17, box + delta))
+    _place_cylinder(state, lid, new or None)
+    if new == 0:
+        state["calendar"]["off_left"].append(lid)
+    return state["lords"][lid]["calendar_box"]
+
+
 def _shift_cylinder_left(state, lord_id: str, boxes: int = 1) -> int | None:
-    """Shift a Lord's cylinder on the Calendar `boxes` boxes LEFT.
-    Returns the new box (None if it falls off the left edge)."""
-    lord = state["lords"].get(lord_id)
-    if lord is None:
-        return None
-    cur = lord.get("calendar_box")
-    if cur is None:
-        return None
-    cal_boxes = state["calendar"]["boxes"]
-    if str(cur) in cal_boxes and lord_id in cal_boxes[str(cur)]["cylinders"]:
-        cal_boxes[str(cur)]["cylinders"].remove(lord_id)
-    new = cur - boxes
-    if new < 1:
-        state["calendar"]["off_left"].append(lord_id)
-        lord["calendar_box"] = None
-        return None
-    lord["calendar_box"] = new
-    cal_boxes.setdefault(str(new),
-        {"cylinders": [], "services": [], "victory": [], "markers": []})
-    cal_boxes[str(new)]["cylinders"].append(lord_id)
-    return new
+    return _shift_cylinder(state, lord_id, -boxes)
 
 
 def _shift_service_right(state, lord_id: str, boxes: int = 1) -> int | None:
@@ -125,28 +131,7 @@ def _shift_service_right(state, lord_id: str, boxes: int = 1) -> int | None:
 
 
 def _shift_cylinder_right(state, lord_id: str, boxes: int = 1) -> int | None:
-    """Shift a Lord's cylinder on the Calendar `boxes` boxes RIGHT (adverse —
-    delays his arrival). Returns the new box (None if it falls off the right
-    edge into off_right)."""
-    lord = state["lords"].get(lord_id)
-    if lord is None:
-        return None
-    cur = lord.get("calendar_box")
-    if cur is None:
-        return None
-    cal_boxes = state["calendar"]["boxes"]
-    if str(cur) in cal_boxes and lord_id in cal_boxes[str(cur)]["cylinders"]:
-        cal_boxes[str(cur)]["cylinders"].remove(lord_id)
-    new = cur + boxes
-    if new > 16:
-        state["calendar"].setdefault("off_right", []).append(lord_id)
-        lord["calendar_box"] = None
-        return None
-    lord["calendar_box"] = new
-    cal_boxes.setdefault(str(new),
-        {"cylinders": [], "services": [], "victory": [], "markers": []})
-    cal_boxes[str(new)]["cylinders"].append(lord_id)
-    return new
+    return _shift_cylinder(state, lord_id, boxes)
 
 
 def _shift_service_left(state, lord_id: str, boxes: int = 1) -> int | None:
@@ -203,15 +188,71 @@ def _add_treachery_from_set_aside(state, side: str, lord_slug: str | None = None
             chosen = target
     if chosen is None:
         chosen = set_aside[0]
-    set_aside.remove(chosen)
-    state["decks"][side]["command_deck"].append(chosen)
-    return chosen
+    return _take_set_aside_treachery(state, side, chosen)
+
+
+def _take_set_aside_treachery(state, side, card):
+    state["decks"][side]["treachery_set_aside"].remove(card)
+    state["decks"][side]["command_deck"].append(card)
+    return card
+
+
+def _treachery_options(state, side, lords=None):
+    """Treachery that is still set aside, optionally limited to named Lords."""
+    cards = state["decks"][side]["treachery_set_aside"]
+    return [{"mode": "treachery", "treachery_card": card}
+            for card in sorted(cards)
+            if card in cd.TREACHERY_CARDS
+            and (lords is None or cd.TREACHERY_CARDS[card]["lord_id"] in lords)]
+
+
+def _add_chosen_treachery(state, side, args, lords=None):
+    options = _treachery_options(state, side, lords)
+    card = args.get("treachery_card")
+    if card is None and options:
+        card = options[0]["treachery_card"]
+    if not any(card == option["treachery_card"] for option in options):
+        return {"applied": False, "reason": "Choose an eligible set-aside Treachery card."}
+    return {"applied": True, "mode": "treachery",
+            "added": _take_set_aside_treachery(state, side, card)}
+
+
+def _has_calendar_marker(state, lid):
+    return _cylinder_position(state, lid) is not None or has_service(state, lid)
+
+
+def _betrayals_sieges(state, side):
+    return sum(1 for loc in state["locales"].values()
+               if loc.get("type") != "outpost"
+               and any(marker.get("side") == side for marker in loc.get("siege", [])))
+
+
+def _betrayals_options(state, side):
+    return [{"mode": "revolt"}, *_treachery_options(state, side)]
+
+
+def _apply_betrayals_choice(state, side, args, rng):
+    if args["mode"] == "treachery":
+        return _add_chosen_treachery(state, side, args)
+    from . import revolt as _rv
+
+    enemy = "ghibelline" if side == "guelph" else "guelph"
+    return {"applied": True, "mode": "revolt",
+            "revolts": _rv.trigger_revolts(state, enemy, 1, rng, f"betrayals_{side}")}
+
+
+def pending_event_options(state, pending):
+    if pending.get("remaining_choices") is not None:
+        # The Siege count is fixed at draw time. Only Treachery availability
+        # changes between elections.
+        return _betrayals_options(state, pending["side"])
+    return immediate_event_options(state, pending["card_id"], pending["side"])
 
 
 def _favorable_shift(state, lord_id: str, boxes: int) -> dict[str, Any]:
     """Favourable Calendar shift for a friendly Lord: cylinder LEFT if on the
     cylinder track, else Service RIGHT. Returns a small log dict."""
-    if state["lords"].get(lord_id, {}).get("calendar_box") is not None:
+    if _cylinder_position(state, lord_id) is not None:
         return {"cylinder_to": _shift_cylinder_left(state, lord_id, boxes)}
     elif has_service(state, lord_id):
         return {"service_to": _shift_service_right(state, lord_id, boxes)}
@@ -275,8 +316,7 @@ def _betrayals(state, side, args, rng):
     (a legal all-Treachery choice, deterministic, same realized count as
     before minus the phantom rolls). Pass revolt_count=k to instead roll k
     real Revolts (benefitting the playing side) and add (sieges-k) Treachery."""
-    sieges = sum(1 for loc in state["locales"].values()
-                 if any(s.get("side") == side for s in loc.get("siege", [])))
+    sieges = _betrayals_sieges(state, side)
     if sieges == 0:
         return {"applied": True, "no_sieges": True}
     revolt_count = max(0, min(int(args.get("revolt_count", 0) or 0), sieges))
@@ -421,23 +461,36 @@ def F8_event(state, side, args, rng):
     return {"applied": True, "flag_set": "F8_pending"}
 
 
+_GENOVA_LORDS = ("firenze", "lucca", "colle")
+_NO_TIME_FOR_COWARDS_LORDS = ("firenze", "arezzo", "lucca")
+
+
 @register_event("F9")
 def F9_event(state, side, args, rng):
     """F9 GENOVA: shift Firenze/Lucca/Colle cylinder OR Service 1 each, OR add 1 Treachery.
-    args: mode = 'shift' (default) or 'treachery'.
+    Choose mode="shift" or mode="treachery" with one of their set-aside cards.
     """
     mode = args.get("mode", "shift")
     if mode == "treachery":
-        added = _add_treachery_from_set_aside(state, "guelph")
-        return {"applied": True, "mode": "treachery", "added": added}
-    shifts = {}
-    for lid in ("firenze", "lucca", "colle"):
-        # Try cylinder left first; if no cylinder on calendar, try Service right.
-        if state["lords"][lid].get("calendar_box") is not None:
-            shifts[lid] = {"cylinder_to": _shift_cylinder_left(state, lid, boxes=1)}
-        elif has_service(state, lid):
-            shifts[lid] = {"service_to": _shift_service_right(state, lid, boxes=1)}
+        return _add_chosen_treachery(state, "guelph", args, _GENOVA_LORDS)
+    shifts = {lid: _favorable_shift(state, lid, 1) for lid in _GENOVA_LORDS
+              if _has_calendar_marker(state, lid)}
     return {"applied": True, "mode": "shift", "shifts": shifts}
+
+
+def _closed_gates_targets(state, side):
+    """Return the applicable mode and its legal sites in a stable order."""
+    from . import revolt as _rv
+    enemy = "ghibelline" if side == "guelph" else "guelph"
+    own_color, enemy_color = ("purple", "gold") if side == "guelph" else ("gold", "purple")
+    locs = state["locales"]
+    denial = sorted(n for n, loc in locs.items()
+                    if loc.get("type") != "outpost" and loc.get("ruins") == enemy_color)
+    if denial:
+        return "deny", denial
+    return "revolt", sorted(n for n, loc in locs.items()
+                            if loc.get("ruins") == own_color
+                            and _rv.is_eligible_for_revolt(state, n, side, ignore_ruins=True))
 
 
 def _closed_gates(state, side, args):
@@ -467,38 +520,24 @@ def _closed_gates(state, side, args):
     """
     from . import revolt as _rv
     enemy = "ghibelline" if side == "guelph" else "guelph"
-    own_color = "purple" if side == "guelph" else "gold"      # 1/2 VP for `side`
-    enemy_color = "gold" if side == "guelph" else "purple"    # 1/2 VP for `enemy`
-
-    # PRIMARY: deny — remove an enemy-scoring Ruins.
-    en = [n for n, l in state["locales"].items()
-          if l.get("ruins") == enemy_color and l.get("type") != "outpost"]
-    if en:
-        n = args["locale"] if args.get("locale") in en else en[0]
-        state["locales"][n]["ruins"] = None
+    mode, targets = _closed_gates_targets(state, side)
+    n = args.get("locale", targets[0] if len(targets) == 1 else None)
+    if n not in targets:
+        return {"applied": False,
+                "reason": "Choose an eligible Ruins site." if targets else "No removable Ruins."}
+    state["locales"][n]["ruins"] = None
+    if mode == "deny":
         state["vp"][enemy] = max(state["vp"].get(enemy, 0) - 0.5, 0)
         return {"applied": True, "mode": "deny", "removed_enemy_ruins_at": n}
-
-    # FALLBACK (only "if none"): trade an own-scoring Ruins for a Revolt.
-    own = [n for n, l in state["locales"].items()
-           if l.get("ruins") == own_color and l.get("type") != "outpost"]
-    pref = [args["locale"]] if args.get("locale") in own else own
-    for n in pref:
-        loc = state["locales"][n]
-        prev = loc.get("ruins")
-        loc["ruins"] = None
-        if _rv.is_eligible_for_revolt(state, n, side):
-            state["vp"][side] = max(state["vp"].get(side, 0) - 0.5, 0)
-            switch = _rv.apply_allegiance_switch(state, n, side)
-            exiles = None
-            if switch["exiles_count"] > 0:
-                exiles = {"side": switch["exiles_side"], "count": switch["exiles_count"],
-                          "candidates": _rv.legal_exiles_targets(state, switch["exiles_side"])}
-                state.setdefault("pending_exiles", []).append(exiles)
-            return {"applied": True, "mode": "revolt", "revolted_at": n,
-                    "switch": switch, "exiles_required": exiles}
-        loc["ruins"] = prev  # not eligible — restore and try the next
-    return {"applied": False, "reason": "no removable Ruins"}
+    state["vp"][side] = max(state["vp"].get(side, 0) - 0.5, 0)
+    switch = _rv.apply_allegiance_switch(state, n, side)
+    exiles = None
+    if switch["exiles_count"] > 0:
+        exiles = {"side": switch["exiles_side"], "count": switch["exiles_count"],
+                  "candidates": _rv.legal_exiles_targets(state, switch["exiles_side"])}
+        state.setdefault("pending_exiles", []).append(exiles)
+    return {"applied": True, "mode": "revolt", "revolted_at": n,
+            "switch": switch, "exiles_required": exiles}
 
 
 @register_event("F10")
@@ -558,35 +597,27 @@ def F12_event(state, side, args, rng):
 
 @register_event("F13")
 def F13_event(state, side, args, rng):
-    """F13 NO TIME FOR COWARDS: shift Firenze/Arezzo/Lucca 1 each OR add 1 Treachery."""
+    """F13 NO TIME FOR COWARDS: shift Firenze/Arezzo/Lucca 1 each or add one of their Treachery cards."""
     if args.get("mode") == "treachery":
-        added = _add_treachery_from_set_aside(state, "guelph")
-        return {"applied": True, "added": added}
-    shifts = {}
-    for lid in ("firenze", "arezzo", "lucca"):
-        if state["lords"][lid].get("calendar_box") is not None:
-            shifts[lid] = {"cylinder_to": _shift_cylinder_left(state, lid, boxes=1)}
-        elif has_service(state, lid):
-            shifts[lid] = {"service_to": _shift_service_right(state, lid, boxes=1)}
+        return _add_chosen_treachery(state, "guelph", args, _NO_TIME_FOR_COWARDS_LORDS)
+    shifts = {lid: _favorable_shift(state, lid, 1) for lid in _NO_TIME_FOR_COWARDS_LORDS
+              if _has_calendar_marker(state, lid)}
     return {"applied": True, "shifts": shifts}
 
 
 @register_event("F14")
 def F14_event(state, side, args, rng):
     """F14 PROVENZANO sent as ambassador: if Guelph Siege underway, shift Provenzano 2 OR add 1 Treachery."""
-    has_siege = any(any(s.get("side") == "guelph" for s in loc.get("siege", [])) for loc in state["locales"].values())
-    if not has_siege:
+    if not _betrayals_sieges(state, "guelph"):
         return {"applied": False, "reason": "no Guelph Siege underway"}
     if args.get("mode") == "treachery":
-        added = _add_treachery_from_set_aside(state, "guelph")
-        return {"applied": True, "added": added}
+        return _add_chosen_treachery(state, "guelph", args)
     # CONF-008: Provenzano is an ENEMY of the Guelphs, so the shift is ADVERSE
     # (AoW F14 Tips: "shift Provenzano's cylinder right or Service marker left").
     # The prior code shifted his cylinder LEFT, advancing the enemy Lord's
     # arrival -- the opposite of intent. Mirror F18/F19: cylinder RIGHT if on
     # the Calendar, else Service LEFT if Mustered. mode="service" forces Service.
-    prov = state["lords"]["provenzano"]
-    if args.get("mode") != "service" and prov.get("calendar_box") is not None:
+    if args.get("mode") != "service" and _cylinder_position(state, "provenzano") is not None:
         new = _shift_cylinder_right(state, "provenzano", boxes=2)
         return {"applied": True, "cylinder_to": new}
     if has_service(state, "provenzano"):
@@ -856,6 +887,9 @@ def F20_event(state, side, args, rng):
     return {"applied": True, **log}
 
 
+_PRIMO_POPOLO_LORDS = ("firenze", "arezzo")
+
+
 @register_event("F21")
 def F21_event(state, side, args, rng):
     """F21 PRIMO POPOLO – Guelph merchant class.
@@ -865,79 +899,86 @@ def F21_event(state, side, args, rng):
     or add 1 of their Treachery.' Tip clarifies cylinder LEFT or
     Service RIGHT.
     """
-    if args.get("mode") == "treachery":
-        return {"applied": True, "added": _add_treachery_from_set_aside(state, "guelph")}
-    target = args.get("target", "firenze")
-    if target not in ("firenze", "arezzo"):
+    mode = args.get("mode", "shift")
+    if mode == "treachery":
+        return _add_chosen_treachery(state, "guelph", args, _PRIMO_POPOLO_LORDS)
+    if mode != "shift":
+        return {"applied": False, "reason": "Choose shift or treachery."}
+    target = args.get("target")
+    if target is None:
+        eligible = [lid for lid in _PRIMO_POPOLO_LORDS if _has_calendar_marker(state, lid)]
+        if len(eligible) == 1:
+            target = eligible[0]
+    if target not in _PRIMO_POPOLO_LORDS:
         return {"applied": False, "reason": "target must be firenze or arezzo"}
-    if state["lords"][target].get("calendar_box") is not None:
-        return {"applied": True, "target": target, "cylinder_to": _shift_cylinder_left(state, target, boxes=2)}
-    elif has_service(state, target):
-        return {"applied": True, "target": target, "service_to": _shift_service_right(state, target, boxes=2)}
-    return {"applied": False, "reason": f"{target} has no Calendar marker to shift"}
+    if not _has_calendar_marker(state, target):
+        return {"applied": False, "reason": f"{target} has no Calendar marker to shift"}
+    return {"applied": True, "target": target, **_favorable_shift(state, target, 2)}
+
+
+MANFREDI_ASSETS = ("Coin", "Loot", "Provender", "Cart", "Ship")
+
+
+def _manfredi_target(state, lid):
+    """F22 and its clarification require a Ghibelline Lord with Ritter."""
+    lord = state["lords"].get(lid, {}) if isinstance(lid, str) else {}
+    if lord.get("side") != "ghibelline" or lord.get("status") == "removed":
+        return False
+    forces = (lord.get("forces", {}) if lord.get("status") == "mustered"
+              else sd.LORDS.get(lord["name"], {}).get("forces", {}))
+    return forces.get("Ritter", 0) > 0
+
+
+def _manfredi_assets(lord):
+    if lord.get("status") != "mustered":
+        return {}
+    assets = lord.get("assets", {})
+    return {asset: assets[asset] for asset in MANFREDI_ASSETS if assets.get(asset, 0) > 0}
+
+
+def hidden_manfredi_targets(state, hidden_mats=None):
+    """Public Mustered mats where F22 must verify Ritter or Assets on request."""
+    if hidden_mats is None:
+        hidden_mats = state["meta"].get("hidden_mats")
+    if not hidden_mats:
+        return []
+    return sorted(lid for lid, lord in state["lords"].items()
+                  if lord.get("side") == "ghibelline" and lord.get("status") == "mustered")
 
 
 @register_event("F22")
 def F22_event(state, side, args, rng):
     """F22 MANFREDI holds back.
 
-    SMOKE-Inferno-020 (card-text fidelity): per AoW Reference (Errata
-    applied), 'Select a Lord with Ritter. Shift his cylinder or Service
-    1 Calendar box or remove 3 of his Assets.' "Ghibelline" deleted by
-    Errata so any-side Lord with Ritter qualifies.
-
-    args:
-      target_lord_id:  Lord with Ritter (must have at least one Ritter
-                       on his mat, including via Turncoat).
-      mode:            'shift' (default) | 'remove_assets'
-      assets_to_remove: dict for mode=remove_assets, e.g.
-                       {"Coin": 1, "Provender": 2}
+    The Ghibelline Lord symbol governs eligibility. For an Unmustered
+    Lord, use the printed Forces. A Mustered Lord uses his actual mat.
     """
+    if side != "guelph":
+        return {"applied": False, "reason": "F22 is a Guelph Event."}
     target_lid = args.get("target_lord_id")
-    if not target_lid or target_lid not in state["lords"]:
-        return _manual("F22", "Provide target_lord_id (any Lord with Ritter on mat).")
+    if not _manfredi_target(state, target_lid):
+        return {"applied": False, "reason": "Choose a Ghibelline Lord with Ritter."}
     target = state["lords"][target_lid]
-    if target.get("forces", {}).get("Ritter", 0) == 0:
-        return {"applied": False, "reason": f"{target_lid} has no Ritter on mat."}
     mode = args.get("mode", "shift")
     if mode == "shift":
-        if target.get("calendar_box") is not None:
-            cur = target["calendar_box"]
-            cal_boxes = state["calendar"]["boxes"]
-            if str(cur) in cal_boxes and target_lid in cal_boxes[str(cur)]["cylinders"]:
-                cal_boxes[str(cur)]["cylinders"].remove(target_lid)
-            new_box = cur + 1
-            if new_box > 16:
-                state["calendar"]["off_right"].append(target_lid)
-                target["calendar_box"] = None
-            else:
-                target["calendar_box"] = new_box
-                cal_boxes.setdefault(str(new_box),
-                    {"cylinders": [], "services": [], "victory": [], "markers": []})
-                cal_boxes[str(new_box)]["cylinders"].append(target_lid)
-            return {"applied": True, "shifted_cylinder_to": target["calendar_box"]}
-        elif has_service(state, target_lid):
-            _shift_service_left(state, target_lid, 1)
-            return {"applied": True, "shifted_service_to": target["service_box"]}
-        else:
+        if not _has_calendar_marker(state, target_lid):
             return {"applied": False, "reason": "Target has no Calendar marker to shift."}
+        if _cylinder_position(state, target_lid) is not None:
+            return {"applied": True, "shifted_cylinder_to": _shift_cylinder_right(state, target_lid)}
+        return {"applied": True, "shifted_service_to": _shift_service_left(state, target_lid)}
     elif mode == "remove_assets":
+        assets = _manfredi_assets(target)
         request = args.get("assets_to_remove", {})
         if not isinstance(request, dict) or any(
-                not isinstance(n, int) or isinstance(n, bool) or n < 0
-                or n > target["assets"].get(a, 0) for a, n in request.items()):
+                a not in MANFREDI_ASSETS or type(n) is not int or not 0 <= n <= assets.get(a, 0)
+                for a, n in request.items()):
             return {"applied": False, "reason": "Choose available nonnegative integer Assets."}
-        total_request = sum(request.values())
-        need = min(3, sum(target.get("assets", {}).values()))
-        if total_request != need or need == 0:
-            return {"applied": False, "reason": f"Choose exactly {need} available Assets."}
-        removed = {}
-        for a, n in request.items():
-            have = target["assets"].get(a, 0)
-            take = min(n, have)
-            if take > 0:
-                target["assets"][a] -= take
-                removed[a] = take
+        limit = min(3, sum(assets.values()))
+        if not 1 <= sum(request.values()) <= limit:
+            return {"applied": False, "reason": "Choose one to three available Assets."}
+        removed = {asset: count for asset, count in request.items() if count}
+        for asset, count in removed.items():
+            target["assets"][asset] -= count
         return {"applied": True, "removed_assets": removed}
     return {"applied": False, "reason": "mode must be shift or remove_assets"}
 
@@ -1157,6 +1198,20 @@ def S8_event(state, side, args, rng):
     return {"applied": True, "flag_set": "S8_pending"}
 
 
+def _pope_at_bay_options(state):
+    cards = sorted(card for card in state["decks"]["ghibelline"]["command_deck"]
+                   if card in cd.TREACHERY_CARDS)
+    eligible = sorted(lid for lid, lord in state["lords"].items()
+                      if lord["side"] == "guelph" and _has_calendar_marker(state, lid))
+    choices = []
+    if "orvieto" in eligible:
+        choices.append({"mode": "orvieto"})
+    if eligible:
+        choices.extend({"mode": "shift", "targets": list(targets)}
+                       for targets in combinations(eligible, min(2, len(eligible))))
+    return [{**choice, "treachery_card": card} for choice in choices for card in cards]
+
+
 @register_event("S9")
 def S9_event(state, side, args, rng):
     """S9 POPE AT BAY flees to Viterbo.
@@ -1173,14 +1228,17 @@ def S9_event(state, side, args, rng):
                          LEFT by 1 box. args.targets = list of 2 guelph lord ids.
       'orvieto':         shift Orvieto's cylinder RIGHT or Service LEFT by 3.
     """
-    set_aside = _set_aside_treachery_from_command(
-        state, "ghibelline", args.get("treachery_card"))
+    card = args.get("treachery_card")
+    if card is not None and (not isinstance(card, str) or card not in cd.TREACHERY_CARDS
+                             or card not in state["decks"]["ghibelline"]["command_deck"]):
+        return {"applied": False, "reason": "Choose an acquired Ghibelline Treachery card."}
+    set_aside = _set_aside_treachery_from_command(state, "ghibelline", card)
     if set_aside is None:
         return {"applied": False,
                 "reason": "No Ghibelline Treachery card in the Command deck to set aside."}
 
     def _adverse(lid, boxes):
-        if state["lords"][lid].get("calendar_box") is not None:
+        if _cylinder_position(state, lid) is not None:
             return {"cylinder_to": _shift_cylinder_right(state, lid, boxes)}
         elif has_service(state, lid):
             return {"service_to": _shift_service_left(state, lid, boxes)}
@@ -1192,9 +1250,9 @@ def S9_event(state, side, args, rng):
 
     targets = args.get("targets")
     if not targets:
-        targets = [lid for lid, l in state["lords"].items()
+        targets = [lid for lid, l in sorted(state["lords"].items())
                    if l.get("side") == "guelph"
-                   and (l.get("calendar_box") is not None or has_service(state, lid))][:2]
+                   and _has_calendar_marker(state, lid)][:2]
     shifts = {}
     for lid in targets[:2]:
         if state["lords"].get(lid, {}).get("side") != "guelph":
@@ -1202,6 +1260,9 @@ def S9_event(state, side, args, rng):
         shifts[lid] = _adverse(lid, 1)
     return {"applied": True, "mode": "shift", "treachery_set_aside": set_aside,
             "shifts": shifts}
+
+
+_PAID_DEATH_LORDS = ("giordano", "astimberg", "provenzano", "santa_fiora")
 
 
 @register_event("S10")
@@ -1212,7 +1273,7 @@ def S10_event(state, side, args, rng):
     (not Podestà) by 1 box, OR give 1 Lord Lordship +2 this Levy.
     Eligible: Giordano, Astimberg, Provenzano, Santa Fiora.
     """
-    eligible = ("giordano", "astimberg", "provenzano", "santa_fiora")
+    eligible = _PAID_DEATH_LORDS
     if args.get("mode") == "lordship":
         target = args.get("target", "giordano")
         if target not in eligible:
@@ -1221,15 +1282,15 @@ def S10_event(state, side, args, rng):
         return {"applied": True, "lordship_bonus_for": target, "bonus": 2}
     # Default: shift 2 Lords
     targets = args.get("targets", list(eligible[:2]))
-    shifts = {}
-    for t in targets[:2]:
-        if t not in eligible:
-            continue
-        if state["lords"][t].get("calendar_box") is not None:
-            shifts[t] = {"cylinder_to": _shift_cylinder_left(state, t, 1)}
-        elif has_service(state, t):
-            shifts[t] = {"service_to": _shift_service_right(state, t, 1)}
+    shifts = {lid: _favorable_shift(state, lid, 1) for lid in targets[:2]
+              if lid in eligible and _has_calendar_marker(state, lid)}
     return {"applied": True, "shifts": shifts}
+
+
+def _volterra_event_active(state):
+    volterra = state["locales"].get("Volterra")
+    return volterra is not None and not any(
+        m.get("side") == "guelph" for m in (volterra.get("current_allegiance") or []))
 
 
 @register_event("S11")
@@ -1247,15 +1308,11 @@ def S11_event(state, side, args, rng):
                          (only if its cylinder is to the right of that box).
       'treachery':       add 1 set-aside Ghibelline Treachery card.
     """
-    volterra = state["locales"].get("Volterra")
-    if volterra is None:
-        return {"applied": False, "reason": "Volterra not in scenario."}
-    if any(m.get("side") == "guelph" for m in volterra.get("current_allegiance", []) or []):
-        return {"applied": False, "reason": "Volterra has Guelph Allegiance markers; not Ghibelline."}
+    if not _volterra_event_active(state):
+        return {"applied": False, "reason": "Volterra must be free of Guelph Allegiance markers."}
     mode = args.get("mode", "colle")
     if mode == "treachery":
-        return {"applied": True, "mode": "treachery",
-                "added": _add_treachery_from_set_aside(state, "ghibelline")}
+        return _add_chosen_treachery(state, "ghibelline", args)
     if mode == "pisa":
         levy_box = state["calendar"]["levy_box"]
         new = _shift_cylinder_to_box(state, "pisa", levy_box)
@@ -1316,6 +1373,9 @@ def S14_event(state, side, args, rng):
     return {"applied": True, "flag_set": "S14_this_campaign"}
 
 
+_WAR_LOANS_LORDS = ("siena", "provenzano", "giordano", "astimberg")
+
+
 @register_event("S15")
 def S15_event(state, side, args, rng):
     """S15 WAR LOANS.
@@ -1325,19 +1385,16 @@ def S15_event(state, side, args, rng):
     cylinder shifts LEFT or Service RIGHT (favourable), OR give one of them a
     one-shot +2 Lordship for this Levy's Muster (3.4) / CtA Allies (3.5.4).
     """
-    eligible = ("siena", "provenzano", "giordano", "astimberg")
+    eligible = _WAR_LOANS_LORDS
     target = args.get("target", "siena")
     if target not in eligible:
         return {"applied": False, "reason": f"target must be one of {eligible}"}
     if args.get("mode") == "lordship":
         _grant_lordship(state, target, 2)
         return {"applied": True, "mode": "lordship", "lordship_bonus_for": target, "bonus": 2}
-    if state["lords"][target].get("calendar_box") is not None:
+    if _has_calendar_marker(state, target):
         return {"applied": True, "mode": "shift", "target": target,
-                "cylinder_to": _shift_cylinder_left(state, target, boxes=2)}
-    elif has_service(state, target):
-        return {"applied": True, "mode": "shift", "target": target,
-                "service_to": _shift_service_right(state, target, boxes=2)}
+                **_favorable_shift(state, target, 2)}
     return {"applied": False, "reason": f"{target} has no Calendar marker to shift"}
 
 
@@ -1629,6 +1686,17 @@ def S24_event(state, side, args, rng):
     return {"applied": True, "flag_set": "S24_pending"}
 
 
+_MAREMMA_STRONGHOLDS = ("Grosseto", "Castiglione della Pescaia", "Montemassi", "Montepescali")
+
+
+def _maremma_shift_targets(state):
+    if not _stronghold_marked(state, None, home_side=None, marker_side="guelph",
+                              names=_MAREMMA_STRONGHOLDS):
+        return []
+    return sorted(lid for lid, lord in state["lords"].items()
+                  if lord["side"] == "ghibelline" and _has_calendar_marker(state, lid))
+
+
 @register_event("S25")
 def S25_event(state, side, args, rng):
     """S25 MAREMMA — War. SMOKE-Inferno-079: 'If Grosseto or adjacent Castle Guelph, shift 3
@@ -1639,14 +1707,14 @@ def S25_event(state, side, args, rng):
     favourably 1 box each.
     """
     log = {"war_event": "ghibelline", "shifted": None}
-    maremma = ("Grosseto", "Castiglione della Pescaia", "Montemassi", "Montepescali")
-    if _stronghold_marked(state, None, home_side=None, marker_side="guelph", names=maremma):
-        targets = args.get("targets")
-        if not targets:
-            targets = [lid for lid, l in state["lords"].items()
-                       if l.get("side") == "ghibelline"
-                       and (l.get("calendar_box") is not None or has_service(state, lid))][:3]
-        log["shifted"] = {lid: _favorable_shift(state, lid, 1) for lid in targets[:3]}
+    eligible = _maremma_shift_targets(state)
+    if eligible:
+        count = min(3, len(eligible))
+        targets = args.get("targets", eligible[:count])
+        if (not isinstance(targets, list) or len(targets) != count
+                or any(lid not in eligible for lid in targets) or len(set(targets)) != count):
+            return {"applied": False, "reason": f"Choose {count} distinct eligible Ghibelline Lords."}
+        log["shifted"] = {lid: _favorable_shift(state, lid, 1) for lid in targets}
     state["war_declared_this_levy"] = sorted(set(state.get("war_declared_this_levy", [])) | {"ghibelline"})
     return {"applied": True, **log}
 
@@ -1722,22 +1790,38 @@ def immediate_event_options(state, card_id: str, side: str) -> list[dict] | None
     None means the effect has no required argument selection. An empty list
     means there is no eligible target/effect, so the draw resolves as no effect.
     """
-    from itertools import combinations, product
+    if card_id in ("F2", "S2"):
+        return _betrayals_options(state, side) if _betrayals_sieges(state, side) else None
+    if card_id in ("F10", "S22"):
+        _, targets = _closed_gates_targets(state, side)
+        return [{"locale": name} for name in targets]
+    if card_id in ("F9", "F13"):
+        lords = _GENOVA_LORDS if card_id == "F9" else _NO_TIME_FOR_COWARDS_LORDS
+        shifts = [{"mode": "shift"}] if any(_has_calendar_marker(state, lid) for lid in lords) else []
+        return shifts + _treachery_options(state, side, lords)
+    if card_id == "F14":
+        if not _betrayals_sieges(state, side):
+            return []
+        shifts = [{"mode": "shift"}] if _has_calendar_marker(state, "provenzano") else []
+        return shifts + _treachery_options(state, side)
+    if card_id == "F21":
+        shifts = [{"mode": "shift", "target": lid} for lid in _PRIMO_POPOLO_LORDS
+                  if _has_calendar_marker(state, lid)]
+        return shifts + _treachery_options(state, side, _PRIMO_POPOLO_LORDS)
     if card_id == "F22":
         options = []
-        for lid, lord in state["lords"].items():
-            if lord.get("forces", {}).get("Ritter", 0) <= 0:
+        for lid, lord in sorted(state["lords"].items()):
+            if not _manfredi_target(state, lid):
                 continue
-            if lord.get("calendar_box") is not None or has_service(state, lid):
+            if _has_calendar_marker(state, lid):
                 options.append({"target_lord_id": lid, "mode": "shift"})
-            assets = {a: n for a, n in lord.get("assets", {}).items() if isinstance(n, int) and n > 0}
-            need = min(3, sum(assets.values()))
-            if need:
-                keys = list(assets)
-                for counts in product(*(range(min(need, assets[a]) + 1) for a in keys)):
-                    if sum(counts) == need:
+            assets = _manfredi_assets(lord)
+            for count in range(1, min(3, sum(assets.values())) + 1):
+                for picked in combinations_with_replacement(assets, count):
+                    amounts = {asset: picked.count(asset) for asset in dict.fromkeys(picked)}
+                    if all(n <= assets[asset] for asset, n in amounts.items()):
                         options.append({"target_lord_id": lid, "mode": "remove_assets",
-                                        "assets_to_remove": {a: n for a, n in zip(keys, counts) if n}})
+                                        "assets_to_remove": amounts})
         return options
     if card_id == "F17":
         options = [{"mode": "service", "target": t} for t in ("guido_guerra", "orvieto")
@@ -1753,4 +1837,27 @@ def immediate_event_options(state, card_id: str, side: str) -> list[dict] | None
                     options.append({"mode": "treachery_cylinder", "targets": list(targets),
                                     "treachery_card": card})
         return options
+    if card_id == "S9":
+        return _pope_at_bay_options(state)
+    if card_id == "S10":
+        eligible = [lid for lid in _PAID_DEATH_LORDS if _has_calendar_marker(state, lid)]
+        shifts = [{"mode": "shift", "targets": list(targets)}
+                  for targets in combinations(eligible, min(2, len(eligible))) if targets]
+        return shifts + [{"mode": "lordship", "target": lid} for lid in eligible]
+    if card_id == "S11":
+        if not _volterra_event_active(state):
+            return []
+        choices = [{"mode": "colle"}] if has_service(state, "colle") else []
+        if (state["lords"]["pisa"].get("calendar_box") or 0) > state["calendar"]["levy_box"]:
+            choices.append({"mode": "pisa"})
+        return choices + _treachery_options(state, side)
+    if card_id == "S15":
+        eligible = [lid for lid in _WAR_LOANS_LORDS if _has_calendar_marker(state, lid)]
+        return [{"mode": mode, "target": lid} for mode in ("shift", "lordship")
+                for lid in eligible]
+    if card_id == "S25":
+        eligible = _maremma_shift_targets(state)
+        if eligible:
+            return [{"targets": list(targets)}
+                    for targets in combinations(eligible, min(3, len(eligible)))]
     return None

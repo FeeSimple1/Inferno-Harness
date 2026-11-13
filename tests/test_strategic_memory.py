@@ -10,6 +10,7 @@ import pytest
 
 from inferno.actions import dispatch
 from inferno.llm import PlayerView, StrategicMemory, play_with_interface
+from inferno.llm.filter import filter_action_result
 from inferno.scenarios import load_scenario
 from examples.play_with_claude import make_claude_callback
 from benchmarks.strategy_ab import trial
@@ -174,7 +175,8 @@ def test_direct_dispatch_and_model_selection_have_identical_mechanics():
     a=play_with_interface(s,choose)
     b=dispatch(t,accepted_action)
     note.commit(s)
-    assert s==t and a.applied==b
+    assert s == t
+    assert a.applied == filter_action_result(b, t, 'guelph', hidden_mats=False)
 
 
 def test_paired_stub_trial_stays_mechanically_identical_with_factions_swapped():

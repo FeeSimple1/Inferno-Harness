@@ -20,6 +20,7 @@ from inferno.battle import (
 )
 from inferno.legal_moves import enumerate_legal
 from inferno.scenarios import load_scenario
+from tests._helpers import _finish_pending_choices
 
 
 def _to_command_phase(scenario="A", seed=1, lord_for_active="firenze"):
@@ -36,6 +37,8 @@ def _to_command_phase(scenario="A", seed=1, lord_for_active="firenze"):
     ]
     for name, side in actions_seq:
         dispatch(s, {"action": name, "side": side})
+        if name == "levy_aow_draw":
+            _finish_pending_choices(s)
     # Skip capability discard
     from tests.test_phase3a import _skip_capability_discard, _build_pass_plan
     _skip_capability_discard(s)

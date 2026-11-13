@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from inferno.actions import IllegalAction, dispatch, _march_preview
+from inferno.actions import IllegalAction, dispatch, _march_preview, _maybe_reshuffle_aow_deck
 from inferno.battle import resolve_storm
 from inferno.invariants import check_all_invariants
 from inferno.legal_moves import enumerate_legal
@@ -198,12 +198,23 @@ def test_surprise_uses_real_losses_and_is_deterministic_after_save_load():
     check_all_invariants(s)
 
 
-def test_original_game_blocked_window_is_now_offered():
+def replay_original_game(action_count):
     actions = json.loads((Path(__file__).resolve().parents[1] / 'playtests/2026-10-09-scenario-a.actions.json').read_text())
     s = load_scenario('A', seed=42)
-    for action in actions[:35]:
+    # Use Betrayals without a Siege in place of Manfredi. The corrected
+    # Manfredi Event delays Provenzano, who Musters in the recorded game.
+    _maybe_reshuffle_aow_deck(s, 'guelph')
+    deck = s['decks']['guelph']['aow_deck']
+    i, j = deck.index('F2'), deck.index('F22')
+    deck[i], deck[j] = deck[j], deck[i]
+    for action in actions[:action_count]:
         dispatch(s, action)
         check_all_invariants(s)
+    return s, actions
+
+
+def test_original_game_blocked_window_is_now_offered():
+    s, _ = replay_original_game(35)
     assert s['lords']['arezzo']['location'] == 'Cortona'
     assert len(surprise_moves(s)) == 1
     dispatch(s, surprise_moves(s)[0])
@@ -392,11 +403,7 @@ def test_menu_lists_own_held_cards_even_without_recent_draw_history():
 
 
 def test_original_game_grouped_march_is_available_from_the_menu():
-    actions = json.loads((Path(__file__).resolve().parents[1] / 'playtests/2026-10-09-scenario-a.actions.json').read_text())
-    s = load_scenario('A', seed=42)
-    for action in actions[:39]:
-        dispatch(s, action)
-        check_all_invariants(s)
+    s, actions = replay_original_game(39)
     actual = actions[39]
     moves = enumerate_legal(s)
     match = next(m for m in moves if m['action'] == actual['action']
