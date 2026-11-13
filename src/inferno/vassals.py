@@ -10,6 +10,8 @@ import copy
 
 from . import static_data as sd
 
+OFF_RIGHT = 17
+
 
 def is_mustered(v):
     return bool(v.get("on_mat") and not v.get("ready"))
@@ -44,50 +46,74 @@ def new_tau():
 def start_service(state, v):
     if (state["meta"].get("advanced_vassal_service")
             and v.get("name") != "Carroccio" and not v.get("turncoat")):
-        v["service_box"] = min(17, state["calendar"]["levy_box"] + v["service_rating"])
+        v["service_box"] = min(OFF_RIGHT, state["calendar"]["levy_box"] + v["service_rating"])
     else:
         v["service_box"] = None
 
 
 def shifted_box(cur, delta):
     # 2.2.3: one box per shift; excess movement off an edge is ignored.
-    return max(0, min(17, cur + delta))
+    return max(0, min(OFF_RIGHT, cur + delta))
 
 
-def has_service(state, lid):
+def service_position(state, lid) -> int | None:
+    """Return the Lord's Service position, including 0/17 for the edges."""
+    cur = state["lords"].get(lid, {}).get("service_box")
+    if cur is not None:
+        return cur
     cal = state.get("calendar", {})
-    return (state["lords"].get(lid, {}).get("service_box") is not None
-            or lid in cal.get("off_left_service", [])
-            or lid in cal.get("off_right_service", []))
+    if lid in cal.get("off_left_service", []):
+        return 0
+    if lid in cal.get("off_right_service", []):
+        return OFF_RIGHT
+    return None
+
+
+def has_service(state, lid) -> bool:
+    return service_position(state, lid) is not None
+
+
+def _following_vassal_markers(state, lid):
+    """Yield the advanced Vassal markers that follow this Lord's Service."""
+    if not state.get("meta", {}).get("advanced_vassal_service"):
+        return
+    lord = state["lords"][lid]
+    # A Comune's Vassals follow the Commander's Service shifts (1.5.1).
+    owners = [lord] + [other for other in state["lords"].values()
+                       if other.get("comune_of")
+                       and other["comune_of"] in (lid, lord.get("name"))]
+    for owner in owners:
+        for v in owner.get("vassals", []):
+            if (is_mustered(v) and v.get("service_box") is not None
+                    and not v.get("turncoat") and v.get("name") != "Carroccio"):
+                yield v
+
+
+def payable_service_steps(state, lid) -> int:
+    """Count rightward steps that would move at least one affected marker."""
+    cur = service_position(state, lid)
+    if cur is None:
+        return 0
+    for v in _following_vassal_markers(state, lid):
+        cur = min(cur, v["service_box"])
+    return max(0, OFF_RIGHT - cur)
 
 
 def shift_service(state, lid, delta):
     """Shift a Lord AND his Vassals, even if the Lord is off the Calendar."""
     lord = state["lords"][lid]
     cal = state.get("calendar", {})
-    cur = lord.get("service_box")
-    if cur is None:
-        if lid in cal.get("off_left_service", []):
-            cur = 0
-        elif lid in cal.get("off_right_service", []):
-            cur = 17
+    cur = service_position(state, lid)
     # A Comune has no separate Lord Service marker. Its Vassals already
     # follow the Commander; processing its Retreat must not shift them twice.
     if cur is None:
         return None
-    if state.get("meta", {}).get("advanced_vassal_service"):
-        # A Comune's Vassals follow the Commander's Service shifts (1.5.1).
-        owners = [lord] + [l for l in state["lords"].values()
-                           if l.get("comune_of") and l["comune_of"] in (lid, lord.get("name"))]
-        for owner in owners:
-            for v in owner.get("vassals", []):
-                if (is_mustered(v) and v.get("service_box") is not None
-                        and not v.get("turncoat") and v.get("name") != "Carroccio"):
-                    v["service_box"] = shifted_box(v["service_box"], delta)
+    for v in _following_vassal_markers(state, lid):
+        v["service_box"] = shifted_box(v["service_box"], delta)
     new = shifted_box(cur, delta)
     from .actions import _place_service
-    _place_service(state, lid, new if 1 <= new <= 16 else None)
-    if new in (0, 17):
+    _place_service(state, lid, new if 0 < new < OFF_RIGHT else None)
+    if new in (0, OFF_RIGHT):
         edge = "off_left_service" if new == 0 else "off_right_service"
         cal.setdefault(edge, []).append(lid)
     return lord["service_box"]

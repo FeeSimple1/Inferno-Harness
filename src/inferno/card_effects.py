@@ -368,7 +368,9 @@ def _greek_fire_apply(state, side, args):
     if not isinstance(unit, str) or enemy.get("forces", {}).get(unit, 0) <= 0:
         return _manual(card_id, "Specify a unit_to_remove present on the target's mat.")
     caps = enemy.get("capabilities", [])
-    chosen_cap = args.get("capability_to_discard", caps[-1] if caps else None)
+    chosen_cap = args.get("capability_to_discard")
+    if chosen_cap is None and caps:
+        chosen_cap = caps[-1]
     if chosen_cap is not None and chosen_cap not in caps:
         return {"applied": False, "reason": "Selected Capability is not on the target's mat."}
     # Reduce to 1 marker
@@ -384,12 +386,15 @@ def _greek_fire_apply(state, side, args):
         removed_unit = unit
     # Discard the selected This Lord Capability, if any
     discarded_cap = None
-    if enemy.get("capabilities"):
+    if chosen_cap is not None:
         discarded_cap = chosen_cap
         enemy["capabilities"].remove(discarded_cap)
         state["decks"][enemy["side"]]["aow_deck"].append(discarded_cap)
+    from .actions import _check_disband_on_zero_forces
+    disbanded = _check_disband_on_zero_forces(state, enemy_lid)
     return {"applied": True, "target": enemy_lid,
-            "removed_unit": removed_unit, "discarded_capability": discarded_cap}
+            "removed_unit": removed_unit, "discarded_capability": discarded_cap,
+            "disbanded": disbanded, "siege_lifted": disbanded and not locale.get("siege")}
 
 
 @register_event("F7")

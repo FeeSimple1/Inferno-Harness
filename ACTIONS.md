@@ -30,7 +30,9 @@ response to a pending decision owed by the other side).
 ## Action types (placeholders — schemas filled in by later phases)
 
 ### Levy phase (Phase 2)
-- `levy_pay` — 3.2
+- `levy_pay` — 3.2. Use `amount` for the number of Service steps to buy.
+  Each step must advance a Lord or an affected advanced Vassal marker.
+  The same limit applies to Campaign `cmd_fpd_pay` (4.8.2).
 - `levy_disband` — 3.3 (Beyond Service Limit / At Service Limit)
 - `levy_muster` — 3.4
 - `levy_vassal` — 3.4.2
@@ -403,7 +405,9 @@ by the menu and the executor.
 
 Held Event options use `play_event.args.effect_args` for card-specific choices.
 For Greek Fire this includes `enemy_lord_id`, `unit_to_remove`, and (when there
-is a Capability to discard) `capability_to_discard`. F11/F23 Treachery choices
+is a Capability to discard) `capability_to_discard`. A target that loses its
+last unit outside combat Disbands immediately (1.6, 3.3.2). If the last besieger
+leaves, remove the Siege. F11/F23 Treachery choices
 include `treachery_card`; F23 also includes the two-Coin `coin_sources` split.
 The briefing lists the owner's Held Event hand independently of recent history.
 

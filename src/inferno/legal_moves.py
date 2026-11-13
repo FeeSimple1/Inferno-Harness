@@ -27,7 +27,7 @@ from typing import Any
 
 from . import static_data as sd
 from . import card_data as cd
-from .vassals import has_service
+from .vassals import payable_service_steps
 from .flow import current_campaign_step, current_end_campaign_substep, current_side, current_step
 
 
@@ -311,7 +311,7 @@ def _enum_pay(state, side) -> list[dict[str, Any]]:
             for tlid, t in same_loc:
                 rate = 2 if t.get("podesta") else 1
                 max_boxes = from_lord["assets"]["Coin"] // rate
-                if max_boxes >= 1 and has_service(state, tlid):
+                if max_boxes >= 1 and payable_service_steps(state, tlid):
                     moves.append({
                         "action": "levy_pay",
                         "side": side,
@@ -325,7 +325,8 @@ def _enum_pay(state, side) -> list[dict[str, Any]]:
             # SMOKE-Inferno-060: Loot Pay needs a Friendly, unbesieged Locale (3.2.2).
             if loc and not loc.get("siege") and _is_friendly_locale_quiet(state, loc, side):
                 for tlid, t in own_mustered.items():
-                    if t.get("location") == from_lord.get("location") and has_service(state, tlid):
+                    if (t.get("location") == from_lord.get("location")
+                            and payable_service_steps(state, tlid)):
                         rate = 2 if t.get("podesta") else 1
                         if from_lord["assets"]["Loot"] >= rate:
                             moves.append({
