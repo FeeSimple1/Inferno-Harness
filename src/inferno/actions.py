@@ -593,13 +593,16 @@ def _h_cmd_fpd_pay_done(state, side, args, rng) -> dict[str, Any]:
 
 
 def _shift_service_right(state, lord_id: str, boxes: int) -> int | str:
-    """Shift the Service marker right by `boxes`. Returns the new box (int)
-    or 'off_right_service' if it falls off the right edge."""
-    lord = state["lords"][lord_id]
-    if (lord.get("service_box") is None and
-            not any(lord_id in state["calendar"].get(edge, [])
-                    for edge in ("off_left_service", "off_right_service"))):
+    """Apply a paid shift and return the Lord's resulting Service position."""
+    if not vs.has_service(state, lord_id):
         raise IllegalAction("SHIFT_OFF_CAL", f"{lord_id} has no Service marker.", "3.2")
+    # Each paid step must advance a marker (3.2). Advanced Vassals can
+    # advance even when their Lord is already off-right (3.4.2).
+    max_boxes = vs.payable_service_steps(state, lord_id)
+    if boxes > max_boxes:
+        raise IllegalAction("PAY_NO_SERVICE_SHIFT",
+                            f"Pay can advance Service for {lord_id} by at most "
+                            f"{max_boxes} box{'es' if max_boxes != 1 else ''}.", "3.2")
     new = vs.shift_service(state, lord_id, boxes)
     if new is not None:
         return new
@@ -2422,7 +2425,7 @@ def _fpd_legal_pays(state, side: str) -> list[dict[str, Any]]:
            if lord.get("side") == side
            and lord.get("status") in ("mustered", "on_calendar")}
     for target_id, target in own.items():
-        if not vs.has_service(state, target_id):
+        if not vs.payable_service_steps(state, target_id):
             continue
         rate = 2 if target.get("podesta") else 1
         for payer_id, payer in own.items():
@@ -5698,10 +5701,37 @@ def _h_play_event(state, side, args, rng) -> dict[str, Any]:
         }, rng)
         result["state_changes"].update(played=cid, effect=effect_result)
         return result
-    return _resume_post_battle_arrival(state, {
+    result = {
         "state_changes": {"played": cid, "effect": effect_result},
         "rule_citation": "3.1.3 / per-card",
-    })
+    }
+    if cid in ("F7", "S7") and effect_result["disbanded"]:
+        return _resume_after_greek_fire_disband(state, result)
+    return _resume_post_battle_arrival(state, result)
+
+
+def _resume_after_greek_fire_disband(state, result):
+    """Clear Approach responses for the departed Lord and any attached Comune."""
+    pending = state.get("pending", [])
+    departed = [p for p in pending if p.get("type") == "approach_response"
+                and state["lords"][p["info"]["lord_id"]]["status"] != "mustered"]
+    if not departed:
+        return _resume_post_battle_arrival(state, result)
+    for entry in departed:
+        pending.remove(entry)
+    entry = departed[0]
+    info = entry["info"]
+    locale = info["locale"]
+    if any(p.get("type") == "approach_response" and p["info"]["locale"] == locale
+           for p in pending):
+        return result
+    resumed = _finalize_approach(state, locale, info["approaching_lord"], entry["side"],
+                                 is_sortie=info.get("approached_via") == "sortie")
+    result["state_changes"].update(resumed["state_changes"])
+    result["rule_citation"] += " / " + resumed["rule_citation"]
+    if resumed.get("rolls"):
+        result["rolls"] = resumed["rolls"]
+    return result
 
 
 _HANDLERS["play_event"] = _h_play_event
