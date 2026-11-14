@@ -24,6 +24,7 @@ import copy
 from typing import Any
 
 from ..card_data import TREACHERY_CARDS
+from ..heat_frost import CARDS as HEAT_FROST_CARDS, pending_election
 from ..visibility import friars_active
 
 
@@ -98,6 +99,21 @@ def hide_for_side(state: dict[str, Any], visible_side: str,
     private_channels = {"battle_callback", "approach_battle_decisions",
                         "approach_post_battle_decisions"}
     s = copy.deepcopy({k: v for k, v in state.items() if k not in private_channels})
+    if prior_side is None and state.get("pending_before_feed"):
+        election = pending_election(state)
+        stage = election["stage"] if election else None
+        owner = election["side"] if election else None
+        before_feed = {"stage": stage, "side": owner}
+        effect = state["pending_before_feed"].get("heat_frost")
+        if effect:
+            before_feed["card_id"] = effect["card_id"]
+        elif stage == "offer" and owner == visible_side:
+            card = HEAT_FROST_CARDS[owner]
+            if card in state["decks"][owner]["aow_held"]:
+                before_feed["card_id"] = card
+        if stage == "waste" and (owner == visible_side or not hidden_mats):
+            before_feed.update(lord_id=election["lord_id"], remaining=election["remaining"])
+        s["pending_before_feed"] = before_feed
     if hidden_mats:
         for entry in s.get("history", []):
             changes = entry.get("state_changes")

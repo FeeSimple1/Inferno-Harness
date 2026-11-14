@@ -34,7 +34,8 @@ def safe_fallback_for(state: dict[str, Any]) -> dict[str, Any] | None:
     if not moves:
         return None
     # Decline optional actions / finish a filled plan before adding anything.
-    preferred = ("cmd_fpd_pay_done", "plan_done", "cmd_end_card", "levy_pay_done",
+    preferred = ("cmd_fpd_pay_done", "cmd_before_feed_pass", "cmd_resume_feed",
+                 "plan_done", "cmd_end_card", "levy_pay_done",
                  "levy_disband", "levy_disband_done", "levy_muster_done",
                  "campaign_discard_done", "levy_cta_skip", "end_grow_skip")
     for name in preferred:

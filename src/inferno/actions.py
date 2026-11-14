@@ -23,6 +23,7 @@ from contextvars import ContextVar
 from typing import Any
 
 from . import card_data as cd
+from . import heat_frost
 from . import static_data as sd
 from . import vassals as vs
 from . import revolt as _revolt
@@ -141,6 +142,18 @@ def dispatch(state: dict[str, Any], action: dict[str, Any]) -> dict[str, Any]:
         and side == state["meta"].get("approach_attacker_side")
         and any(p.get("type") == "approach_response" for p in (state.get("pending") or []))
     )
+    before_feed = state.get("pending_before_feed")
+    if before_feed and not (state.get("pending_revolts") or state.get("pending_exiles")):
+        election = heat_frost.pending_election(state)
+        if not election or side != election["side"]:
+            raise IllegalAction("WRONG_BEFORE_FEED_SIDE",
+                                "The other side owns the before-Feed election.", "4.8.1")
+        is_heat_frost = name == "play_event" and args.get("card_id") in heat_frost.CARDS.values()
+        if name not in heat_frost.ELECTION_ACTIONS and not is_heat_frost:
+            raise IllegalAction("PENDING_DECISION", "Resolve Heat & Frost before Feed.", "4.8.1")
+        event_exempt = True
+    elif before_feed and name not in ("cmd_resolve_revolt", "cmd_resolve_exiles"):
+        raise IllegalAction("PENDING_DECISION", "Resolve Revolt and Exiles before Feed.", "4.8.1")
     if side != current_side(state) and not (ambush_exempt or revolt_exempt or fpd_exempt or event_exempt):
         raise IllegalAction(
             "WRONG_TURN",
@@ -165,7 +178,7 @@ def dispatch(state: dict[str, Any], action: dict[str, Any]) -> dict[str, Any]:
             raise IllegalAction("PENDING_DECISION", "Resolve Reset consequences first.", "4.9.6")
         if name not in ("end_reset", "play_event", "cmd_resolve_revolt", "cmd_resolve_exiles"):
             raise IllegalAction("PENDING_DECISION", "Finish both Reset elections first.", "4.9.6")
-    if _pending_besiege(state):
+    if not before_feed and _pending_besiege(state):
         if (state.get("pending_revolts") or state.get("pending_exiles")) and name not in (
                 "cmd_resolve_revolt", "cmd_resolve_exiles"):
             raise IllegalAction("PENDING_DECISION", "Resolve Revolt and Exiles first.", "4.4.6")
@@ -1618,7 +1631,7 @@ def _h_command_reveal(state, side, args, rng) -> dict[str, Any]:
         raise IllegalAction("WRONG_STEP", "command_reveal valid only in command_phase.", "4.2")
     if state.get("current_card") is not None or state.get("current_lord_id") is not None:
         raise IllegalAction("CARD_IN_PROGRESS", "Finish the current activation before revealing another card.", "4.2")
-    if (state.get("pending") or state.get("pending_fpd")
+    if (state.get("pending") or state.get("pending_fpd") or state.get("pending_before_feed")
             or state.get("pending_revolts") or state.get("pending_exiles")):
         raise IllegalAction("PENDING_DECISION", "Resolve pending decisions before revealing another card.", "4.2 / 4.8")
     stack = state["plan_stacks"][side]
@@ -1718,17 +1731,8 @@ def _h_command_reveal(state, side, args, rng) -> dict[str, Any]:
 
 
 def _finish_card(state, side, reason: str, citation: str) -> dict[str, Any]:
-    """Conclude the current revealed card. Runs FPD (4.8) then flips active side."""
-    state["current_card"] = None
-    state["current_lord_id"] = None
-    state["actions_remaining"] = None
-    state.pop("bypass_this_card", None)
-    fpd_result = _run_fpd(state)
-    _flip_active_side(state)
-    return {
-        "state_changes": {"card_finished": True, "reason": reason, "fpd": fpd_result},
-        "rule_citation": citation,
-    }
+    """Conclude the current revealed card through the common Feed entry point."""
+    return _finish_card_with({}, state, side, reason, citation)
 
 
 def _flip_active_side(state) -> None:
@@ -2606,12 +2610,36 @@ def _maybe_end_card(payload: dict, state, side, citation: str) -> dict[str, Any]
 
 
 def _finish_card_with(payload: dict, state, side, reason: str, citation: str) -> dict[str, Any]:
+    if heat_frost.can_interrupt_feed(state):
+        # Victory precedes any further card play or Feed (5.2).
+        _check_campaign_victory(state)
+        if state["meta"].get("game_over"):
+            _clear_finished_card(state)
+            return {"state_changes": {**payload, "card_finished": True, "reason": reason},
+                    "rule_citation": citation}
+        context = _FEED_CONTEXT.get()
+        state["pending_before_feed"] = {
+            "reason": reason, "citation": citation, "passed": [],
+            "feed_decisions": copy.deepcopy(context.scripted) if context else [],
+        }
+        if context:
+            context.scripted.clear()
+        return {"state_changes": {**payload, "before_feed_pending": True, "reason": reason},
+                "rule_citation": citation}
+    return _complete_finished_card(payload, state, reason, citation)
+
+
+def _clear_finished_card(state):
     state["current_card"] = None
     state["current_lord_id"] = None
     state["actions_remaining"] = None
     state.pop("bypass_this_card", None)
     state["card_action_consumed_by_entire_card"] = False
     state["card_actions_started"] = False
+
+
+def _complete_finished_card(payload, state, reason, citation):
+    _clear_finished_card(state)
     fpd = _run_fpd(state)
     _flip_active_side(state)
     return {
@@ -2947,7 +2975,7 @@ def _pending_besiege(state):
     # Older saves can pause after a March whose Approach ended without Battle
     # before recording the required arrival choice. The arrival was occupied.
     if (state["meta"].get("phase") != "campaign" or current_campaign_step(state) != "command_phase"
-            or state.get("pending") or state.get("pending_fpd")):
+            or state.get("pending") or state.get("pending_fpd") or state.get("pending_before_feed")):
         return None
     lid = state.get("current_lord_id")
     lord = state["lords"].get(lid, {})
@@ -5345,9 +5373,7 @@ def _h_end_waste(state, side, args, rng) -> dict[str, Any]:
         raise IllegalAction("BAD_DISCARD", "Waste discards must be an object keyed by Lord ID.", "4.9.5")
     eligible_lords = {
         lid: lord for lid, lord in state["lords"].items()
-        if lord["side"] == side and lord["status"] == "mustered"
-        and (any(count > 1 for count in lord.get("assets", {}).values())
-             or len(lord.get("capabilities", [])) > 1)
+        if lord["side"] == side and heat_frost.waste_options(lord)
     }
     if any(lid not in eligible_lords for lid in discards):
         raise IllegalAction("BAD_DISCARD", "Name only your Lords who owe a Waste discard.", "4.9.5")
@@ -5359,28 +5385,14 @@ def _h_end_waste(state, side, args, rng) -> dict[str, Any]:
         capabilities = lord.get("capabilities", [])
         if lid in discards:
             choice = discards[lid]
-            if (not isinstance(choice, dict) or len(choice) != 1
-                    or not all(kind in ("asset", "capability") and isinstance(item, str)
-                               for kind, item in choice.items())):
-                raise IllegalAction("BAD_DISCARD",
-                                    f"Choose one Asset or one personal Capability for {lid}.", "4.9.5")
-            kind, item = next(iter(choice.items()))
+            if choice not in heat_frost.waste_options(lord):
+                raise IllegalAction("BAD_DISCARD", f"Choose an available Waste discard for {lid}.", "4.9.5")
         else:
             # Prefer the first repeated Asset, then the first personal Capability.
             default_asset = min((asset for asset, count in assets.items() if count > 1), default=None)
-            kind, item = ("asset", default_asset) if default_asset is not None else ("capability", min(capabilities))
-
-        if kind == "asset":
-            if assets.get(item, 0) <= 0:
-                raise IllegalAction("BAD_DISCARD", f"{lid} has no {item} to discard.", "4.9.5")
-            assets[item] -= 1
-            waste_log.append({"lord_id": lid, "discarded_asset": item})
-        else:
-            if item not in capabilities:
-                raise IllegalAction("BAD_DISCARD", f"{lid} has no '{item}' Capability.", "4.9.5")
-            capabilities.remove(item)
-            state["decks"][side]["aow_deck"].append(item)
-            waste_log.append({"lord_id": lid, "discarded_capability": item})
+            choice = ({"asset": default_asset} if default_asset is not None
+                      else {"capability": min(capabilities)})
+        waste_log.append(heat_frost.discard_waste(state, lid, choice))
     if side == "ghibelline":
         state["meta"]["end_substep_done"] = state["meta"].get("end_substep_done", []) + ["waste"]
     advance_campaign_side_or_step(state)
@@ -5558,6 +5570,7 @@ _HOLD_EVENT_WINDOW = {
     "F16": "combat", "F24": "combat",
     "S4": "combat",  "S6": "combat",  "S8": "combat",  "S12": "combat",
     "S16": "combat", "S24": "combat",
+    "F20": "before_feed", "S20": "before_feed",
 }
 
 
@@ -5614,6 +5627,8 @@ def _hold_event_window_ok(state, side, cid) -> bool:
         return _approach_open(state)
     if win == "besiege_alone":
         return _surprise_window_open(state, side)
+    if win == "before_feed":
+        return heat_frost.offer_matches(state, side, cid)
     return _combat_window_open(state, side)
 
 
@@ -5632,9 +5647,14 @@ def _h_play_event(state, side, args, rng) -> dict[str, Any]:
         raise IllegalAction("CARD_NOT_HELD", f"{cid!r} not in {side}'s Held Events.", "3.1.3")
     # SMOKE-Inferno-094: combat-window Holds may only be played in their window.
     if not _hold_event_window_ok(state, side, cid):
+        window = _HOLD_EVENT_WINDOW.get(cid)
+        if window == "before_feed":
+            raise IllegalAction("NO_PLAY_WINDOW",
+                                "Heat & Frost requires a Summer or Winter offer immediately before Feed.",
+                                f"{cid} / 4.8.1")
         raise IllegalAction("NO_PLAY_WINDOW",
                             f"Held Event {cid} requires an open "
-                            f"{_HOLD_EVENT_WINDOW.get(cid)} window.", "3.1.3")
+                            f"{window} window.", "3.1.3")
     from . import card_effects as ce
     effect_args = args.get("effect_args", {})
     if not isinstance(effect_args, dict):
@@ -5642,6 +5662,8 @@ def _h_play_event(state, side, args, rng) -> dict[str, Any]:
     effect_result = ce.apply_event_effect(state, cid, side, effect_args, rng)
     if effect_result.get("manual") or not effect_result.get("applied"):
         raise IllegalAction("EVENT_UNRESOLVED", effect_result.get("note") or effect_result.get("reason") or "Event needs a valid choice.", "3.1.3")
+    if cid in heat_frost.CARDS.values():
+        return _continue_heat_frost(state, {"heat_frost_started": cid})
     held.remove(cid)
     in_duration_zone = any(e.get("id") == cid and e.get("side") == side
                            for events in state.get("active_events", {}).values() for e in events)
@@ -5691,6 +5713,97 @@ def _resume_after_greek_fire_disband(state, result):
 
 
 _HANDLERS["play_event"] = _h_play_event
+
+
+def _before_feed_result(changes, citation):
+    return {"state_changes": {**changes, "before_feed_pending": True}, "rule_citation": citation}
+
+
+def _h_resume_feed(state, side, args, rng):
+    """Resume the suspended 4.8 Feed with the ordinary Feed decision channel."""
+    election = heat_frost.pending_election(state)
+    if not election or election["stage"] != "feed" or election["side"] != side:
+        raise IllegalAction("NO_FEED_WINDOW", "The before-Feed elections must be complete.", "4.8.1")
+    pending = state.pop("pending_before_feed")
+    context = _FEED_CONTEXT.get()
+    saved_script = pending["feed_decisions"]
+    # A trusted replay may replace a script made obsolete by Wastage.
+    if saved_script and "feed_decisions" not in args:
+        context.scripted.extend(copy.deepcopy(saved_script))
+    return _complete_finished_card({}, state, pending["reason"], f"4.8.1 / {pending['citation']}")
+
+
+def _complete_heat_frost(state, changes):
+    pending = state["pending_before_feed"]
+    effect = pending.pop("heat_frost")
+    side, card = effect["side"], effect["card_id"]
+    deck = state["decks"][side]
+    deck["aow_held"].remove(card)
+    deck["aow_discard"].append(card)
+    pending["passed"].append(side)
+    changes["played"] = card
+    _check_campaign_victory(state)
+    if state["meta"].get("game_over"):
+        state.pop("pending_before_feed")
+        _clear_finished_card(state)
+        return {"state_changes": {**changes, "card_finished": True, "reason": pending["reason"]},
+                "rule_citation": f"{card} / 5.2"}
+    return _before_feed_result(changes, f"{card} / 4.8.1")
+
+
+def _continue_heat_frost(state, changes):
+    election = heat_frost.pending_election(state)
+    if election["stage"] == "summer" and not election["options"]:
+        return _complete_heat_frost(state, changes)
+    return _before_feed_result(changes, "4.8.1 / 4.9.5")
+
+
+def _h_before_feed_pass(state, side, args, rng):
+    """Pass this side's before-Feed window, keeping any Held Event."""
+    election = heat_frost.pending_election(state)
+    if not election or election["stage"] != "offer" or election["side"] != side:
+        raise IllegalAction("NO_PLAY_WINDOW", "Only the current offer can be declined.", "4.8.1")
+    state["pending_before_feed"]["passed"].append(side)
+    return _before_feed_result({"before_feed_passed": side}, "4.8.1")
+
+
+def _h_heat_frost_waste(state, side, args, rng):
+    """Select one `discard` (an `asset` or `capability` ID) for the named `lord_id`."""
+    election = heat_frost.pending_election(state)
+    if (not election or election["stage"] != "waste" or election["side"] != side
+            or args.get("lord_id") != election["lord_id"]
+            or args.get("discard") not in election["options"]):
+        raise IllegalAction("BAD_DISCARD", "Choose one listed discard for your current Lord.", "4.9.5")
+    lid = election["lord_id"]
+    changes = heat_frost.discard_waste(state, lid, args["discard"])
+    effect = state["pending_before_feed"]["heat_frost"]
+    entry = next(e for e in effect["cycles"] if e["lord_id"] == lid)
+    entry["remaining"] -= 1
+    return _continue_heat_frost(state, {"waste": changes})
+
+
+def _h_heat_frost_loss(state, side, args, rng):
+    """Select the Summer loss by `lord_id` and `unit` (Event owner)."""
+    election = heat_frost.pending_election(state)
+    choice = {"lord_id": args.get("lord_id"), "unit": args.get("unit")}
+    if (not election or election["stage"] != "summer" or election["side"] != side
+            or choice not in election["options"]):
+        raise IllegalAction("BAD_HEAT_FROST_CHOICE", "Choose one eligible Summer loss.", "F20/S20")
+    lid, unit = choice["lord_id"], choice["unit"]
+    forces = state["lords"][lid]["forces"]
+    forces[unit] -= 1
+    if forces[unit] == 0:
+        del forces[unit]
+    disbanded = _check_disband_on_zero_forces(state, lid)
+    return _complete_heat_frost(state, {"summer_loss": {**choice, "disbanded": disbanded}})
+
+
+_HANDLERS.update({
+    "cmd_before_feed_pass": _h_before_feed_pass,
+    "cmd_resume_feed": _h_resume_feed,
+    "cmd_heat_frost_waste": _h_heat_frost_waste,
+    "cmd_heat_frost_loss": _h_heat_frost_loss,
+})
 
 
 # =====================================================================

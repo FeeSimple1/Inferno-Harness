@@ -27,6 +27,10 @@ def test_unpaired_sortie_lord_feeds_when_the_bypasser_avoids():
         _dispatch(position, "approach_response", "ghibelline", **avoid["args"])
         assert position["lords"]["pisa"]["location"] == "Figline"
         result = _dispatch(position, "cmd_end_card", "guelph")
+        if result.get("before_feed_pending"):
+            for side in ("guelph", "ghibelline"):
+                _dispatch(position, "cmd_before_feed_pass", side)
+            result = _dispatch(position, "cmd_resume_feed", "guelph")
         feed = {row["lord_id"]: row for row in result["fpd"]["feed"]}
         assert set(feed) == {"arezzo", "pisa"}
         assert all(row["fed"] and row["need"] == 1 for row in feed.values())

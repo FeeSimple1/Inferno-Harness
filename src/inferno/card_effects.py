@@ -32,6 +32,7 @@ from itertools import combinations, combinations_with_replacement
 from typing import Any, Callable
 
 from . import card_data as cd
+from . import heat_frost
 from . import static_data as sd
 from .vassals import has_service
 
@@ -832,59 +833,17 @@ def F19_event(state, side, args, rng):
     return {"applied": True, "flag_set": "guelph_treachery_at_volterra_auto"}
 
 
+@register_event("S20")
 @register_event("F20")
-def F20_event(state, side, args, rng):
-    """F20 HEAT & FROST.
-
-    SMOKE-Inferno-018 (card-text fidelity): card actually triggers
-    Wastage (4.9.5) for all Lords NOW — twice for Lords at a Siege
-    Locale or marked Moved/Fought. If Summer, removes 1 Ritter
-    additionally.
-
-    Per AoW Reference Text+Tips: this is NOT a 'each Lord +1 Provender'
-    card. It is a Wastage trigger, fired in Summer or Winter only,
-    immediately before Feed (4.8.1).
-    """
-    season = sd.SEASON_BY_BOX.get(state["meta"]["turn"], "winter")
-    if season not in ("summer", "winter"):
-        return {"applied": False, "reason": "Heat & Frost requires Summer or Winter season."}
-    log = {"wastage": [], "ritter_removed": []}
-    for lid, lord in state["lords"].items():
-        if lord["status"] != "mustered":
-            continue
-        # Determine cycles: 1 by default; 2 if at Siege Locale or Moved/Fought.
-        loc = state["locales"].get(lord.get("location") or "")
-        at_siege = bool(loc and loc.get("siege"))
-        moved = bool(lord.get("flags", {}).get("moved_fought"))
-        cycles = 2 if (at_siege or moved) else 1
-        # Apply Wastage: for each cycle, if Lord has >1 of any Asset OR
-        # >1 'This Lord' Capability, discard one (Asset count -= 1, or
-        # capability returned to side AoW deck). Defaulting to first
-        # multi-Asset; LLM consumer can re-run with specific choices.
-        for _ in range(cycles):
-            eligible = False
-            for a, c in lord.get("assets", {}).items():
-                if c > 1:
-                    lord["assets"][a] -= 1
-                    log["wastage"].append({"lord_id": lid, "asset": a})
-                    eligible = True
-                    break
-            if not eligible and len(lord.get("capabilities", [])) > 1:
-                cid = lord["capabilities"].pop()
-                state["decks"][lord["side"]]["aow_deck"].append(cid)
-                log["wastage"].append({"lord_id": lid, "capability": cid})
-    # Summer: remove 1 Ritter from any side (per the card; play side chooses).
-    if season == "summer":
-        for lid, lord in state["lords"].items():
-            if lord["status"] != "mustered":
-                continue
-            if lord["forces"].get("Ritter", 0) > 0:
-                lord["forces"]["Ritter"] -= 1
-                if lord["forces"]["Ritter"] <= 0:
-                    lord["forces"].pop("Ritter")
-                log["ritter_removed"].append(lid)
-                break  # Card says "remove 1 Ritter" (singular)
-    return {"applied": True, **log}
+def heat_frost_event(state, side, args, rng):
+    """Open the card's owner-bound Waste and Summer loss elections before Feed."""
+    card = heat_frost.CARDS.get(side)
+    if not heat_frost.offer_matches(state, side, card):
+        return {"applied": False, "reason": "Heat & Frost requires the Summer or Winter before-Feed offer."}
+    if args:
+        return {"applied": False, "reason": "Play Heat & Frost first, then resolve each owner's elections."}
+    heat_frost.start_effect(state, card, side)
+    return {"applied": True}
 
 
 _PRIMO_POPOLO_LORDS = ("firenze", "arezzo")
@@ -1582,51 +1541,6 @@ def S19_event(state, side, args, rng):
             "bundle": bundle, "transferred": moved}
 
 
-@register_event("S20")
-def S20_event(state, side, args, rng):
-    """S20 HEAT & FROST (Ghib mirror).
-
-    SMOKE-Inferno-019 (card-text fidelity): mirror of F20 with the
-    Summer-side effect "remove 1 unit from Guido" (Guido Guerra
-    specifically, not generic Ritter).
-    """
-    season = sd.SEASON_BY_BOX.get(state["meta"]["turn"], "winter")
-    if season not in ("summer", "winter"):
-        return {"applied": False, "reason": "Heat & Frost requires Summer or Winter season."}
-    log = {"wastage": [], "guido_unit_removed": None}
-    for lid, lord in state["lords"].items():
-        if lord["status"] != "mustered":
-            continue
-        loc = state["locales"].get(lord.get("location") or "")
-        at_siege = bool(loc and loc.get("siege"))
-        moved = bool(lord.get("flags", {}).get("moved_fought"))
-        cycles = 2 if (at_siege or moved) else 1
-        for _ in range(cycles):
-            eligible = False
-            for a, c in lord.get("assets", {}).items():
-                if c > 1:
-                    lord["assets"][a] -= 1
-                    log["wastage"].append({"lord_id": lid, "asset": a})
-                    eligible = True
-                    break
-            if not eligible and len(lord.get("capabilities", [])) > 1:
-                cid = lord["capabilities"].pop()
-                state["decks"][lord["side"]]["aow_deck"].append(cid)
-                log["wastage"].append({"lord_id": lid, "capability": cid})
-    # Summer: remove 1 unit from Guido Guerra (per card)
-    if season == "summer":
-        guido = state["lords"].get("guido_guerra")
-        if guido and guido.get("forces"):
-            for u, c in list(guido["forces"].items()):
-                if c > 0:
-                    guido["forces"][u] -= 1
-                    if guido["forces"][u] <= 0:
-                        guido["forces"].pop(u)
-                    log["guido_unit_removed"] = u
-                    break
-    return {"applied": True, **log}
-
-
 @register_event("S21")
 def S21_event(state, side, args, rng):
     """S21 CONSTITUTO – City statute (Hold).
@@ -1781,6 +1695,8 @@ def apply_event_effect(state, card_id: str, side: str, args: dict, rng) -> dict[
     handler = EVENT_EFFECTS.get(card_id)
     if handler is None:
         return {"manual": True, "card_id": card_id, "note": "No effect handler registered."}
+    if card_id in heat_frost.CARDS.values() and card_id != heat_frost.CARDS.get(side):
+        return {"applied": False, "reason": "Only the Event's owner may play Heat & Frost."}
     return handler(state, side, args, rng)
 
 

@@ -13,6 +13,7 @@ from typing import Any
 
 from ..actions import IllegalAction, dispatch
 from ..card_effects import MANFREDI_ASSETS, hidden_manfredi_targets
+from ..heat_frost import pending_election
 from ..legal_moves import enumerate_legal
 from .filter import filter_action_result
 from .protocol import (compact, page_records, query_position, require_version,
@@ -32,6 +33,27 @@ def _hidden_target_templates(state: dict, side: str, moves: list) -> list:
     """Do not turn hidden Asset/Force/Vassal contents into a legal-menu oracle."""
     from ..actions import _hold_event_window_ok
     from ..held_events import _candidate_in_context
+    if state.get("pending_before_feed"):
+        election = pending_election(state)
+        if (election and election["stage"] == "summer" and election["side"] == side
+                and any(m["action"] == "cmd_heat_frost_loss" for m in moves)):
+            card = election["card_id"]
+            from ..visibility import combat_visibility
+            revealed = combat_visibility(state).get("lords", set())
+            enemy = sorted(lid for lid, lord in state["lords"].items()
+                           if lord["side"] != side and lord["status"] == "mustered"
+                           and lid not in revealed
+                           and (card == "F20" or lid == "guido_guerra"))
+            if enemy:
+                moves = [m for m in moves if m["args"].get("lord_id") not in enemy]
+                args = ({"lord_id": "<Lord with a Ritter>", "unit": "Ritter"} if card == "F20"
+                        else {"lord_id": "guido_guerra", "unit": "<unit type>"})
+                moves.append({"action": "cmd_heat_frost_loss", "side": side, "args": args,
+                              "parameterized": True, "conditional": True,
+                              "parameters": {"public_enemy_lords": enemy},
+                              "description": "Choose the Summer loss; the engine validates screened Forces.",
+                              "rule_citation": f"{card} / 1.5.2 / 1.6"})
+        return moves
     if side == "guelph" and any(
             p.get("card_id") == "F22" and p.get("type") == "event_resolution"
             for p in state.get("pending", [])):
@@ -231,6 +253,9 @@ class ActionCatalog:
                 raise IllegalAction("BAD_SELECTION", "args must be a complete JSON object.")
             action['args'] = copy.deepcopy(selection['args'])
         args = action.get("args", {})
+        if action["action"] == "cmd_resume_feed" and "feed_decisions" in args:
+            raise IllegalAction("OWNER_DECISION_REQUIRED",
+                                "Use the owning players' Feed decisions to resume this card.", "4.8.1")
         if action["action"] == "end_ransom" and (
                 args.get("ransom_decisions") or "languish_treachery" in args):
             raise IllegalAction("OWNER_DECISION_REQUIRED",

@@ -431,6 +431,22 @@ leaves, remove the Siege. F11/F23 Treachery choices
 include `treachery_card`; F23 also includes the two-Coin `coin_sources` split.
 The briefing lists the owner's Held Event hand independently of recent history.
 
+### Heat & Frost before Feed
+
+In Summer or Winter, the end of a card pauses before Feed if a Mustered Lord
+has Moved/Fought. The sides get their private Event opportunities Guelph first
+under 2.2.4. The menu offers Heat & Frost (F20/S20) to its holder.
+`cmd_before_feed_pass` passes the window and keeps any Held Event.
+
+Play with `play_event` and the card ID. Each side chooses its own Waste
+discards, Guelph then Ghibelline, through `cmd_heat_frost_waste` with
+`lord_id` and `discard` set to an Asset or personal Capability option.
+The engine rechecks eligibility before a second discard. In Summer the Event
+owner uses `cmd_heat_frost_loss` to choose `lord_id` and `unit`. The Event
+is discarded after these choices. `cmd_resume_feed` continues ordinary Feed
+through the existing owner-bound Feed choices. The saved state preserves the
+offer or election in progress.
+
 Muster action limits include printed Lordship, applicable Capability bonuses,
 and Event grants. Segment-only Held Event grants expire after that segment;
 This-Levy grants remain for Call to Arms and expire before Campaign. The menu
