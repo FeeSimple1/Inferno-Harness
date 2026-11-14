@@ -166,6 +166,14 @@ class PendingDecision(TypedDict, total=False):
     info: dict[str, Any]
 
 
+class BeforeFeed(TypedDict, total=False):
+    reason: str
+    citation: str
+    passed: list[Side]
+    feed_decisions: list[dict[str, Any]]
+    heat_frost: dict[str, Any]
+
+
 class ActionResult(TypedDict, total=False):
     action: str
     side: Side
@@ -185,6 +193,7 @@ class State(TypedDict, total=False):
     capabilities_in_play: list[CapabilityInPlay]
     pending: list[PendingDecision]
     pending_besiege: StrongholdArrival
+    pending_before_feed: BeforeFeed
     bypass_this_card: str
     history: list[ActionResult]
     vp: dict[str, float]

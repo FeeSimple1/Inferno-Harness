@@ -236,20 +236,12 @@ class TestScenarioFExhaustion:
 class TestTier3Fixes:
     """Regression tests for card-text fidelity gaps found in Tier-3 audit."""
 
-    def test_smoke_inferno_018_f20_heat_frost_triggers_wastage_summer(self):
-        """SMOKE-Inferno-018: F20 Heat & Frost triggers Wastage in Summer,
-        not 'each Lord +1 Provender'."""
-        from inferno.scenarios import load_scenario
-        s = load_scenario("A", seed=1)
-        s["meta"]["turn"] = 3  # Summer
-        # Give Firenze 2 Coin so he has a Wastage-eligible Asset
-        s["lords"]["firenze"]["assets"]["Coin"] = 2
-        rng = HarnessRNG(seed=1)
-        r = ce.apply_event_effect(s, "F20", "guelph", {}, rng)
-        assert r["applied"] is True
-        # Wastage should have decremented Firenze's Coin
-        assert s["lords"]["firenze"]["assets"]["Coin"] < 2
-        assert "wastage" in r
+    @pytest.mark.parametrize("card,side", [("F20", "guelph"), ("S20", "ghibelline")])
+    def test_heat_frost_effect_requires_a_before_feed_offer(self, card, side):
+        s = load_scenario("D", seed=1)
+        r = ce.apply_event_effect(s, card, side, {}, HarnessRNG(seed=1))
+        assert r["applied"] is False
+        assert "pending_before_feed" not in s
 
     def test_smoke_inferno_018_f20_heat_frost_rejected_outside_summer_winter(self):
         """F20 requires Summer or Winter (box 2 = Spring)."""
@@ -259,23 +251,6 @@ class TestTier3Fixes:
         rng = HarnessRNG(seed=1)
         r = ce.apply_event_effect(s, "F20", "guelph", {}, rng)
         assert r["applied"] is False
-
-    def test_smoke_inferno_019_s20_summer_removes_guido_unit(self):
-        """SMOKE-Inferno-019: S20 in Summer removes 1 unit specifically
-        from Guido Guerra (not generic Ritter)."""
-        from inferno.scenarios import load_scenario
-        s = load_scenario("D", seed=1)  # Guido Mustered in D
-        s["meta"]["turn"] = 9  # Jun-Jul -> Summer
-        guido = s["lords"]["guido_guerra"]
-        if guido["status"] != "mustered":
-            pytest.skip("Guido not Mustered in this scenario state")
-        units_before = sum(guido["forces"].values())
-        rng = HarnessRNG(seed=1)
-        r = ce.apply_event_effect(s, "S20", "ghibelline", {}, rng)
-        units_after = sum(guido["forces"].values())
-        if units_before > 0:
-            assert units_after == units_before - 1
-            assert r["guido_unit_removed"] is not None
 
     def test_smoke_inferno_020_f22_manfredi_shifts_target_cylinder(self):
         """SMOKE-Inferno-020: F22 Manfredi shifts a Lord with Ritter,

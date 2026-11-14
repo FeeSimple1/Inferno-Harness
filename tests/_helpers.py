@@ -35,7 +35,7 @@ def _finish_pending_choices(state):
     from inferno.actions import dispatch
     from inferno.legal_moves import enumerate_legal
     for _ in range(100):
-        pending = (state.get("pending_fpd") or state.get("pending_revolts")
+        pending = (state.get("pending_before_feed") or state.get("pending_fpd") or state.get("pending_revolts")
                    or state.get("pending_exiles") or any(
                        p.get("type") in ("capability_placement", "event_resolution")
                        for p in state.get("pending", [])))
@@ -43,7 +43,7 @@ def _finish_pending_choices(state):
             return
         moves = enumerate_legal(state)
         assert moves, "A pending fixture decision must be resolvable"
-        preferred = next((m for m in moves if m["action"] == "cmd_fpd_pay_done"
+        preferred = next((m for m in moves if m["action"] in ("cmd_fpd_pay_done", "cmd_before_feed_pass")
                           or (m["action"] == "cmd_resolve_exiles" and not m["args"]["slides"])), moves[0])
         dispatch(state, preferred)
     raise AssertionError("Fixture pending-decision loop did not finish")

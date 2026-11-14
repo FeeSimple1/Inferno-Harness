@@ -27,6 +27,7 @@ from typing import Any
 
 from . import static_data as sd
 from . import card_data as cd
+from . import heat_frost
 from .vassals import bribe_targets, is_mustered, payable_service_steps
 from .flow import current_campaign_step, current_end_campaign_substep, current_side, current_step
 
@@ -136,6 +137,44 @@ def _enum_pending_fpd(state):
     return moves
 
 
+def _enum_before_feed(state):
+    election = heat_frost.pending_election(state)
+    if not election:
+        return []
+    side = election["side"]
+    stage = election["stage"]
+    if stage == "feed":
+        return _with_feed_decisions([
+            {"action": "cmd_resume_feed", "side": side, "args": {},
+             "description": "Resume Feed after the Heat & Frost elections.", "rule_citation": "4.8.1"},
+        ])
+    if stage == "offer":
+        card = heat_frost.CARDS[side]
+        moves = [
+            {"action": "cmd_before_feed_pass", "side": side, "args": {},
+             "description": "Pass the before-Feed Event window.", "rule_citation": "4.8.1"},
+        ]
+        if heat_frost.offer_matches(state, side, card):
+            moves.append({"action": "play_event", "side": side, "args": {"card_id": card},
+                          "description": f"Play {card} Heat & Frost before Feed.",
+                          "rule_citation": f"{card} / 4.8.1"})
+        return moves
+    if stage == "waste":
+        lid = election["lord_id"]
+        return [
+            {"action": "cmd_heat_frost_waste", "side": side, "args": {"lord_id": lid, "discard": choice},
+             "description": f"{lid} discards {next(iter(choice.values()))} for Heat & Frost.",
+             "rule_citation": "4.9.5"}
+            for choice in election["options"]
+        ]
+    return [
+        {"action": "cmd_heat_frost_loss", "side": side, "args": choice,
+         "description": f"{choice['lord_id']} loses one {choice['unit']} to Heat & Frost.",
+         "rule_citation": f"{election['card_id']} / 1.6"}
+        for choice in election["options"]
+    ]
+
+
 def _enum_approach_reactions(state) -> list[dict[str, Any]]:
     """SMOKE-Inferno-095: ATTACKER reactions during an open Approach window
     (4.3.4) — play F1/S1 Ambush and pin an Avoiding Lord via cmd_play_ambush.
@@ -200,6 +239,8 @@ def enumerate_legal(state: dict[str, Any]) -> list[dict[str, Any]]:
     if rev is not None:
         after_battle = (state.get("pending_besiege") or {}).get("after_battle")
         return _with_feed_decisions(rev) if after_battle else rev
+    if state.get("pending_before_feed"):
+        return _enum_before_feed(state)
     # FPD Pay sub-step (4.8.2) pauses everything else until both sides finish.
     fpd = _enum_pending_fpd(state)
     if fpd is not None:
